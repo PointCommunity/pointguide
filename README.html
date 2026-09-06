@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>PointGuide</title>
+  <style>
+    :root { color-scheme: dark; --bg:#07100f; --panel:#0e1b18; --line:#2b413b; --text:#f0f5f3; --muted:#9aaba6; --accent:#70e4c2; font-family:Inter,ui-sans-serif,system-ui,sans-serif; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); line-height:1.6; }
+    main { width:min(64rem,calc(100% - 2rem)); margin:auto; padding:clamp(3rem,8vw,7rem) 0; }
+    h1 { margin:0; font-size:clamp(3rem,12vw,7rem); line-height:.95; letter-spacing:-.065em; }
+    h2 { margin-top:3rem; font-size:clamp(1.4rem,4vw,2rem); }
+    p,li { color:var(--muted); }
+    .eyebrow { color:var(--accent); font-size:.75rem; font-weight:800; letter-spacing:.14em; text-transform:uppercase; }
+    .lead { max-width:45rem; font-size:clamp(1.05rem,2vw,1.3rem); }
+    .grid { display:grid; gap:1px; margin-top:2rem; background:var(--line); border:1px solid var(--line); }
+    article { padding:1.25rem; background:var(--panel); }
+    article h3 { margin:0; color:var(--accent); }
+    article p { margin:.35rem 0 0; }
+    code { color:var(--text); }
+    @media(min-width:44rem){ .grid{grid-template-columns:repeat(2,1fr);} }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">Point Community Church technology support</p>
+    <h1>PointGuide</h1>
+    <p class="lead">A mobile-first assistant that answers from real, versioned evidence and turns useful discoveries into reviewed improvements—not guesses.</p>
+    <section aria-labelledby="principles">
+      <h2 id="principles">Product foundation</h2>
+      <div class="grid">
+        <article><h3>Grounded</h3><p>Every factual and actionable claim links to captured repository or web evidence.</p></article>
+        <article><h3>Governed</h3><p>Feedback, training, prompts, and source changes remain versioned and reviewable.</p></article>
+        <article><h3>Provider-neutral</h3><p>Owners can configure Codex and Ollama Cloud primary or reviewing models.</p></article>
+        <article><h3>Source-aware</h3><p><code>PointCommunity/pointaudio</code> is the initial knowledge source; additional technology repositories can follow.</p></article>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

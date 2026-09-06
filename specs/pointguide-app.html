@@ -1,0 +1,450 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>PointGuide — Product and Technical Specification</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #090d10;
+      --surface: #11181d;
+      --surface-raised: #172128;
+      --border: #2b3a43;
+      --text: #eef4f6;
+      --muted: #adbbc2;
+      --accent: #57d6c4;
+      --accent-strong: #8ce9dc;
+      --warning: #efc46d;
+      --danger: #f08d8d;
+      --focus: #8bd9ff;
+      --code: #070a0c;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--bg); scroll-behavior: smooth; }
+    body { margin: 0; background: var(--bg); color: var(--text); font-size: 1rem; line-height: 1.62; }
+    a { color: var(--accent-strong); text-underline-offset: .2em; }
+    a:focus-visible, summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
+    header, main, footer { width: min(70rem, calc(100% - 2rem)); margin-inline: auto; }
+    header { padding: max(2.5rem, env(safe-area-inset-top)) 0 1.5rem; border-bottom: 1px solid var(--border); }
+    main { padding-block: 1rem 4rem; }
+    footer { padding: 1.25rem 0 max(2rem, env(safe-area-inset-bottom)); border-top: 1px solid var(--border); color: var(--muted); }
+    h1, h2, h3 { line-height: 1.18; text-wrap: balance; }
+    h1 { margin: 0; overflow-wrap: anywhere; font-size: clamp(2rem, 7vw, 4rem); letter-spacing: -.04em; text-wrap: wrap; }
+    h1 small { display: block; margin-top: .35rem; color: var(--muted); font-size: .42em; letter-spacing: 0; }
+    h2 { margin: 2.75rem 0 .85rem; font-size: clamp(1.45rem, 4vw, 2.1rem); }
+    h3 { margin: 1.6rem 0 .55rem; font-size: 1.1rem; }
+    p { max-width: 75ch; }
+    .eyebrow { margin: 0 0 .5rem; color: var(--accent); font-size: .78rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+    .lead { color: var(--muted); font-size: clamp(1.05rem, 2.5vw, 1.25rem); }
+    .meta { display: flex; flex-wrap: wrap; gap: .5rem 1rem; padding: 0; list-style: none; color: var(--muted); font-size: .9rem; }
+    .callout { margin: 1rem 0; padding: 1rem; border: 1px solid var(--border); border-left: 4px solid var(--accent); background: var(--surface); }
+    .callout.warning { border-left-color: var(--warning); }
+    .callout strong { color: var(--text); }
+    nav { margin-top: 1.5rem; }
+    nav ul { display: grid; grid-template-columns: 1fr; gap: .5rem; padding: 0; list-style: none; }
+    nav a { display: flex; min-height: 44px; align-items: center; padding: .65rem .75rem; border: 1px solid var(--border); background: var(--surface); text-decoration: none; }
+    section { scroll-margin-top: 1rem; }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: .94rem; }
+    th, td { padding: .7rem; border: 1px solid var(--border); text-align: left; vertical-align: top; }
+    th { background: var(--surface-raised); }
+    td { color: var(--muted); }
+    code { padding: .1em .35em; border: 1px solid var(--border); background: var(--code); color: var(--text); border-radius: .2rem; }
+    pre { overflow-x: auto; padding: 1rem; border: 1px solid var(--border); background: var(--code); }
+    pre code { padding: 0; border: 0; background: transparent; }
+    li + li { margin-top: .35rem; }
+    .decision { padding: 1rem; border: 1px solid var(--border); background: var(--surface); }
+    .decision + .decision { margin-top: .75rem; }
+    .decision p:last-child { margin-bottom: 0; }
+    .tag { display: inline-block; margin-right: .35rem; padding: .1rem .45rem; border: 1px solid currentColor; color: var(--warning); font-size: .76rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+    @media (min-width: 48rem) {
+      header, main, footer { width: min(70rem, calc(100% - 4rem)); }
+      nav ul { grid-template-columns: repeat(3, 1fr); }
+      h1 small { display: inline; margin-top: 0; }
+    }
+    @media (max-width: 42rem) {
+      .table-wrap { overflow-x: auto; margin-inline: -1rem; padding-inline: 1rem; }
+      table { min-width: 42rem; }
+      p, li, code { overflow-wrap: anywhere; }
+    }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  </style>
+</head>
+<body>
+  <header>
+    <p class="eyebrow">Approved product contract</p>
+    <h1>PointGuide</h1>
+    <p class="lead">A mobile-first, source-grounded support assistant for Point Community Church technology, beginning with the Midas M32 ecosystem and expanding through governed, Git-backed knowledge.</p>
+    <ul class="meta">
+      <li><strong>Status:</strong> Approved product name</li>
+      <li><strong>Created:</strong> 2026-09-06</li>
+      <li><strong>App repository:</strong> PointCommunity/pointguide (active)</li>
+      <li><strong>Initial knowledge source:</strong> PointCommunity/pointaudio</li>
+    </ul>
+    <div class="callout warning">
+      <strong>Decision status:</strong> PointGuide is the approved product name. PointAudio remains a governed source repository consumed by PointGuide; it is not the application identity. Container publication, Cloudflare mutation, production deployment, and live-system changes still require their explicit release-stage approvals.
+    </div>
+    <nav aria-label="Specification sections">
+      <ul>
+        <li><a href="#objective">Objective</a></li>
+        <li><a href="#experience">Product experience</a></li>
+        <li><a href="#architecture">Architecture</a></li>
+        <li><a href="#security">Security</a></li>
+        <li><a href="#delivery">Delivery</a></li>
+        <li><a href="#decisions">Decisions</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <section id="objective">
+      <h2>1. Objective</h2>
+      <p>Build a responsive web application that helps authenticated Point Community Church users diagnose, understand, and safely operate church technology. The first corpus covers the M32 ecosystem; the information architecture and data contracts must also accommodate video, streaming, presentation, networking, computers, and related systems without implying that unsupported domains are already documented. Repository content is the primary authority. The assistant may supplement a weak local evidence set with web research, clearly distinguish repository and web evidence, and let users flag useful external findings for governed inclusion in the repository.</p>
+
+      <h3>Primary users</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Role</th><th>Capabilities</th><th>Restrictions</th></tr></thead>
+        <tbody>
+          <tr><td>USER</td><td>Ask questions, continue conversations, inspect citations, search the knowledge base, rate responses, and flag web findings.</td><td>Cannot approve training material, manage accounts, or mutate Git.</td></tr>
+          <tr><td>TRAINER</td><td>All User capabilities plus review flagged findings, curate examples, edit proposed knowledge, and submit training/Git proposals.</td><td>Cannot manage accounts or bypass review controls.</td></tr>
+          <tr><td>ADMIN</td><td>All Trainer capabilities plus approve/suspend accounts, assign User/Trainer/Admin roles, approve proposals, manage sources, and inspect audit events.</td><td>Cannot grant Owner, change provider credentials/models/prompts, or bypass protected-branch and live-system safety boundaries.</td></tr>
+          <tr><td>OWNER</td><td>All Admin capabilities plus grant/revoke Owner access and exclusively manage AI providers, credentials, models, reasoning efforts, agent prompts, and global review policy.</td><td>Cannot remove the final active Owner, expose secrets, bypass protected branches, or bypass live-system safety boundaries.</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>Safety boundary</h3>
+      <p>The initial app is advisory. It does not connect to a console, stage box, network processor, computer, or control protocol; it cannot issue OSC, MIDI, Dante, firmware, routing, scene, snippet, or show-control changes. Instructions that may interrupt audio, overwrite settings, update firmware, alter clocking, or create hearing/equipment risk must include a warning, prerequisites, backup/rollback guidance, and a request to verify the exact hardware and current state.</p>
+    </section>
+
+    <section id="success">
+      <h2>2. Success criteria</h2>
+      <ul>
+        <li>An authenticated phone user can ask a question and receive a concise answer with repository citations, evidence status, uncertainty, and safe next steps.</li>
+        <li>The app searches versioned repository text before invoking supplemental web search and labels every citation as repository, primary web, or secondary web evidence.</li>
+        <li>Users can rate a response as helpful or unhelpful, select structured reasons, and optionally add a short comment. Feedback changes future retrieval ranking only after sufficient evidence and never rewrites source facts.</li>
+        <li>Users can flag a web result for retention. Trainers/Admins can review it, record provenance, and create a reviewable repository proposal.</li>
+        <li>The first successful Cloudflare Access identity provisioned into an empty database becomes an approved Owner in one transaction; concurrent first-logins cannot create multiple bootstrap Owners.</li>
+        <li>Every later valid Google account starts Pending and has no application access until an Admin or Owner approves it and assigns User, Trainer, or Admin; only an Owner may grant Owner.</li>
+        <li>Admins can list, filter, approve/suspend, and assign User/Trainer/Admin roles. Owners can additionally grant/revoke Owner while retaining at least one active Owner.</li>
+        <li>Every displayed substantive factual or actionable claim maps to one or more captured evidence records. Unsupported claims are removed or shown explicitly as unknown.</li>
+        <li>Owners can connect Codex through headless device-code OAuth or Ollama Cloud through an API key, refresh each provider's model catalog, select model/reasoning settings, and test the configuration without exposing credentials.</li>
+        <li>When global review is enabled, a user can opt into Deep research for a query. A configured same- or cross-provider reviewer independently verifies the primary answer claim by claim; a failed review never appears as a reviewed answer.</li>
+        <li>Admins and Trainers can manage training examples and guidance as versioned repository proposals with an audit trail.</li>
+        <li>The UI is dark by default, has no horizontal scrolling at 320 CSS pixels, uses touch targets of at least 44×44 CSS pixels, supports keyboard access, and remains usable at 200% zoom.</li>
+        <li>The source app passes typecheck, lint, unit/integration tests, browser tests, production build, dependency/security checks, and container smoke tests.</li>
+        <li>An exact committed source archive builds locally as <code>linux/amd64</code>, is published to Zot, resolved to an immutable digest, deployed to a canary Helm application through Gitea/Argo CD, and verified healthy before production is considered.</li>
+      </ul>
+    </section>
+
+    <section id="experience">
+      <h2>3. Product experience</h2>
+
+      <h3>Mobile information architecture</h3>
+      <ul>
+        <li><strong>Ask:</strong> default screen with conversation history, question composer, optional “Search the web too” control, and quick prompts.</li>
+        <li><strong>Knowledge:</strong> source browser and keyword search across manuals, procedures, equipment, software, and research.</li>
+        <li><strong>Saved:</strong> the user’s saved conversations and flagged findings.</li>
+        <li><strong>Train:</strong> visible only to Trainers/Admins/Owners; review queue, examples, guidance, and repository proposal history.</li>
+        <li><strong>Admin:</strong> visible only to Admins/Owners; pending accounts, User/Trainer/Admin access, sources, audit events, and Git integration health.</li>
+        <li><strong>Owner:</strong> visible only to Owners; provider connections, model catalogs, primary/reviewer profiles, reasoning effort, versioned system prompts, global Deep research policy, and Owner access.</li>
+      </ul>
+      <p>On narrow screens, Ask is the single dominant destination and the other destinations sit in a bottom navigation bar that respects device safe areas. On wider screens, navigation becomes a compact left rail and the answer/source panes can appear side by side.</p>
+
+      <h3>Answer contract</h3>
+      <ol>
+        <li><strong>Direct answer:</strong> the shortest useful response to the user’s question.</li>
+        <li><strong>Steps:</strong> ordered, touch-friendly instructions only when action is needed.</li>
+        <li><strong>Safety and assumptions:</strong> visible before any disruptive step.</li>
+        <li><strong>Evidence:</strong> expandable citations with a stable evidence ID, title, repository path or URL, authority class, version/date, captured date, supporting excerpt, and the exact claims it supports.</li>
+        <li><strong>Confidence:</strong> Confirmed, Supported, Tentative, or Unknown—never a fabricated numeric probability.</li>
+        <li><strong>Feedback:</strong> Helpful / Not helpful plus reasons such as incorrect, unclear, incomplete, unsafe, wrong context, or poor source.</li>
+      </ol>
+
+      <h3>Supported states</h3>
+      <p>The interface must explicitly handle first login, signed-out, pending/suspended account, empty knowledge base, no relevant result, answering, partial web failure, provider failure, rate limit, Git integration unavailable, proposal conflict, success, and permission denied states. Each error state must preserve the user’s draft and expose the next recovery action.</p>
+    </section>
+
+    <section id="architecture">
+      <h2>4. Technical architecture</h2>
+      <p>The proposed stack intentionally follows the proven Versa deployment shape while remaining a separate codebase and data model.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Layer</th><th>Choice</th><th>Reason</th></tr></thead>
+        <tbody>
+          <tr><td>Web</td><td>Next.js App Router, React, TypeScript, Node.js 22</td><td>Matches the local build/runtime pattern, supports streaming server responses, and avoids a second frontend/backend deployment.</td></tr>
+          <tr><td>Database</td><td>PostgreSQL + Drizzle ORM + SQL migrations</td><td>Transactional bootstrap identity, account/feedback/audit durability, full-text search, and homelab operational familiarity.</td></tr>
+          <tr><td>Retrieval</td><td>Local chunk index using PostgreSQL full-text search and deterministic metadata filters</td><td>Keeps the repository authoritative and avoids uploading the private corpus to a third-party vector store. Semantic embeddings can be added later behind a tested interface.</td></tr>
+          <tr><td>Agent</td><td>Provider-neutral orchestrator with Codex App Server and Ollama Cloud adapters</td><td>Supports Owner-managed headless Codex OAuth, Ollama API keys, dynamic model catalogs, reasoning-effort discovery, and same- or cross-provider review without coupling evidence policy to one model.</td></tr>
+          <tr><td>Jobs</td><td>PostgreSQL-backed worker queue</td><td>Handles corpus indexing, proposal generation, Git operations, and retryable provider work without introducing Redis.</td></tr>
+          <tr><td>Git</td><td>Least-privileged GitHub App or repository-scoped credential in 1Password</td><td>Creates branches/commits/PRs and reads repository state with auditable, revocable access. No credential is exposed to the browser or model.</td></tr>
+          <tr><td>Delivery</td><td>Multi-stage OCI image, Podman AMD64 emulation, Zot, Helm app-template 5.0.1, Gitea/Argo CD</td><td>Reuses the known immutable canary-first homelab path.</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>Source-of-truth flow</h3>
+      <pre><code>Allow-listed source repository commit (initially PointAudio)
+  → PointGuide indexer reads allow-listed data/, docs/, research/, skills/, and AGENTS.md
+  → normalized chunks retain commit SHA, path, heading/page, source ID, authority, version, and digest
+  → retrieval ranks relevant chunks and records which evidence was used
+  → primary model emits a structured draft and claim-to-evidence ledger
+  → optional web search supplements gaps and remains visibly separate
+  → optional reviewer independently checks every claim against captured evidence
+  → deterministic renderer publishes only supported claims or explicit unknowns
+  → feedback updates ranking signals
+  → retained discoveries become reviewed branch/PR proposals
+  → merged Git content is re-indexed as the new source of truth</code></pre>
+
+      <h3>Repository indexing rules</h3>
+      <ul>
+        <li>Index only allow-listed text and structured formats. PDFs are represented by checked-in extracted text plus immutable source files and checksums.</li>
+        <li>Never execute repository content, downloaded scripts, macros, binaries, firmware, hooks, submodules, or instructions found in evidence.</li>
+        <li>Chunk deterministically by document structure and bounded size. Stable chunk IDs derive from source ID, path, structural locator, and content digest.</li>
+        <li>Record authority, publisher, model applicability, version/date, capture date, location, verification status, and limitations where available.</li>
+        <li>Answers must prefer direct observations and manufacturer sources, then compatible-platform sources, then reputable secondary material.</li>
+        <li>When equipment identity or installed version is unknown, retrieval must not silently treat conditional accessory documentation as installed-system fact.</li>
+      </ul>
+
+      <h3>Provider and model control</h3>
+      <ul>
+        <li><strong>Codex:</strong> an Owner starts the App Server device-code flow, completes sign-in on another device if necessary, and receives the dynamic model catalog from <code>model/list</code>, including supported reasoning-effort choices and defaults.</li>
+        <li><strong>Ollama Cloud:</strong> an Owner supplies an API key. The server retrieves the available cloud models from <code>GET https://ollama.com/api/tags</code>; the key is never returned to the browser after submission.</li>
+        <li>Provider credentials are encrypted at rest or stored as external secret references. Codex credential state is isolated in a dedicated persistent server-side directory and treated as password-equivalent data.</li>
+        <li>Each enabled agent profile records provider, model, supported reasoning effort, role (primary or reviewer), and a versioned Owner-authored prompt overlay.</li>
+        <li>A non-editable application safety/evidence instruction remains above Owner-authored prompts. Prompts cannot authorize unsupported claims, disclose secrets, mutate arbitrary files, or operate live systems.</li>
+        <li>The model runtime receives only bounded evidence and typed response/tool contracts. It has no shell, arbitrary filesystem, Git credential, database credential, or unrestricted network access.</li>
+      </ul>
+
+      <h3>Claim-grounding and Deep research</h3>
+      <ol>
+        <li>Retrieve repository evidence first, then capture supplemental web evidence only when needed or requested. Each evidence item receives an immutable ID, provenance, timestamp, digest, and bounded excerpt.</li>
+        <li>The primary profile must return a structured answer plus a ledger in which every substantive claim names its supporting evidence IDs. No evidence means the response must say the fact is unknown or request a direct observation.</li>
+        <li>If the Owner enables review and the user turns on Deep research for that query, the configured reviewer—either the same model or a different Codex/Ollama profile—independently checks entailment, source authority, applicability, completeness, contradictions, and safety.</li>
+        <li>The reviewer returns structured findings and corrected supported wording. A deterministic server-side renderer removes rejected claims and never lets the reviewer invent uncited replacement facts.</li>
+        <li>If review is disabled globally, the Deep research control is absent. If review is enabled but fails or times out, the app shows a recoverable review failure and does not label or silently fall back to an unreviewed answer.</li>
+      </ol>
+
+      <h3>Core records</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Record</th><th>Purpose</th><th>Selected fields</th></tr></thead>
+        <tbody>
+          <tr><td>users</td><td>Identity, role, and lifecycle</td><td>Cloudflare subject, email, display name, User/Trainer/Admin/Owner role, Pending/Approved/Suspended status, first/last login</td></tr>
+          <tr><td>provider_connections</td><td>Owner-managed authentication state</td><td>provider, encrypted secret reference, connection status, catalog refresh time; never raw secret output</td></tr>
+          <tr><td>agent_profiles / prompt_revisions</td><td>Versioned primary and reviewer configuration</td><td>provider, model, effort, role, enabled state, prompt revision, actor, timestamp</td></tr>
+          <tr><td>conversations / messages</td><td>User support history</td><td>owner, content, provider response ID, status, timestamps</td></tr>
+          <tr><td>source_documents / source_chunks</td><td>Commit-bound search index</td><td>commit SHA, source ID, path, locator, authority, version, digest, text, search vector</td></tr>
+          <tr><td>answers / answer_claims / answer_citations</td><td>Immutable answer and claim ledger</td><td>answer version, primary/reviewer profiles, review status, claim text/status, evidence IDs, prompt revisions, citation rank/excerpt</td></tr>
+          <tr><td>feedback</td><td>Helpfulness and diagnosis</td><td>rating, reasons, comment, question fingerprint, answer/citation IDs</td></tr>
+          <tr><td>web_findings</td><td>Supplemental evidence intake</td><td>URL, title, retrieved time, publisher, excerpt, digest, license/provenance, review state</td></tr>
+          <tr><td>training_examples</td><td>Curated interaction guidance</td><td>question pattern, context tags, preferred behavior, anti-pattern, provenance, status</td></tr>
+          <tr><td>change_proposals</td><td>Governed repository edits</td><td>target path, operation, proposed content/diff, reviewer, branch, commit, PR, state</td></tr>
+          <tr><td>audit_events</td><td>Security and operational history</td><td>actor, action, target, correlation ID, bounded metadata, timestamp</td></tr>
+          <tr><td>jobs</td><td>Durable background work</td><td>type, payload reference, state, attempt count, lease, last error</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>API surface</h3>
+      <p>All endpoints use validated JSON inputs, consistent <code>{ error: { code, message, details? } }</code> failures, authorization at the route boundary, correlation IDs, and pagination for lists.</p>
+      <ul>
+        <li><code>POST /api/conversations</code>, <code>GET /api/conversations</code>, <code>GET /api/conversations/:id</code></li>
+        <li><code>POST /api/conversations/:id/messages</code> for a streaming answer</li>
+        <li><code>POST /api/answers/:id/feedback</code> and <code>POST /api/citations/:id/flags</code></li>
+        <li><code>GET /api/knowledge</code> and <code>GET /api/sources/:id</code></li>
+        <li><code>GET /api/training/review</code>, <code>POST /api/training/examples</code>, <code>POST /api/change-proposals</code></li>
+        <li><code>GET /api/admin/users</code>, <code>PATCH /api/admin/users/:id</code>, <code>GET /api/admin/audit-events</code></li>
+        <li><code>GET /api/owner/providers</code>, <code>POST /api/owner/providers/codex/login</code>, <code>POST /api/owner/providers/ollama</code>, <code>POST /api/owner/providers/:id/refresh</code></li>
+        <li><code>GET /api/owner/agent-profiles</code>, <code>PUT /api/owner/agent-profiles/:id</code>, <code>PUT /api/owner/settings/review</code></li>
+        <li><code>GET /healthz</code>, <code>GET /readyz</code>, and protected operational metrics</li>
+      </ul>
+    </section>
+
+    <section id="learning">
+      <h2>5. Learning and feedback policy</h2>
+      <p>Feedback is evidence about answer usefulness, not evidence that a factual claim is true. The app stores feedback against the exact question, answer, citations, repository commit, instruction revision, and model. It may use aggregate feedback to re-rank source chunks and retrieve successful reviewed examples for similar questions.</p>
+      <ul>
+        <li>One user’s rating cannot edit source facts or immediately suppress a source.</li>
+        <li>Negative feedback is segmented by reason and question context; global penalties require a minimum sample and Trainer/Admin review.</li>
+        <li>Training examples and instruction changes are explicit, reviewable records and are exported to repository-owned files.</li>
+        <li>Prompt and skill revisions are versioned so regressions can be compared and rolled back. Owner-authored model prompts are audited separately from the repository-owned core evidence policy.</li>
+        <li>Evaluation fixtures are derived from approved examples and expected behaviors without copying private conversations by default.</li>
+        <li>No autonomous fine-tuning, self-modifying code, or unreviewed direct changes to <code>AGENTS.md</code> or <code>skills/</code>.</li>
+      </ul>
+    </section>
+
+    <section id="git-workflow">
+      <h2>6. Governed Git workflow</h2>
+      <ol>
+        <li>A user flags a web finding or an Admin/Trainer/Owner requests a documentation change.</li>
+        <li>The app creates a proposal with exact source provenance, intended target, rationale, and proposed diff. External content is treated as untrusted data.</li>
+        <li>A Trainer/Admin/Owner reviews accuracy, applicability, licensing, redaction, and document placement. Removal defaults to an archival/supersession note.</li>
+        <li>After approval, the worker fetches the latest default branch, creates a scoped branch, applies only the approved diff, runs repository validation, commits, pushes, and opens a PR.</li>
+        <li>The app records the branch, commit SHA, PR URL, validation output, reviewer, and final merge/close state.</li>
+        <li>Only merged commits are indexed as authoritative. Open proposals may be previewed in the training area but never cited to ordinary users as repository fact.</li>
+      </ol>
+      <p>The model can draft a proposal through a typed tool but cannot receive the Git credential, choose arbitrary shell commands, modify arbitrary paths, force-push, merge, disable branch protection, or access another repository.</p>
+    </section>
+
+    <section id="security">
+      <h2>7. Authentication, authorization, and security</h2>
+      <ul>
+        <li>Cloudflare Access is the identity perimeter and Google is the allowed identity provider. The app verifies the Access JWT signature, issuer, audience, subject, and email on every protected request.</li>
+        <li>The database remains the authorization authority for role and status. Forwarded email headers alone are never trusted.</li>
+        <li>Bootstrap Owner creation uses a database transaction and advisory lock; the first valid identity wins only while no account exists. Every later valid identity is created Pending.</li>
+        <li>At least one active Owner must remain. Only an Owner may grant/revoke Owner, and no actor may demote/suspend the final active Owner.</li>
+        <li>Admins and Owners may approve accounts and assign User/Trainer/Admin. An account cannot approve itself or alter its own role/status through the account-management interface.</li>
+        <li>State-changing requests use same-origin cookies/Access assertions, explicit origin checks, content-type checks, size limits, Zod schemas, and per-user rate limits.</li>
+        <li>Repository tools use allow-listed paths and operations. Web retrieval blocks private/link-local addresses, credentials in URLs, unsafe redirects, oversized responses, unsupported media, and non-HTTPS destinations.</li>
+        <li>Secrets and encryption keys come from 1Password-backed Kubernetes Secrets and never enter Git, client bundles, model prompts, audit metadata, or logs. Provider APIs expose only masked status.</li>
+        <li>Responses use CSP, HSTS at the edge, frame denial, MIME sniffing prevention, strict referrer policy, private caching for user data, and sanitized Markdown rendering.</li>
+        <li>Conversations, feedback, Git operations, account changes, and training changes are auditable. Raw model reasoning is not stored or exposed.</li>
+      </ul>
+    </section>
+
+    <section id="commands">
+      <h2>8. Commands and project structure</h2>
+      <h3>Proposed commands</h3>
+      <pre><code>npm run dev
+npm run typecheck
+npm run lint
+npm test
+npm run test:e2e
+npm run build
+npm run check
+npm run migrate
+npm run worker
+npm run index:repo -- --ref HEAD
+npm run security:check</code></pre>
+
+      <h3>Proposed structure</h3>
+      <pre><code>src/app/                 Next.js routes and pages
+src/components/          Focused accessible UI components
+src/db/                  Database client and typed schema
+src/lib/auth/            Cloudflare identity and role policy
+src/lib/agent/           Provider adapters, claim ledger, review, and answer contract
+src/lib/retrieval/       Repository indexing, ranking, and citations
+src/lib/feedback/        Feedback signals and retrieval adjustments
+src/lib/git/             Allow-listed proposal and GitHub operations
+src/lib/training/        Training examples and governed instruction exports
+migrations/              Forward SQL migrations
+scripts/                 Worker, migration, index, and release verification
+tests/e2e/               Critical browser flows
+data/                    Structured equipment/software records
+docs/                    Operational documentation in dark HTML
+research/                Preserved sources and normalized corpus
+skills/                  Repository-owned agent skills
+specs/                   Approved product/technical specifications
+tasks/                   Approved implementation plan and task checklist</code></pre>
+
+      <h3>Code style</h3>
+      <pre><code>export async function submitFeedback(
+  actor: Account,
+  input: SubmitFeedbackInput,
+): Promise&lt;Feedback&gt; {
+  const validated = submitFeedbackSchema.parse(input);
+  return feedbackRepository.create({ ...validated, actorId: actor.id });
+}</code></pre>
+      <p>Use strict TypeScript, named domain types, small pure functions, server-only credentials, boundary validation, parameterized queries, and explicit permission checks. Components own one job; data access is separate from presentation.</p>
+    </section>
+
+    <section id="testing">
+      <h2>9. Testing strategy</h2>
+      <ul>
+        <li><strong>Unit:</strong> chunking, ranking, feedback aggregation, answer contract, role policy, Git path allow-list, schemas, and safety classification.</li>
+        <li><strong>Integration:</strong> migrations, concurrent first-login Owner bootstrap, Pending-account enforcement, authorization matrix, final-Owner invariant, corpus indexing, message/feedback persistence, proposal state machine, and worker leases using an isolated PostgreSQL database.</li>
+        <li><strong>Provider contracts:</strong> deterministic Codex/Ollama fixtures for login state, dynamic model/effort catalogs, structured answers, claim ledgers, reviewer findings, citations, timeouts, partial failures, and tool-call validation. Live provider smoke tests are opt-in and never a flaky CI requirement.</li>
+        <li><strong>Browser:</strong> first login, pending/approval flow, ask/stream/feedback, global/per-query Deep research visibility, reviewer failure, no-result recovery, responsive navigation, Trainer review, Admin account changes, Owner-only model setup, keyboard navigation, and permission denial.</li>
+        <li><strong>Responsive matrix:</strong> 320×568, 390×844, 768×1024, 1024×768, and 1440×900 plus 200% zoom and long-content cases.</li>
+        <li><strong>Security:</strong> dependency audit, secret scan, static analysis, malicious Markdown, prompt injection in sources, SSRF, cross-user object access, request limits, headers, and rate limiting.</li>
+        <li><strong>Release:</strong> exact-commit archive build, AMD64 image inspection, non-root runtime, read-only/least-write filesystem review, migration, worker import, health/readiness, rendered Helm identity, immutable digest, zero restarts, and whole-cluster health.</li>
+      </ul>
+    </section>
+
+    <section id="delivery">
+      <h2>10. Development and release pipeline</h2>
+      <ol>
+        <li>Create a focused feature branch and implement approved vertical slices test-first.</li>
+        <li>Run <code>npm run check</code>, <code>npm run test:e2e</code>, <code>npm run security:check</code>, and <code>git diff --check</code>.</li>
+        <li>Push a source PR and require its exact-head quality workflow to pass.</li>
+        <li>Archive the exact committed PR head into a clean temporary directory.</li>
+        <li>Build locally with Podman using explicit <code>--platform linux/amd64</code>; smoke-test under emulation and inspect the resulting architecture.</li>
+        <li>Push <code>10.0.20.11:32309/pointguide:&lt;short-source-sha&gt;</code> to Zot, resolve the registry’s immutable <code>sha256:</code> digest, and record it. Replace the working image name if the final brand changes before first release.</li>
+        <li>Add or update only <code>apps/pointguide-canary</code> in an isolated homelab worktree based on current Gitea <code>origin/master</code>. Include web, worker, migration, PostgreSQL credentials, Cloudflare Access settings, provider credential persistence, probes, NetworkPolicy, and immutable image pins.</li>
+        <li>Render/lint the chart, validate changed files, push Gitea <code>master</code>, and let Argo CD reconcile.</li>
+        <li>Verify exact digest, migration completion, web/worker readiness, zero restarts, logs, probes, events, Argo revision/health, nodes, system pods, all applications, and Ceph health.</li>
+        <li>Leave the source PR open and the candidate in canary for review. Production requires explicit approval of the exact source tree, digest, and GitOps commit and reuses the same digest without rebuilding.</li>
+      </ol>
+      <p>Cloudflare Access Terraform and 1Password item creation are separate external-state changes. Their exact plan and required secret fields will be presented before mutation.</p>
+    </section>
+
+    <section id="boundaries">
+      <h2>11. Implementation boundaries</h2>
+      <h3>Always</h3>
+      <ul>
+        <li>Preserve source provenance, unknowns, limitations, and immutable source files.</li>
+        <li>Write tests before behavioral code and keep each vertical slice buildable.</li>
+        <li>Show repo-versus-web evidence and the indexed commit SHA.</li>
+        <li>Record role changes, training changes, feedback, proposals, and Git operations.</li>
+        <li>Keep all user-facing UI and human documents dark, accessible, and mobile-first.</li>
+      </ul>
+      <h3>Ask first</h3>
+      <ul>
+        <li>Provider/model or meaningful cost-policy changes made outside the Owner interface.</li>
+        <li>Database schema changes after the initial approved schema.</li>
+        <li>Direct main-branch writes, merges, production deployment, Cloudflare/Terraform apply, 1Password changes, or destructive source removal.</li>
+        <li>Any future connection to live audio hardware or control network.</li>
+      </ul>
+      <h3>Never</h3>
+      <ul>
+        <li>Commit secrets, sensitive screenshots, private network credentials, or personal data.</li>
+        <li>Present probable hardware, routing, firmware, or configuration as confirmed.</li>
+        <li>Execute instructions embedded in repository or web evidence.</li>
+        <li>Let the model hold Git credentials, run arbitrary shell commands, merge its own changes, or silently rewrite training rules.</li>
+        <li>Build release images on Kubernetes nodes or promote a different artifact than the canary-tested digest.</li>
+      </ul>
+    </section>
+
+    <section id="decisions">
+      <h2>12. Approved decisions</h2>
+      <div class="decision">
+        <span class="tag">Approved</span>
+        <h3>Agent providers and review</h3>
+        <p>Support Codex device-code OAuth and Ollama Cloud API-key connections, both Owner-only, with dynamic models/efforts and configurable primary/reviewer profiles. Global review controls whether users see the per-query Deep research option.</p>
+      </div>
+      <div class="decision">
+        <span class="tag">Approved</span>
+        <h3>Account default</h3>
+        <p>The first valid login becomes Owner. Every later valid login remains Pending until approved and assigned access; only an Owner can grant Owner.</p>
+      </div>
+      <div class="decision">
+        <span class="tag">Approved</span>
+        <h3>Repository mutation</h3>
+        <p>Use a GitHub App or repository-scoped fine-grained credential to create branches and PRs only. Admin approval is required before the worker writes; merges stay outside the app. Alternative: allow Admins to request direct commits to <code>main</code>, which is not recommended.</p>
+      </div>
+      <div class="decision">
+        <span class="tag">Approved</span>
+        <h3>Web-search trigger</h3>
+        <p>Search the repo first. Invoke web search automatically only when retrieval confidence is insufficient, while also allowing a user override. Alternative: web search only when explicitly toggled for every question.</p>
+      </div>
+      <div class="decision">
+        <span class="tag">Approved</span>
+        <h3>Initial release scope</h3>
+        <p>Include Ask, citations, feedback, knowledge search, first-login bootstrap, Admin account management, Trainer review queue, proposal-to-PR workflow, indexing worker, audit log, and canary deployment. Defer attachments/photos, voice input, semantic embeddings, GitHub merge controls, and live hardware integration.</p>
+      </div>
+      <div class="decision">
+        <span class="tag">Approved</span>
+        <h3>PointGuide identity</h3>
+        <p><strong>PointGuide</strong> is the application name, with proposed hostnames <code>pointguide-canary.eaglepass.io</code> and <code>pointguide.eaglepass.io</code>. PointAudio is the initial audio knowledge-source repository; PointGuide is designed to add other governed Point Community Church technology repositories later.</p>
+      </div>
+      <div class="decision">
+        <span class="tag">Validated</span>
+        <h3>Existing research corpus</h3>
+        <p>The <code>research/midas-m32/</code> corpus is approved source material. All 41 recorded checksums, 19 PDFs, 19 extracted text files, and the firmware ZIP passed local integrity/readability checks on 2026-09-06. Preserved originals remain unchanged; six vendor document locators and one product-information mirror now have documented upstream gaps.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>PointGuide specification. Source-repository evidence remains authoritative; this document does not authorize changes to live technology systems or production infrastructure.</p>
+  </footer>
+</body>
+</html>

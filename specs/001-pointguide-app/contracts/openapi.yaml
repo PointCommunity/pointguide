@@ -1,0 +1,226 @@
+openapi: 3.1.0
+info:
+  title: PointGuide API
+  version: 0.1.0
+  description: Initial authenticated API contract. Cloudflare Access authenticates; the database authorizes.
+servers:
+  - url: /api
+security:
+  - cloudflareAccess: []
+components:
+  securitySchemes:
+    cloudflareAccess:
+      type: apiKey
+      in: cookie
+      name: CF_Authorization
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            details: { type: object, additionalProperties: true }
+    Account:
+      type: object
+      required: [id, email, role, status]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        displayName: { type: [string, 'null'] }
+        role: { enum: [USER, TRAINER, ADMIN, OWNER] }
+        status: { enum: [PENDING, APPROVED, SUSPENDED] }
+        version: { type: integer, minimum: 1 }
+    Evidence:
+      type: object
+      required: [id, kind, title, authority, excerpt, digest]
+      properties:
+        id: { type: string }
+        kind: { enum: [REPOSITORY, PRIMARY_WEB, SECONDARY_WEB] }
+        title: { type: string }
+        path: { type: string }
+        url: { type: string, format: uri }
+        locator: { type: string }
+        publisher: { type: string }
+        authority: { type: string }
+        versionOrDate: { type: string }
+        capturedAt: { type: string, format: date-time }
+        excerpt: { type: string }
+        digest: { type: string }
+    Claim:
+      type: object
+      required: [id, text, kind, status, evidenceIds]
+      properties:
+        id: { type: string }
+        text: { type: string }
+        kind: { enum: [FACTUAL, ACTIONABLE, SAFETY, UNKNOWN] }
+        status: { enum: [SUPPORTED, UNKNOWN, REJECTED] }
+        evidenceIds:
+          type: array
+          items: { type: string }
+    Answer:
+      type: object
+      required: [id, directAnswer, claims, evidence, reviewStatus]
+      properties:
+        id: { type: string, format: uuid }
+        directAnswer: { type: string }
+        steps: { type: array, items: { type: string } }
+        safetyAndAssumptions: { type: array, items: { type: string } }
+        confidence: { enum: [CONFIRMED, SUPPORTED, TENTATIVE, UNKNOWN] }
+        claims: { type: array, items: { $ref: '#/components/schemas/Claim' } }
+        evidence: { type: array, items: { $ref: '#/components/schemas/Evidence' } }
+        reviewStatus: { enum: [NOT_REQUESTED, PENDING, PASSED, REJECTED, FAILED] }
+    ProviderStatus:
+      type: object
+      required: [provider, status]
+      properties:
+        provider: { enum: [CODEX, OLLAMA_CLOUD] }
+        status: { enum: [DISCONNECTED, CONNECTING, CONNECTED, ERROR] }
+        accountLabel: { type: string }
+        catalogRefreshedAt: { type: string, format: date-time }
+    Model:
+      type: object
+      required: [id, displayName, reasoningEfforts]
+      properties:
+        id: { type: string }
+        displayName: { type: string }
+        description: { type: string }
+        isDefault: { type: boolean }
+        reasoningEfforts:
+          type: array
+          items:
+            type: object
+            required: [effort, isDefault]
+            properties:
+              effort: { type: string }
+              description: { type: string }
+              isDefault: { type: boolean }
+paths:
+  /session:
+    get:
+      summary: Provision or read the current account from a verified Access assertion
+      responses:
+        '200': { description: Approved account, content: { application/json: { schema: { $ref: '#/components/schemas/Account' } } } }
+        '202': { description: Pending account }
+        '403': { description: Suspended or unauthorized, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /conversations:
+    get:
+      summary: List current user's conversations
+      responses: { '200': { description: Paginated list } }
+    post:
+      summary: Create a conversation
+      responses: { '201': { description: Created } }
+  /conversations/{id}/messages:
+    post:
+      summary: Ask a question and stream grounded answer events
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content: { type: string, minLength: 1, maxLength: 8000 }
+                includeWeb: { type: boolean, default: false }
+                deepResearch: { type: boolean, default: false }
+      responses:
+        '200': { description: Server-sent answer events ending in an Answer }
+        '409': { description: Provider or reviewer not configured }
+        '422': { description: Evidence or review contract rejected }
+  /answers/{id}/feedback:
+    post:
+      summary: Create or replace current user's feedback
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Feedback saved } }
+  /knowledge:
+    get:
+      summary: Search the indexed authoritative corpus
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 1, maxLength: 500 } }
+      responses: { '200': { description: Ranked evidence list } }
+  /admin/users:
+    get:
+      summary: List accounts for Admin or Owner
+      responses: { '200': { description: Paginated accounts } }
+  /admin/users/{id}:
+    patch:
+      summary: Approve, suspend, or assign non-Owner role; Owner role requires Owner actor
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: Updated account, content: { application/json: { schema: { $ref: '#/components/schemas/Account' } } } }
+        '409': { description: Version conflict, self-change, or final-Owner invariant }
+  /owner/providers:
+    get:
+      summary: List masked provider status for Owner
+      responses: { '200': { description: Provider statuses } }
+  /owner/providers/codex/login:
+    post:
+      summary: Start Owner-only Codex device-code login
+      responses:
+        '202':
+          description: Login pending
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [loginId, verificationUrl, userCode, expiresAt]
+                properties:
+                  loginId: { type: string }
+                  verificationUrl: { type: string, format: uri }
+                  userCode: { type: string }
+                  expiresAt: { type: string, format: date-time }
+  /owner/providers/ollama:
+    post:
+      summary: Store or replace an Ollama Cloud key through a write-only boundary
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [apiKey]
+              properties: { apiKey: { type: string, minLength: 16, writeOnly: true } }
+      responses:
+        '204': { description: Connected; secret is never returned }
+  /owner/providers/{provider}/models:
+    get:
+      summary: Read the last provider-advertised model catalog
+      parameters: [{ name: provider, in: path, required: true, schema: { enum: [CODEX, OLLAMA_CLOUD] } }]
+      responses: { '200': { description: Models, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Model' } } } } } }
+    post:
+      summary: Refresh the provider-advertised model catalog
+      parameters: [{ name: provider, in: path, required: true, schema: { enum: [CODEX, OLLAMA_CLOUD] } }]
+      responses: { '200': { description: Refreshed models } }
+  /owner/agent-profiles/{id}:
+    put:
+      summary: Create or replace a versioned primary/reviewer profile and prompt revision
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { '200': { description: Saved profile } }
+  /owner/settings/review:
+    put:
+      summary: Enable or disable the global Deep research feature
+      responses: { '200': { description: Updated setting } }
+  /training/review:
+    get:
+      summary: List feedback, findings, examples, and proposals for Trainer or above
+      responses: { '200': { description: Paginated review queue } }
+  /change-proposals:
+    post:
+      summary: Create a provenance-rich repository change proposal
+      responses: { '201': { description: Proposal created } }
+  /healthz:
+    get:
+      security: []
+      summary: Process liveness
+      responses: { '200': { description: Alive } }
+  /readyz:
+    get:
+      security: []
+      summary: Serving readiness without secret detail
+      responses: { '200': { description: Ready }, '503': { description: Not ready } }
