@@ -1,16 +1,29 @@
+"use client";
+
 import type { ReactNode } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { allowedNavigationKeys, lifecycleDestination, type NavigationKey } from "@/lib/auth/navigation";
+import type { AccountRole, AccountStatus } from "@/lib/auth/types";
 
-type IconName = "ask" | "knowledge" | "saved" | "training" | "admin" | "owner";
+type IconName = NavigationKey;
 
-const navigation: ReadonlyArray<{ href: string; label: string; icon: IconName; restricted?: string }> = [
+const navigation: ReadonlyArray<{ href: string; label: string; icon: IconName }> = [
   { href: "/", label: "Ask", icon: "ask" },
   { href: "/knowledge", label: "Knowledge", icon: "knowledge" },
   { href: "/saved", label: "Saved", icon: "saved" },
-  { href: "/training", label: "Train", icon: "training", restricted: "Trainer" },
-  { href: "/admin/accounts", label: "Admin", icon: "admin", restricted: "Admin" },
-  { href: "/owner/ai", label: "AI setup", icon: "owner", restricted: "Owner" },
+  { href: "/training", label: "Train", icon: "training" },
+  { href: "/admin/accounts", label: "Admin", icon: "admin" },
+  { href: "/owner/ai", label: "AI setup", icon: "owner" },
 ];
+
+interface SessionAccount {
+  email: string;
+  displayName: string | null;
+  role: AccountRole;
+  status: AccountStatus;
+}
 
 function NavIcon({ name }: { name: IconName }) {
   const paths: Record<IconName, ReactNode> = {
@@ -25,6 +38,52 @@ function NavIcon({ name }: { name: IconName }) {
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const [account, setAccount] = useState<SessionAccount | null>(null);
+  const [sessionFailed, setSessionFailed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void fetch("/api/session", { headers: { accept: "application/json" }, cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json() as SessionAccount | { error?: { code?: string } };
+        if (response.status === 202 && "status" in payload) {
+          window.location.replace(lifecycleDestination(payload.status) ?? "/pending");
+          return;
+        }
+        if (response.status === 403 && "error" in payload && payload.error?.code === "ACCOUNT_SUSPENDED") {
+          window.location.replace("/suspended");
+          return;
+        }
+        if (!response.ok || !("role" in payload) || payload.status !== "APPROVED") throw new Error("Session unavailable");
+        if (active) setAccount(payload);
+      })
+      .catch(() => { if (active) setSessionFailed(true); });
+    return () => { active = false; };
+  }, []);
+
+  if (sessionFailed) {
+    return (
+      <main className="access-state" id="main-content">
+        <div className="access-state-mark" aria-hidden="true">!</div>
+        <p className="eyebrow">PointGuide access</p>
+        <h1>Unable to verify access</h1>
+        <p>Your identity could not be verified. Refresh after Cloudflare Access sign-in, or contact an Owner if this continues.</p>
+        <div className="access-state-actions"><Link href="/">Try again</Link></div>
+      </main>
+    );
+  }
+
+  if (!account) {
+    return <main className="access-state" id="main-content" aria-busy="true"><p className="eyebrow">PointGuide access</p><h1>Checking your access…</h1></main>;
+  }
+
+  const allowed = new Set(allowedNavigationKeys(account.role));
+  const visibleNavigation = navigation.filter((item) => allowed.has(item.icon));
+  const name = account.displayName || account.email;
+  const initials = name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toLocaleUpperCase("en-US");
+  const isActive = (href: string) => href === "/" ? pathname === "/" : pathname.startsWith(href);
+
   return (
     <div className="app-frame">
       <a className="skip-link" href="#main-content">Skip to main content</a>
@@ -35,12 +94,11 @@ export function AppShell({ children }: { children: ReactNode }) {
         </Link>
         <nav aria-label="Primary navigation">
           <ul className="rail-nav">
-            {navigation.map((item) => (
+            {visibleNavigation.map((item) => (
               <li key={item.href}>
-                <Link className={item.href === "/" ? "active" : undefined} href={item.href} aria-current={item.href === "/" ? "page" : undefined}>
+                <Link className={isActive(item.href) ? "active" : undefined} href={item.href} aria-current={isActive(item.href) ? "page" : undefined}>
                   <NavIcon name={item.icon} />
                   <span>{item.label}</span>
-                  {item.restricted ? <small>{item.restricted}</small> : null}
                 </Link>
               </li>
             ))}
@@ -51,8 +109,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           <span><strong>Corpus ready</strong><small>20 sources · M32</small></span>
         </div>
         <Link className="account-chip" href="/account">
-          <span className="avatar" aria-hidden="true">CO</span>
-          <span><strong>Current Owner</strong><small>Owner</small></span>
+          <span className="avatar" aria-hidden="true">{initials}</span>
+          <span><strong>{name}</strong><small>{account.role.toLocaleLowerCase("en-US")}</small></span>
           <span aria-hidden="true">›</span>
         </Link>
       </aside>
@@ -62,13 +120,13 @@ export function AppShell({ children }: { children: ReactNode }) {
             <span className="brand-mark" aria-hidden="true"><span>P</span><i /></span>
             <strong>PointGuide</strong>
           </Link>
-          <Link className="avatar" href="/account" aria-label="Open account settings">CO</Link>
+          <Link className="avatar" href="/account" aria-label="Open account settings">{initials}</Link>
         </header>
         <main id="main-content">{children}</main>
       </div>
       <nav className="bottom-nav" aria-label="Mobile navigation">
-        {navigation.slice(0, 3).map((item) => (
-          <Link key={item.href} className={item.href === "/" ? "active" : undefined} href={item.href} aria-current={item.href === "/" ? "page" : undefined}>
+        {visibleNavigation.slice(0, 3).map((item) => (
+          <Link key={item.href} className={isActive(item.href) ? "active" : undefined} href={item.href} aria-current={isActive(item.href) ? "page" : undefined}>
             <NavIcon name={item.icon} /><span>{item.label}</span>
           </Link>
         ))}

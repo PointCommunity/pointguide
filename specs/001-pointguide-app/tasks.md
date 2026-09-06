@@ -23,12 +23,12 @@
 
 ## Phase 3: Identity and Account Governance
 
-- [ ] T013 [US2] Write failing JWT, bootstrap-race, lifecycle, role-matrix, self-change, and final-Owner tests in `tests/unit/auth.test.ts` and `tests/integration/accounts.test.ts`
-- [ ] T014 [US2] Add initial SQL migration and Drizzle schema for accounts/audit in `migrations/0001_identity.sql` and `src/db/schema.ts`
-- [ ] T015 [US2] Implement Cloudflare assertion verification and transactional provisioning in `src/lib/auth/access.ts`, `src/lib/auth/provision.ts`, and `src/lib/auth/session.ts`
-- [ ] T016 [US2] Implement role/lifecycle policy and account APIs in `src/lib/auth/policy.ts`, `src/app/api/session/route.ts`, and `src/app/api/admin/users/[id]/route.ts`
-- [ ] T017 [US2] Implement Pending/Suspended pages and Admin account management in `src/app/pending/page.tsx`, `src/app/suspended/page.tsx`, and `src/app/admin/accounts/page.tsx`
-- [ ] T018 [US2] Add account-governance browser tests in `tests/e2e/accounts.spec.ts`
+- [x] T013 [US2] Write failing JWT, bootstrap-race, lifecycle, role-matrix, self-change, and final-Owner tests in `tests/unit/auth.test.ts` and `tests/integration/accounts.test.ts`
+- [x] T014 [US2] Add initial SQL migration and Drizzle schema for accounts/audit in `migrations/0001_identity.sql` and `src/db/schema.ts`
+- [x] T015 [US2] Implement Cloudflare assertion verification and transactional provisioning in `src/lib/auth/access.ts`, `src/lib/auth/provision.ts`, and `src/lib/auth/session.ts`
+- [x] T016 [US2] Implement role/lifecycle policy and account APIs in `src/lib/auth/policy.ts`, `src/app/api/session/route.ts`, and `src/app/api/admin/users/[id]/route.ts`
+- [x] T017 [US2] Implement Pending/Suspended pages and Admin account management in `src/app/pending/page.tsx`, `src/app/suspended/page.tsx`, and `src/app/admin/accounts/page.tsx`
+- [x] T018 [US2] Add account-governance browser tests in `tests/e2e/accounts.spec.ts`
 
 ## Phase 4: Owner Provider and Profile Control
 

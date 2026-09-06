@@ -37,12 +37,28 @@ Human-facing documents and diagrams are responsive dark-mode HTML. Agent workflo
 - No secrets or sensitive personal/private-network data in Git, logs, prompts, or browser payloads.
 - No Cloudflare, 1Password, Gitea, Argo CD, registry, production, or live-system mutation without the applicable explicit authorization.
 
+## Project Capabilities
+
+### Identity and Account Governance
+
+- Cloudflare Access application assertions are verified against the configured issuer, audience, RS256 signature, expiry, subject, application-token type, and identity-provider email.
+- A serialized PostgreSQL bootstrap transaction creates one approved Owner; later identities start Pending.
+- Server-side account policy enforces lifecycle access, Admin and Owner role boundaries, optimistic versions, self-change protection, and retention of an active Owner.
+- The protected account API and mobile account directory expose only public account fields and emit bounded audit metadata.
+
+### Established Patterns
+
+- Route handlers delegate authentication and authorization to testable server-only boundaries.
+- Production uses PostgreSQL while local deterministic browser tests use an in-memory store that is prohibited in production mode.
+- Navigation is derived from the approved account role; lifecycle redirects never replace server-side authorization.
+
 ## Governance
 
 Principle changes require stakeholder discussion and a major version increment. New compatible capabilities increment the minor version after validation; wording-only changes increment the patch version. Each feature must report constitution compliance and justified exceptions.
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.1.0 | 2026-09-06 | Added verified identity, transactional Owner bootstrap, account governance, and lifecycle capabilities. |
 | 1.0.0 | 2026-09-06 | Initial PointGuide governance derived from repository instructions and approved product decisions. |
 
-**Version**: 1.0.0 | **Ratified**: 2026-09-06 | **Last Amended**: 2026-09-06
+**Version**: 1.1.0 | **Ratified**: 2026-09-06 | **Last Amended**: 2026-09-06

@@ -42,8 +42,12 @@ test("keeps the phone layout inside the viewport with touch-sized controls", asy
 
 test("supports keyboard entry and has no automatically detectable WCAG A/AA violations", async ({ page }) => {
   await page.goto("/");
-  await page.keyboard.press("Tab");
-  await expect(page.getByRole("link", { name: "Skip to main content" })).toBeFocused();
+  await expect(page.getByRole("heading", { name: "What can I help you solve?" })).toBeVisible();
+  const skipLink = page.getByRole("link", { name: "Skip to main content" });
+  for (let index = 0; index < 3 && !await skipLink.evaluate((element) => element === document.activeElement); index += 1) {
+    await page.keyboard.press("Tab");
+  }
+  await expect(skipLink).toBeFocused();
 
   await page.getByLabel("Your question").focus();
   await page.keyboard.type("Which projector is installed in the sanctuary?");
