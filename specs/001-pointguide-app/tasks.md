@@ -32,11 +32,11 @@
 
 ## Phase 4: Owner Provider and Profile Control
 
-- [ ] T019 [US3] Write failing provider secret-redaction, catalog-normalization, supported-effort, and Owner-policy tests in `tests/unit/providers.test.ts`
-- [ ] T020 [US3] Add provider/profile/prompt/settings schema and migration in `migrations/0002_providers.sql` and `src/db/schema.ts`
-- [ ] T021 [US3] Implement provider-neutral interfaces and encrypted secret boundary in `src/lib/providers/types.ts`, `src/lib/providers/secrets.ts`, and `src/lib/providers/catalog.ts`
-- [ ] T022 [US3] Implement pinned Codex App Server device-login and model-list adapter in `src/lib/providers/codex.ts`
-- [ ] T023 [US3] Implement Ollama Cloud key verification and `/api/tags` adapter in `src/lib/providers/ollama.ts`
+- [x] T019 [US3] Write failing provider secret-redaction, catalog-normalization, supported-effort, and Owner-policy tests in `tests/unit/providers.test.ts`
+- [x] T020 [US3] Add provider/profile/prompt/settings schema and migration in `migrations/0002_providers.sql` and `src/db/schema.ts`
+- [x] T021 [US3] Implement provider-neutral interfaces and encrypted secret boundary in `src/lib/providers/types.ts`, `src/lib/providers/secrets.ts`, and `src/lib/providers/catalog.ts`
+- [x] T022 [US3] Implement pinned Codex App Server device-login and model-list adapter in `src/lib/providers/codex.ts`
+- [x] T023 [US3] Implement Ollama Cloud key verification and `/api/tags` adapter in `src/lib/providers/ollama.ts`
 - [ ] T024 [US3] Implement Owner-only provider/profile/review APIs under `src/app/api/owner/`
 - [ ] T025 [US3] Implement Owner AI settings UI with masked status, dynamic models/efforts, profiles, prompts, and review toggle in `src/app/owner/ai/page.tsx`
 - [ ] T026 [US3] Add deterministic Codex/Ollama contract fixtures and Owner UI browser tests in `tests/fixtures/providers/`, `tests/contract/providers.test.ts`, and `tests/e2e/owner-ai.spec.ts`
