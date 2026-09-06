@@ -46,6 +46,13 @@ Human-facing documents and diagrams are responsive dark-mode HTML. Agent workflo
 - Server-side account policy enforces lifecycle access, Admin and Owner role boundaries, optimistic versions, self-change protection, and retention of an active Owner.
 - The protected account API and mobile account directory expose only public account fields and emit bounded audit metadata.
 
+### Owner AI Governance
+
+- Only an approved Owner can connect Codex or Ollama Cloud, refresh catalogs, select models and advertised reasoning efforts, revise agent prompts, or change global review policy.
+- Codex uses the initialized App Server device-code flow and keeps its credential directory server-only. Ollama keys cross a write-only boundary and are stored only as AES-256-GCM ciphertext.
+- Provider catalogs, primary/reviewer profiles, immutable prompt revisions, and review policy persist in PostgreSQL with bounded audit metadata that excludes prompts and credentials.
+- Deep research cannot be enabled until both an enabled primary profile and enabled reviewer profile are valid; same-model and cross-provider profiles remain supported.
+
 ### Established Patterns
 
 - Route handlers delegate authentication and authorization to testable server-only boundaries.
@@ -58,7 +65,8 @@ Principle changes require stakeholder discussion and a major version increment. 
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.2.0 | 2026-09-07 | Added Owner-only provider connections, dynamic catalogs, encrypted secrets, versioned agent profiles, and governed review policy. |
 | 1.1.0 | 2026-09-06 | Added verified identity, transactional Owner bootstrap, account governance, and lifecycle capabilities. |
 | 1.0.0 | 2026-09-06 | Initial PointGuide governance derived from repository instructions and approved product decisions. |
 
-**Version**: 1.1.0 | **Ratified**: 2026-09-06 | **Last Amended**: 2026-09-06
+**Version**: 1.2.0 | **Ratified**: 2026-09-06 | **Last Amended**: 2026-09-07

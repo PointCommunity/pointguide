@@ -49,7 +49,7 @@ export function redactProviderConnection(connection: StoredProviderConnection): 
   return {
     provider: connection.provider,
     status: connection.status,
-    credentialConfigured: Boolean(connection.encryptedSecret || connection.externalSecretRef),
+    credentialConfigured: Boolean(connection.encryptedSecret || connection.externalSecretRef || connection.credentialLocation),
     accountLabel: connection.accountLabel,
     lastErrorCode: connection.lastErrorCode,
   };

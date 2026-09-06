@@ -1,5 +1,5 @@
 import type { Account } from "@/lib/auth/types";
-import { requireRole } from "@/lib/auth/policy";
+import { AccountPolicyError, requireRole } from "@/lib/auth/policy";
 
 export const providerIds = ["CODEX", "OLLAMA_CLOUD"] as const;
 export const providerStatuses = ["DISCONNECTED", "CONNECTING", "CONNECTED", "ERROR"] as const;
@@ -31,6 +31,7 @@ export interface StoredProviderConnection {
   status: ProviderStatus;
   encryptedSecret: string | null;
   externalSecretRef: string | null;
+  credentialLocation?: string | null;
   accountLabel: string | null;
   lastErrorCode: string | null;
 }
@@ -49,6 +50,72 @@ export interface DeviceLogin {
   userCode: string;
 }
 
+export interface ProviderConnectionRecord extends StoredProviderConnection {
+  id: string;
+  credentialLocation: string | null;
+  catalogRefreshedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  version: number;
+}
+
+export interface AgentProfileInput {
+  id: string;
+  name: string;
+  role: ProfileRole;
+  provider: ProviderId;
+  modelId: string;
+  reasoningEffort: string | null;
+  enabled: boolean;
+  ownerPrompt: string;
+}
+
+export interface AgentProfileRecord extends Omit<AgentProfileInput, "ownerPrompt"> {
+  connectionId: string;
+  promptRevisionId: string;
+  promptRevision: number;
+  corePolicyRevision: string;
+  createdAt: Date;
+  updatedAt: Date;
+  version: number;
+}
+
+export interface ReviewSetting {
+  enabled: boolean;
+  version: number;
+}
+
+export interface ProviderConnectionUpdate {
+  provider: ProviderId;
+  status: ProviderStatus;
+  encryptedSecret?: string;
+  externalSecretRef?: string;
+  credentialLocation?: string;
+  accountLabel?: string;
+  lastErrorCode?: string | null;
+  models?: ProviderModel[];
+}
+
+export interface ProviderConfigurationStore {
+  listConnections(): Promise<ProviderConnectionRecord[]>;
+  getConnection(provider: ProviderId): Promise<ProviderConnectionRecord | null>;
+  updateConnection(actorId: string, update: ProviderConnectionUpdate, now?: Date): Promise<ProviderConnectionRecord>;
+  listModels(provider: ProviderId): Promise<ProviderModel[]>;
+  saveProfile(actorId: string, input: AgentProfileInput, now?: Date): Promise<AgentProfileRecord>;
+  listProfiles(): Promise<AgentProfileRecord[]>;
+  getReviewSetting(): Promise<ReviewSetting>;
+  setReviewSetting(actorId: string, enabled: boolean, now?: Date): Promise<ReviewSetting>;
+}
+
+export interface CodexOperations {
+  startDeviceLogin(): Promise<DeviceLogin>;
+  listModels(): Promise<ProviderModel[]>;
+}
+
+export interface OllamaOperations {
+  connect(apiKey: string): Promise<ProviderModel[]>;
+}
+
 export interface AppServerClient {
   request(method: string, params: Readonly<Record<string, unknown>>): Promise<unknown>;
 }
@@ -60,7 +127,7 @@ export function authorizeProviderMutation(actor: Account): void {
     requireRole(actor, ["OWNER"]);
   } catch (error) {
     if (error instanceof Error && error.message.includes("permission")) {
-      throw new Error("Only an Owner can manage AI providers.");
+      throw new AccountPolicyError("OWNER_ONLY", "Only an Owner can manage AI providers.");
     }
     throw error;
   }

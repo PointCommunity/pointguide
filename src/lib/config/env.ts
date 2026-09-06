@@ -1,5 +1,14 @@
 import { z } from "zod";
 
+const encryptionKey = z.string().refine((value) => {
+  try {
+    const decoded = Buffer.from(value, "base64");
+    return decoded.byteLength === 32 && decoded.toString("base64") === value;
+  } catch {
+    return false;
+  }
+}, "Must be a canonical base64-encoded 32-byte key.");
+
 const environmentSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   APP_BASE_URL: z.url().default("http://localhost:3000"),
@@ -10,7 +19,7 @@ const environmentSchema = z.object({
   FIXTURE_AUTH_SUBJECT: z.string().trim().min(1).optional(),
   FIXTURE_AUTH_EMAIL: z.string().trim().pipe(z.email()).optional(),
   FIXTURE_AUTH_NAME: z.string().trim().min(1).optional(),
-  PROVIDER_SECRET_KEY: z.string().min(1).optional(),
+  PROVIDER_SECRET_KEY: encryptionKey.optional(),
   REVIEW_ENABLED: z.stringbool().default(false),
   LIVE_PROVIDERS_ENABLED: z.stringbool().default(false),
   GIT_WRITES_ENABLED: z.stringbool().default(false),

@@ -151,6 +151,37 @@ h2 { font-size: clamp(1.45rem, 5vw, 2.15rem); }
 .account-success { color: var(--mint); }
 .account-error { color: var(--danger); }
 
+.provider-section, .profiles-section, .review-setting { margin-top: var(--space-8); }
+.provider-grid, .profile-grid { display: grid; gap: var(--space-4); }
+.provider-card, .profile-editor, .review-setting { min-width: 0; padding: var(--space-4); border: 1px solid var(--line); background: var(--panel); }
+.provider-card > header, .profile-editor > header { display: flex; align-items: start; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4); }
+.provider-card h3, .profile-editor h3 { margin: 0; font-size: 1.12rem; }
+.provider-card header p { margin: var(--space-1) 0 0; color: var(--muted); font-size: .78rem; }
+.connection-state, .profile-editor > header > span { flex: none; padding: .2rem .45rem; border: 1px solid var(--line-strong); color: var(--mint); font-size: .65rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+.provider-card > label, .settings-fields > label { display: grid; gap: var(--space-2); color: var(--muted); font-size: .75rem; font-weight: 750; }
+.provider-card input, .settings-fields select, .settings-fields textarea { width: 100%; min-height: 44px; padding: var(--space-2) var(--space-3); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--night-soft); color: var(--ink); }
+.settings-fields textarea { min-height: 8rem; resize: vertical; line-height: 1.5; }
+.provider-card button, .settings-fields > button { width: 100%; min-height: 44px; margin-top: var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--mint); border-radius: var(--radius-sm); background: var(--mint); color: var(--night); font-weight: 850; cursor: pointer; }
+.provider-card .secondary-button { border-color: var(--line-strong); background: transparent; color: var(--ink); }
+.device-code { display: grid; justify-items: start; gap: var(--space-2); margin-top: var(--space-3); padding: var(--space-3); border-left: 2px solid var(--mint); background: var(--night-soft); }
+.device-code span { color: var(--muted); font-size: .72rem; }
+.device-code strong { color: var(--mint-soft); font: 800 1.25rem/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .08em; }
+.device-code a { min-height: 44px; padding-block: var(--space-2); color: var(--mint); }
+.model-list { display: grid; gap: var(--space-2); margin: var(--space-4) 0 0; padding: 0; list-style: none; }
+.model-list li { display: grid; padding-top: var(--space-2); border-top: 1px solid var(--line); font-size: .78rem; }
+.model-list span { color: var(--muted); overflow-wrap: anywhere; }
+.settings-fields { display: grid; gap: var(--space-3); }
+.settings-fields > button { margin-top: 0; }
+.switch-row { display: grid !important; min-height: 44px; grid-template-columns: auto 1fr; align-items: center; gap: var(--space-3) !important; color: var(--ink) !important; }
+.switch-row input { width: 1.35rem; min-width: 1.35rem; height: 1.35rem; accent-color: var(--mint); }
+.provider-empty { margin: 0; color: var(--muted); }
+.settings-success, .settings-error { margin: 0; font-size: .78rem; }
+.settings-success { color: var(--mint); }
+.settings-error { color: var(--danger); }
+.review-setting { display: grid; gap: var(--space-5); border-left: 3px solid var(--mint); }
+.review-setting p { max-width: 46rem; margin: var(--space-3) 0 0; color: var(--muted); }
+.review-setting .switch-row { padding: var(--space-2) var(--space-3); border: 1px solid var(--line-strong); background: var(--night-soft); }
+
 .access-state { display: grid; width: min(100%, 42rem); min-height: 100dvh; align-content: center; justify-items: start; margin-inline: auto; padding: max(var(--space-8), env(safe-area-inset-top)) var(--space-5) max(var(--space-8), env(safe-area-inset-bottom)); }
 .access-state-mark { display: grid; width: 3rem; height: 3rem; place-items: center; margin-bottom: var(--space-8); border: 1px solid var(--line-strong); background: var(--panel); color: var(--mint); font-size: 1.4rem; font-weight: 900; }
 .access-state h1 { max-width: 12ch; font-size: clamp(2.4rem, 12vw, 4.5rem); }
@@ -175,6 +206,8 @@ h2 { font-size: clamp(1.45rem, 5vw, 2.15rem); }
   .account-controls { grid-template-columns: 1fr 1fr auto; }
   .account-controls button { min-width: 9rem; }
   .access-state-actions { width: auto; grid-template-columns: auto auto; }
+  .settings-fields { grid-template-columns: 1fr 1fr; }
+  .settings-fields .prompt-field, .settings-fields .switch-row, .settings-fields > button, .settings-fields > p { grid-column: 1 / -1; }
 }
 
 @media (min-width: 64rem) {
@@ -196,6 +229,9 @@ h2 { font-size: clamp(1.45rem, 5vw, 2.15rem); }
   main { padding: clamp(3rem, 6vw, 6rem); }
   .welcome-panel { padding-top: 0; }
   .composer-shell { padding: var(--space-6); }
+  .provider-grid, .profile-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .provider-card, .profile-editor, .review-setting { padding: var(--space-5); }
+  .review-setting { grid-template-columns: minmax(0, 1fr) minmax(15rem, .45fr); align-items: center; }
 }
 
 @media (prefers-reduced-motion: reduce) {
