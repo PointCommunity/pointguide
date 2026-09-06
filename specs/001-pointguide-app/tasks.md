@@ -43,9 +43,9 @@
 
 ## Phase 5: Reviewing Agent and Grounded Answer Pipeline
 
-- [ ] T027 [US1] [US3] Write failing orchestration tests for normal, same-model, cross-provider, dangling evidence, contradiction, timeout, and fail-closed paths in `tests/unit/orchestrator.test.ts`
-- [ ] T028 [US1] [US3] Implement primary structured output, reviewer findings, and deterministic renderer in `src/lib/agent/orchestrator.ts`, `src/lib/agent/reviewer.ts`, and `src/lib/agent/render.ts`
-- [ ] T029 [US1] Implement bounded supplemental web evidence adapter and SSRF/media/size protections in `src/lib/evidence/web.ts`
+- [x] T027 [US1] [US3] Write failing orchestration tests for normal, same-model, cross-provider, dangling evidence, contradiction, timeout, and fail-closed paths in `tests/unit/orchestrator.test.ts`
+- [x] T028 [US1] [US3] Implement primary structured output, reviewer findings, and deterministic renderer in `src/lib/agent/orchestrator.ts`, `src/lib/agent/reviewer.ts`, and `src/lib/agent/render.ts`
+- [x] T029 [US1] Implement bounded supplemental web evidence adapter and SSRF/media/size protections in `src/lib/evidence/web.ts`
 - [ ] T030 [US1] Replace fixture Ask with persisted streaming conversation route and per-query Deep research in `src/app/api/conversations/[id]/messages/route.ts`
 - [ ] T031 [US1] Update Ask UI for streaming, global feature discovery, review states, failures, and claim-linked citations in `src/components/ask-workspace.tsx`
 - [ ] T032 [US1] [US3] Add integrated normal/Deep research success and failure browser tests in `tests/e2e/deep-research.spec.ts`
