@@ -53,10 +53,10 @@ export async function orchestrateAnswer(input: OrchestrationInput): Promise<Orch
   }
   const reviewed: AnswerDraft = {
     ...primary,
-    claims: primary.claims.map((claim) => ({ ...claim, status: findings.get(claim.id)?.verdict === "SUPPORTED" ? claim.status : "REJECTED" })),
+    claims: primary.claims.map((claim) => claim.kind === "UNKNOWN" ? claim : ({ ...claim, status: findings.get(claim.id)?.verdict === "SUPPORTED" ? claim.status : "REJECTED" })),
   };
   const rendered = renderGroundedAnswer(validateGroundedAnswer(reviewed, input.evidence));
-  if (!rendered.claims.some((claim) => claim.status === "SUPPORTED")) {
+  if (primary.claims.some((claim) => claim.status === "SUPPORTED") && !rendered.claims.some((claim) => claim.status === "SUPPORTED")) {
     throw new OrchestrationError("REVIEW_REJECTED", "The reviewer rejected every supported claim.");
   }
   return { ...rendered, reviewStatus: "PASSED" };

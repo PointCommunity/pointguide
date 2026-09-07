@@ -74,7 +74,7 @@ test("lets a user edit their display name", async ({ page }, testInfo) => {
   await expect(page.getByText("Name updated.")).toBeVisible();
 });
 
-test("hides the single-page navigation and redirects a User from protected pages", async ({ browser, page, playwright }, testInfo) => {
+test("shows Ask and Sessions to a User and redirects them from protected pages", async ({ browser, page, playwright }, testInfo) => {
   test.skip(testInfo.project.name !== "mobile-320", "One complete authorization browser pass is sufficient.");
   const subject = "user-navigation-boundary";
   const userApi = await playwright.request.newContext({ baseURL, extraHTTPHeaders: identityHeaders(subject, "Standard User") });
@@ -89,7 +89,10 @@ test("hides the single-page navigation and redirects a User from protected pages
   const userPage = await context.newPage();
   await userPage.goto("/");
   await expect(userPage.getByRole("heading", { name: "What can I help you solve?" })).toBeVisible();
-  await expect(userPage.getByRole("navigation", { name: "Primary navigation" })).toHaveCount(0);
+  const navigation = userPage.getByRole("navigation", { name: "Primary navigation" });
+  await expect(navigation.getByRole("link", { name: "Ask" })).toBeVisible();
+  await expect(navigation.getByRole("link", { name: "Sessions" })).toBeVisible();
+  await expect(navigation.getByRole("link")).toHaveCount(2);
   await userPage.goto("/knowledge");
   await expect(userPage).toHaveURL(`${baseURL}/`);
   await context.close();

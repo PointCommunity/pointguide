@@ -3,10 +3,10 @@ import { allowedNavigationKeys, lifecycleDestination, rolesForPath } from "@/lib
 
 describe("role-aware application navigation", () => {
   it.each([
-    ["USER", ["ask"]],
-    ["TRAINER", ["ask", "knowledge", "training"]],
-    ["ADMIN", ["ask", "knowledge", "training", "admin"]],
-    ["OWNER", ["ask", "knowledge", "training", "admin", "owner"]],
+    ["USER", ["ask", "sessions"]],
+    ["TRAINER", ["ask", "sessions", "knowledge", "training"]],
+    ["ADMIN", ["ask", "sessions", "knowledge", "training", "admin"]],
+    ["OWNER", ["ask", "sessions", "knowledge", "training", "admin", "owner"]],
   ] as const)("shows only authorized destinations to %s", (role, expected) => {
     expect(allowedNavigationKeys(role)).toEqual(expected);
   });
@@ -17,6 +17,7 @@ describe("role-aware application navigation", () => {
     expect(rolesForPath("/training/session")).toEqual(["TRAINER", "ADMIN", "OWNER"]);
     expect(rolesForPath("/more")).toEqual(["TRAINER", "ADMIN", "OWNER"]);
     expect(rolesForPath("/owner/agent")).toEqual(["OWNER"]);
+    expect(rolesForPath("/sessions/abc")).toEqual(["USER", "TRAINER", "ADMIN", "OWNER"]);
     expect(rolesForPath("/")).toEqual(["USER", "TRAINER", "ADMIN", "OWNER"]);
   });
 

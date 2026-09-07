@@ -159,7 +159,7 @@ export const conversations = pgTable("conversations", {
   userTurnCount: integer("user_turn_count").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull(),
-});
+}, (table) => [index("conversations_owner_updated_idx").on(table.ownerAccountId, table.updatedAt)]);
 
 export const messages = pgTable("messages", {
   id: uuid("id").primaryKey(),
@@ -167,8 +167,9 @@ export const messages = pgTable("messages", {
   actor: text("actor").notNull(),
   content: text("content").notNull(),
   status: text("status").notNull(),
+  ordinal: integer("ordinal").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
-});
+}, (table) => [unique("messages_conversation_ordinal_unique").on(table.conversationId, table.ordinal)]);
 
 export const evidenceItems = pgTable("evidence_items", {
   id: text("id").primaryKey(),
@@ -176,6 +177,7 @@ export const evidenceItems = pgTable("evidence_items", {
   corpusRevisionId: uuid("corpus_revision_id").references(() => corpusRevisions.id),
   sourceId: text("source_id"),
   title: text("title").notNull(),
+  path: text("path").notNull(),
   locator: text("locator"),
   url: text("url"),
   publisher: text("publisher"),

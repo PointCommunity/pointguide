@@ -137,6 +137,27 @@ paths:
       summary: Create or replace current user's feedback
       parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
       responses: { '200': { description: Feedback saved } }
+  /conversations:
+    get:
+      summary: Search the current user's support sessions
+      parameters:
+        - { name: q, in: query, required: false, schema: { type: string, maxLength: 200 } }
+      responses: { '200': { description: Owner-scoped session summaries ordered by recent activity } }
+    post:
+      summary: Create a support session for the current user
+      responses: { '201': { description: New support session and current turn allowance } }
+  /conversations/{id}:
+    get:
+      summary: Read one owned session with structured turns
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Session transcript }, '404': { description: Session not found or not owned } }
+  /conversations/{id}/pdf:
+    get:
+      summary: Download one owned session as a print-friendly PDF
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: PDF attachment, content: { application/pdf: { schema: { type: string, format: binary } } } }
+        '404': { description: Session not found or not owned }
   /knowledge:
     get:
       summary: Search the indexed authoritative corpus

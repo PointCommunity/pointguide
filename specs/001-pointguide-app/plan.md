@@ -78,6 +78,15 @@ specs/001-pointguide-app/      feature artifacts and contracts
 6. Consolidate all role-aware navigation into a fixed bottom bar, compact shared surfaces, then run focused tests, the full suite, browser matrix, security checks, and an exact AMD64 build.
 
 The extension is delivered as vertical slices in this order because authorization and conversation limits are shared foundations; repository registration precedes training commit targets; final visual compaction follows stable component states.
+
+## 2026-09-07 session continuity extension
+
+1. Extend the learning repository with owner-scoped session summaries and structured turns reconstructed from existing conversation, message, answer, claim, and evidence records. Search remains bounded and server-side across title and message content.
+2. Add authenticated session list/detail routes, then make the Ask workspace create or resume one conversation without duplicating state. Use optimistic question insertion and real streamed status events for immediate feedback.
+3. Keep transcript state newest-first only at the presentation boundary; persisted/model context remains chronological. Collapse each answer's evidence under one disclosure containing the existing per-source disclosures.
+4. Add an all-role Sessions route and a responsive fixed-bottom navigation layout that wraps safely on phones while retaining one row where space permits.
+5. Generate owner-scoped PDF exports from the structured session detail using a server-only PDF renderer with bounded text, page-aware wrapping, deterministic metadata, and attachment headers.
+6. Exercise repository, API, UI, ownership, accessibility, responsive, and PDF rendering checks before the mandatory exact-archive AMD64 Zot build and Canary-only GitOps deployment.
 3. **Providers**: protected provider records, Codex device flow boundary, Ollama write-only key flow, dynamic catalogs, model/effort/profile/prompt UI.
 4. **Review**: primary structured claim ledger, optional Deep research reviewer, deterministic supported-claim renderer, global/user controls.
 5. **Learning and Git**: durable feedback, training review, web findings, bounded proposal state machine, Git worker fixture and audit.

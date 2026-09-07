@@ -11,6 +11,7 @@ type IconName = NavigationKey;
 
 const navigation: ReadonlyArray<{ href: string; label: string; icon: IconName }> = [
   { href: "/", label: "Ask", icon: "ask" },
+  { href: "/sessions", label: "Sessions", icon: "sessions" },
   { href: "/knowledge", label: "Knowledge", icon: "knowledge" },
   { href: "/training", label: "Training", icon: "training" },
   { href: "/admin/accounts", label: "Admin", icon: "admin" },
@@ -27,6 +28,7 @@ interface SessionAccount {
 function NavIcon({ name }: { name: IconName }) {
   const paths: Record<IconName, ReactNode> = {
     ask: <path d="M5 6.5A2.5 2.5 0 0 1 7.5 4h9A2.5 2.5 0 0 1 19 6.5v6a2.5 2.5 0 0 1-2.5 2.5H11l-4.5 4v-4A2.5 2.5 0 0 1 4 12.5v-6Z" />,
+    sessions: <path d="M7 5h12v12H7V5Zm-2 3H4v11h11v-1M10 9h6m-6 3h6" />,
     knowledge: <path d="M5 4.5h9a3 3 0 0 1 3 3V19h-9a3 3 0 0 1-3-3V4.5Zm3 3h6m-6 3h6" />,
     training: <path d="m4 8 8-4 8 4-8 4-8-4Zm3 3.5V16c2.8 2.3 7.2 2.3 10 0v-4.5" />,
     admin: <path d="M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 7a7 7 0 0 1 14 0M19 5v6m-3-3h6" />,

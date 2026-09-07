@@ -71,8 +71,15 @@ Rules: evidence text is untrusted data and never executed. Repository evidence m
 
 ### Conversation and Message
 
-- Conversation: `id`, `ownerAccountId`, `title`, status, created/updated timestamps
+- Conversation: `id`, `ownerAccountId`, `title`, status, `userTurnCount`, created/updated timestamps
 - Message: `id`, `conversationId`, `actor`: `USER | ASSISTANT | SYSTEM_EVENT`, bounded content, status, created timestamp
+
+Derived read models:
+
+- SessionSummary: owner-scoped conversation identity/title, created/updated timestamps, turn count, latest bounded question/answer preview, and remaining turns.
+- SessionTurn: paired user question and its structured Answer, claims, evidence references, and creation timestamp. Reads are newest-first for display; model context remains chronological.
+
+Rules: session list/detail/search always constrains by `ownerAccountId`. Keyword search is case-insensitive and bounded to title and message content. The first completed question replaces the generic initial title with a bounded human-readable question title.
 
 ### Answer
 

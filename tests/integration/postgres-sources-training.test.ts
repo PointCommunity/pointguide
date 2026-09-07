@@ -5,6 +5,8 @@ import { PostgresAccountStore } from "@/db/accounts";
 import { PostgresLearningRepository } from "@/lib/learning/store";
 import { PostgresSourceRepositoryStore } from "@/db/sources";
 import { PostgresTrainingSessionStore } from "@/db/training";
+import { answerQuestion } from "@/lib/agent/service";
+import { MemoryProviderStore } from "@/lib/providers/memory-store";
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 const databaseTest = testDatabaseUrl ? it : it.skip;
@@ -68,6 +70,14 @@ databaseTest("persists connected sources and wipes a training session with its c
   await training.acceptReport(session.id, actor.id);
   await training.wipe(session.id, actor.id);
   expect(await learning.ownsConversation(conversation.id, actor.id)).toBe(false);
+
+  const support = await learning.createConversation(actor.id, "PointGuide support");
+  await answerQuestion({ actor, conversationId: support.id, question: "red AES50 DL32", deepResearch: false, providers: new MemoryProviderStore(), learning, fixture: true });
+  await answerQuestion({ actor, conversationId: support.id, question: "red AES50 DL32 follow-up", deepResearch: true, providers: new MemoryProviderStore(true), learning, fixture: true });
+  expect(await learning.listConversations(actor.id, "synchronized")).toEqual([expect.objectContaining({ id: support.id, title: "red AES50 DL32", userTurnCount: 2 })]);
+  const persisted = await learning.getConversation(support.id, actor.id);
+  expect(persisted.turns.map((turn) => turn.question)).toEqual(["red AES50 DL32 follow-up", "red AES50 DL32"]);
+  expect(persisted.turns[1]?.answer.evidence[0]).toMatchObject({ title: "DL32 Quick Start Guide", path: expect.any(String) });
 
   await sources.archive(actor.id, linked.id, linked.fullName);
   await sources.remove(actor.id, linked.id, linked.fullName);

@@ -217,3 +217,28 @@ Maintainers can index a pinned commit, migrate the database, inspect health, bui
 - Repository tests prove URL allow-listing, validation reports, indexing, archive/delete confirmations, and exclusion of archived chunks.
 - Training tests prove the question → answer → rated explanation → learning report → further insight → accepted report → wipe/commit state machine.
 - Playwright verifies compact layouts, fixed bottom navigation, User navigation removal, rotating collapsed suggestions, editable name, scalable account selection, confirmations, keyboard access, and no overflow at 320, 390, 768, 1024, and 1440 CSS pixels.
+
+## 2026-09-07 session continuity amendment
+
+### Ask progress and transcript
+
+- Submitting a question immediately clears the composer and creates a visible `Point Question` turn below it. While the answer is being prepared, that turn exposes an accessible, visibly animated progress state with plain-language phases for reading the question, searching connected knowledge, checking evidence, and reviewing when Deep research is selected.
+- Completed answers render directly below their question. Follow-up turns are added to the same transcript with the newest question first, while model context remains chronological and bounded to one initial question plus five follow-ups.
+- Each answer's Evidence area is collapsed into one top-level accordion by default. Individual evidence sources remain independently expandable inside it.
+
+### Searchable Sessions
+
+- Every approved role can see and open a `Sessions` navigation destination. Users therefore receive a compact two-destination bottom navigation for Ask and Sessions.
+- Sessions lists only the signed-in account's conversations, ordered by most recent activity, and supports bounded, case-insensitive keyword search across session titles, user questions, and answer text.
+- Opening a session shows its persisted questions, structured answers, claims, and evidence. A session with remaining turns can be continued in place; a session at its limit remains readable but cannot accept another question.
+- A new session derives a concise title from its first question so history remains recognizable without user setup.
+
+### PDF export
+
+- An authenticated user can download only their own completed session as a print-friendly PDF containing the session title, questions, direct answers, steps, safety notes, confidence/review state, claims, and human-readable evidence references.
+- PDF generation is bounded, escapes or normalizes unsupported characters, uses page-aware wrapping, and never exposes another account's session or provider credentials.
+
+### Amendment success criteria
+
+- Unit and API tests prove ownership isolation, search across question/answer text, newest-first display data, first-question title derivation, turn-limit preservation, and PDF response headers/content.
+- Playwright proves visible progress, cleared composer, newest-first follow-ups, nested evidence disclosure, Sessions search/open/resume, PDF download, role-wide navigation, 44-pixel targets, and no overlap or horizontal overflow at release viewports.

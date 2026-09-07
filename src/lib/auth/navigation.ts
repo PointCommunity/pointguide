@@ -1,12 +1,12 @@
 import type { AccountRole, AccountStatus } from "@/lib/auth/types";
 
-export type NavigationKey = "ask" | "knowledge" | "training" | "admin" | "owner";
+export type NavigationKey = "ask" | "sessions" | "knowledge" | "training" | "admin" | "owner";
 
 const roleNavigation: Record<AccountRole, readonly NavigationKey[]> = {
-  USER: ["ask"],
-  TRAINER: ["ask", "knowledge", "training"],
-  ADMIN: ["ask", "knowledge", "training", "admin"],
-  OWNER: ["ask", "knowledge", "training", "admin", "owner"],
+  USER: ["ask", "sessions"],
+  TRAINER: ["ask", "sessions", "knowledge", "training"],
+  ADMIN: ["ask", "sessions", "knowledge", "training", "admin"],
+  OWNER: ["ask", "sessions", "knowledge", "training", "admin", "owner"],
 };
 
 export function allowedNavigationKeys(role: AccountRole): readonly NavigationKey[] {

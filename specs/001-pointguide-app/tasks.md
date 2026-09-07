@@ -99,3 +99,13 @@
 - [x] T057 Rename Agent Setup/System Prompt, return the active prompt, and add the evidence-first beginner-friendly default
 - [x] T058 Compact all page surfaces and implement fixed bottom navigation at every viewport, with no navigation for Users
 - [x] T059 Run focused RED/GREEN tests per slice, full quality/security gates, responsive Playwright validation, and exact AMD64 image verification
+
+## Phase 10: Searchable support sessions and exports
+
+- [x] T060 Add RED tests for owned session listing/search/detail, recognizable first-question titles, and structured historical turns
+- [x] T061 Implement bounded session repository queries and authenticated list/detail APIs
+- [x] T062 Add RED browser tests for visible Ask phases, cleared composer, newest-first turns, nested evidence, and resumed follow-ups
+- [x] T063 Refactor Ask into a persisted transcript with accessible progress and top-level Evidence disclosure
+- [x] T064 Add Sessions navigation/page with keyword search, recent-session summaries, and owned session continuation
+- [x] T065 Add RED tests and implement an authenticated, print-friendly PDF session export
+- [x] T066 Validate the complete source/security/browser suite, build the exact committed `linux/amd64` image locally, publish to Zot, and deploy/verify the immutable Canary candidate

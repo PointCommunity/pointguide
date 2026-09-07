@@ -34,7 +34,7 @@ export async function answerQuestion(input: { actor: Account; conversationId: st
       ? generateReview(reviewerProfile, draft, items, input.modelRuntime)
       : Promise.resolve({ findings: draft.claims.map((claim) => ({ claimId: claim.id, verdict: claim.status === "SUPPORTED" ? "SUPPORTED" as const : "REJECTED" as const, rationaleCode: claim.status === "SUPPORTED" ? "ENTAILED" as const : "INSUFFICIENT" as const })) }) : undefined,
   });
-  const stored = await input.learning.saveAnswer({ conversationId: input.conversationId, question: input.question, answer, evidence, reviewMode: mode });
+  const stored = await input.learning.saveAnswer({ conversationId: input.conversationId, question: input.question, answer, evidence, reviewMode: mode, turnNumber });
   return { answer: { ...stored, evidence }, reviewEnabled: reviewSetting.enabled, usage: { turnNumber, maxTurns, followUpsRemaining: Math.max(0, maxTurns - turnNumber) } };
   } catch (error) {
     await input.learning.releaseTurn(input.conversationId, input.actor.id);
