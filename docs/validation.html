@@ -1,1 +1,50 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><title>PointGuide validation</title><link rel="stylesheet" href="style.css"></head><body><main><p class="eyebrow">Verification record · September 6, 2026</p><h1>Release validation</h1><p class="lede">PointGuide’s source and preliminary AMD64 runtime are verified. The exact release commit, Zot digest, GitOps commits, and deployed checks are added here during promotion.</p><nav><a href="index.html">Documentation home</a><a href="release.html">Release runbook</a></nav><table><thead><tr><th>Gate</th><th>Result</th><th>Evidence</th></tr></thead><tbody><tr><td>Typecheck, lint, build</td><td>Passed</td><td>TypeScript, ESLint, and Next.js production build completed without errors.</td></tr><tr><td>Unit, integration, contract</td><td>Passed</td><td>110 passed against disposable PostgreSQL. Core coverage: 81.82% statements, 75.25% branches, 84.83% functions, 86.21% lines.</td></tr><tr><td>Security and dependencies</td><td>Passed</td><td>166 tracked and untracked source files scanned; production dependency audit found zero vulnerabilities.</td></tr><tr><td>PointAudio corpus</td><td>Passed</td><td>41 checksums verified at <code>cc1f67121a8fed2fbfc6a7dfab0f974a44bd022d</code>.</td></tr><tr><td>Browser matrix</td><td>Passed</td><td>46 passed at 320, 390, 768, 1024, and 1440 pixels; 9 phone-only assertions intentionally skipped on wider viewports.</td></tr><tr><td>Preliminary AMD64 container</td><td>Passed</td><td>Linux/AMD64, non-root UID 1000, three migrations, PostgreSQL readiness, and 5,237 corpus chunks verified under Apple Silicon emulation.</td></tr><tr><td>Exact release image</td><td>Pending promotion</td><td>Exact source revision and Zot digest will be recorded after the clean-archive build.</td></tr><tr><td>Canary and production</td><td>Pending promotion</td><td>GitOps, Argo CD, runtime, edge, node, and Ceph evidence will be recorded during deployment.</td></tr></tbody></table><h2>Residual validation gaps</h2><ul><li>Live Cloudflare Access with a Google identity is not testable until the deployed Access application and audience are configured.</li><li>Live Codex OAuth and Ollama Cloud credentials are Owner-provided and were not added to source or exercised by fixture tests.</li><li>The corpus records its seven upstream-source gaps and still treats installed church hardware and configuration as unconfirmed until field-verified.</li></ul><h2>Evidence policy</h2><p>Passing deployment health does not establish answer truth. Claims remain gated by evidence IDs, corpus commit, source locator, and deterministic validation. Feedback and supplemental findings create reviewable signals or exact-content proposals; they never rewrite source facts automatically.</p></main></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>PointGuide validation</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <p class="eyebrow">Verification record · September 6, 2026</p>
+    <h1>Release validation</h1>
+    <p class="lede">PointGuide was built from an exact clean source archive, validated locally as Linux/AMD64, promoted unchanged through canary, and deployed to production through the homelab GitOps pipeline.</p>
+    <nav><a href="index.html">Documentation home</a><a href="release.html">Release runbook</a></nav>
+    <table>
+      <thead><tr><th>Gate</th><th>Result</th><th>Evidence</th></tr></thead>
+      <tbody>
+        <tr><td>Source revision</td><td>Passed</td><td>PointGuide release source <code>12e683ac134c8438229acb7fb7cdea355c1b4e37</code>; PointAudio corpus source <code>cc1f67121a8fed2fbfc6a7dfab0f974a44bd022d</code>.</td></tr>
+        <tr><td>Typecheck, lint, build</td><td>Passed</td><td>TypeScript, ESLint, and the Next.js production build completed without errors.</td></tr>
+        <tr><td>Unit, integration, contract</td><td>Passed</td><td>110 tests passed against disposable PostgreSQL. Core coverage: 81.82% statements, 75.25% branches, 84.83% functions, 86.21% lines.</td></tr>
+        <tr><td>Security and dependencies</td><td>Passed</td><td>166 source files were scanned; the production dependency audit found zero vulnerabilities.</td></tr>
+        <tr><td>PointAudio corpus</td><td>Passed</td><td>41 checksums verified. Runtime readiness reported repository mode, the exact corpus commit, and 5,237 chunks.</td></tr>
+        <tr><td>Browser matrix</td><td>Passed</td><td>46 checks passed at 320, 390, 768, 1024, and 1440 pixels; 9 phone-only assertions were intentionally skipped on wider viewports.</td></tr>
+        <tr><td>Exact AMD64 image</td><td>Passed</td><td><code>10.0.20.11:32309/pointguide:12e683a</code> was built from the clean archive for <code>linux/amd64</code>. Immutable digest: <code>sha256:9a773f92bb26718665ccee63737aacfa6c1e9e3edd7873df54ca8350b00ae01f</code>.</td></tr>
+        <tr><td>Container smoke</td><td>Passed</td><td>Non-root UID 1000, GitHub CLI and Git, Codex CLI, three migrations, PostgreSQL readiness, worker startup, corpus readiness, security headers, and clean termination were verified.</td></tr>
+        <tr><td>Cloudflare Access</td><td>Passed</td><td>Production and canary applications were read back with their exact audiences, Google identity provider policies, and intended launcher visibility. Both public edges redirect unauthenticated requests to Cloudflare Access.</td></tr>
+        <tr><td>Canary</td><td>Passed</td><td>Argo CD synchronized and reported Healthy. Web and worker ran the exact digest with zero restarts; TLS, DNS, database schema, GitHub access, corpus commit, health, and readiness passed.</td></tr>
+        <tr><td>Production</td><td>Passed</td><td>Homelab revision <code>8bfec35a30e7666bc9683ccb2036f063298c80e3</code> promoted the same canary digest without rebuilding. Argo CD, workloads, persistent volumes, TLS, DNS, Access, and application probes passed.</td></tr>
+        <tr><td>Whole-cluster gate</td><td>Passed</td><td>No unexpected pods, non-ready nodes, or non-green Argo applications were present after promotion. Ceph reported <code>HEALTH_OK</code>.</td></tr>
+      </tbody>
+    </table>
+    <h2>Operational record</h2>
+    <ul>
+      <li>Cloudflare Access declarations and future import blocks entered GitOps at <code>fc5e0759</code>. The applications were API-bootstrapped because the existing Cloudflare Terraform module still contains provider-v4 resources that block a provider-v5 plan.</li>
+      <li>Canary entered GitOps at <code>f792be50</code>; database-volume and runtime-database corrections entered at <code>5008c67c</code> and <code>e04b1506</code>.</li>
+      <li>Production is available at <a href="https://pointguide.eaglepass.io">pointguide.eaglepass.io</a>. Canary is available at <a href="https://pointguide-canary.eaglepass.io">pointguide-canary.eaglepass.io</a>.</li>
+    </ul>
+    <h2>Residual validation gaps</h2>
+    <ul>
+      <li>The first interactive Google sign-in remains deliberately unclaimed so the first successful production login becomes Owner. The edge and Access policy are verified; the human identity flow is the remaining acceptance action.</li>
+      <li>Live Codex OAuth and Ollama Cloud credentials are Owner-provided and were not added to source or exercised.</li>
+      <li>The corpus records seven upstream-source gaps and continues to treat installed church hardware and configuration as unconfirmed until field-verified.</li>
+      <li>The existing homelab Cloudflare Terraform module must finish its provider-v5 migration before the committed Access import blocks can be applied through Terraform.</li>
+    </ul>
+    <h2>Evidence policy</h2>
+    <p>Passing deployment health does not establish answer truth. Claims remain gated by evidence IDs, corpus commit, source locator, and deterministic validation. Feedback and supplemental findings create reviewable signals or exact-content proposals; they never rewrite source facts automatically.</p>
+  </main>
+</body>
+</html>
