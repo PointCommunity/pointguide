@@ -54,15 +54,36 @@ test("keeps the full Owner navigation clear and responsive at every release view
   await page.goto("/sessions");
   const navigation = page.getByRole("navigation", { name: "Primary navigation" });
   await expect(navigation).toBeVisible();
-  await expect(navigation.getByRole("link")).toHaveCount(6);
+  if (testInfo.project.name.startsWith("mobile")) {
+    const mobileRow = navigation.locator(".mobile-nav-row");
+    await expect(mobileRow.getByRole("link")).toHaveCount(4);
+    const more = mobileRow.getByRole("button", { name: "More" });
+    const overflowPanel = navigation.locator(".nav-overflow-panel");
+    await expect(more).toBeVisible();
+    await expect(overflowPanel).not.toBeVisible();
+    await expect(more.locator(".nav-more-icon path")).toHaveCount(3);
+    await more.click();
+    await expect(more).toHaveAttribute("aria-expanded", "true");
+    await expect(navigation.getByRole("link", { name: "Admin" })).toBeVisible();
+    await expect(navigation.getByRole("link", { name: "Agent Setup" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(more).toHaveAttribute("aria-expanded", "false");
+    await expect(overflowPanel).not.toBeVisible();
+    await expect(more).toBeFocused();
+  } else {
+    await expect(navigation.locator(".desktop-nav-row").getByRole("link")).toHaveCount(6);
+    await expect(navigation.getByRole("button", { name: "More" })).not.toBeVisible();
+  }
   const geometry = await page.evaluate(() => ({
     clientWidth: document.documentElement.clientWidth,
     scrollWidth: document.documentElement.scrollWidth,
     bottomPadding: Number.parseFloat(getComputedStyle(document.querySelector("main")!).paddingBottom),
     navigationHeight: document.querySelector(".bottom-nav")!.getBoundingClientRect().height,
-    navigationRows: new Set([...document.querySelectorAll(".bottom-nav a")].map((element) => Math.round(element.getBoundingClientRect().top))).size,
+    navigationRows: new Set([...document.querySelectorAll(".mobile-nav-row > a, .mobile-nav-row > button, .desktop-nav-row > a")]
+      .filter((element) => (element as HTMLElement).offsetParent !== null)
+      .map((element) => Math.round(element.getBoundingClientRect().top))).size,
   }));
   expect(geometry.scrollWidth).toBe(geometry.clientWidth);
   expect(geometry.bottomPadding).toBeGreaterThanOrEqual(geometry.navigationHeight);
-  expect(geometry.navigationRows).toBe(testInfo.project.name.startsWith("mobile") ? 2 : 1);
+  expect(geometry.navigationRows).toBe(1);
 });

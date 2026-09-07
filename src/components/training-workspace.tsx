@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState, type FormEvent } from "react";
 import type { SourceRepositoryRecord } from "@/lib/sources/types";
 import type { TrainingReport, TrainingSessionRecord } from "@/lib/training/types";
@@ -7,7 +8,7 @@ import type { TrainingReport, TrainingSessionRecord } from "@/lib/training/types
 interface TrainingAnswer { directAnswer?: string; steps?: string[]; confidence?: string; evidence?: Array<{ id: string; title: string }> }
 interface Proposal { id: string; targetPath: string; targetRepository: string; state: string; digest: string }
 
-export function TrainingWorkspace() {
+export function TrainingWorkspace({ resumeSessionId }: { resumeSessionId?: string }) {
   const [sources, setSources] = useState<SourceRepositoryRecord[]>([]);
   const [session, setSession] = useState<TrainingSessionRecord | null>(null);
   const [question, setQuestion] = useState(""); const [targetRepository, setTargetRepository] = useState("");
@@ -16,7 +17,24 @@ export function TrainingWorkspace() {
   const [status, setStatus] = useState("Loading training workspace…"); const [busy, setBusy] = useState(false);
   const [proposals, setProposals] = useState<Proposal[]>([]); const [role, setRole] = useState("");
 
-  useEffect(() => { let active = true; void Promise.all([fetch("/api/training/sessions", { cache: "no-store" }), fetch("/api/training/review", { cache: "no-store" })]).then(async ([sessionsResponse, reviewResponse]) => { if (!sessionsResponse.ok || !reviewResponse.ok) throw new Error(); return Promise.all([sessionsResponse.json() as Promise<{ sessions: TrainingSessionRecord[]; sources: SourceRepositoryRecord[] }>, reviewResponse.json() as Promise<{ actor: { role: string }; proposals: Proposal[] }>]); }).then(([payload, review]) => { if (active) { setSources(payload.sources); setTargetRepository(payload.sources[0]?.fullName ?? ""); setSession(payload.sessions.at(-1) ?? null); setProposals(review.proposals); setRole(review.actor.role); setStatus(""); } }).catch(() => { if (active) setStatus("Training workspace could not be loaded."); }); return () => { active = false; }; }, []);
+  useEffect(() => {
+    let active = true;
+    const sessionRequest = resumeSessionId ? fetch(`/api/training/sessions/${resumeSessionId}`, { cache: "no-store" }) : null;
+    void Promise.all([fetch("/api/knowledge/sources", { cache: "no-store" }), fetch("/api/training/review", { cache: "no-store" }), sessionRequest]).then(async ([sourcesResponse, reviewResponse, sessionResponse]) => {
+      if (!sourcesResponse.ok || !reviewResponse.ok || (sessionResponse && !sessionResponse.ok)) throw new Error();
+      const [sourcePayload, review, sessionPayload] = await Promise.all([
+        sourcesResponse.json() as Promise<{ sources: SourceRepositoryRecord[] }>,
+        reviewResponse.json() as Promise<{ actor: { role: string }; proposals: Proposal[] }>,
+        sessionResponse ? sessionResponse.json() as Promise<{ session: TrainingSessionRecord }> : Promise.resolve(null),
+      ]);
+      if (active) {
+        const activeSources = sourcePayload.sources.filter((source) => source.status === "ACTIVE");
+        setSources(activeSources); setTargetRepository(activeSources[0]?.fullName ?? ""); setSession(sessionPayload?.session ?? null);
+        setProposals(review.proposals); setRole(review.actor.role); setStatus("");
+      }
+    }).catch(() => { if (active) setStatus(resumeSessionId ? "Training session could not be loaded." : "Training workspace could not be loaded."); });
+    return () => { active = false; };
+  }, [resumeSessionId]);
 
   async function refreshQueue() { const response = await fetch("/api/training/review", { cache: "no-store" }); if (!response.ok) return; const payload = await response.json() as { actor: { role: string }; proposals: Proposal[] }; setProposals(payload.proposals); setRole(payload.actor.role); }
 
@@ -24,15 +42,15 @@ export function TrainingWorkspace() {
   async function action(body: Readonly<Record<string, unknown>>) { if (!session) return null; setBusy(true); const response = await fetch(`/api/training/sessions/${session.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }); if (response.status === 204) { setSession(null); setBusy(false); return null; } const payload = await response.json() as { session?: TrainingSessionRecord; error?: { message?: string }; proposal?: { id: string } }; setBusy(false); if (!response.ok || !payload.session) { setStatus(payload.error?.message ?? "Training action could not be completed."); return null; } setSession(payload.session); setStatus(""); return payload; }
   async function submitFeedback(event: FormEvent) { event.preventDefault(); if (!rating) return; setStatus("PointGuide is analyzing your feedback…"); const result = await action({ action: "RATE", rating, explanation }); if (result) { setRating(null); setExplanation(""); } }
   async function sendInsight(event: FormEvent) { event.preventDefault(); setStatus("PointGuide is revising the answer with your guidance and the source evidence…"); const result = await action({ action: "INSIGHT", insight }); if (result) setInsight(""); }
-  async function finish() { if (!session || !confirmationMode) return; const result = await action({ action: confirmationMode, confirmation }); if (confirmationMode === "WIPE" && result === null) setStatus("Training session wiped. No training artifact was retained."); if (confirmationMode === "COMMIT" && result) { setStatus("Accepted learning was submitted for Admin or Owner repository review. It becomes source material only after approval, merge, and reindexing."); await refreshQueue(); } setConfirmationMode(null); setConfirmation(""); }
+  async function finish() { if (!session || !confirmationMode) return; const result = await action(confirmationMode === "WIPE" ? { action: "WIPE", confirmation } : { action: "COMMIT" }); if (confirmationMode === "WIPE" && result === null) setStatus("Training session wiped. No training artifact was retained."); if (confirmationMode === "COMMIT" && result) { setStatus("Accepted learning was submitted for Admin or Owner repository review. It becomes source material only after approval, merge, and reindexing."); await refreshQueue(); } setConfirmationMode(null); setConfirmation(""); }
   async function approveProposal(id: string) { setBusy(true); const response = await fetch(`/api/change-proposals/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ state: "APPROVED" }) }); setBusy(false); setStatus(response.ok ? "Exact proposal approved and queued for the repository worker." : "Proposal approval was not allowed."); await refreshQueue(); }
 
   const answer = session?.currentAnswer as TrainingAnswer | null;
   const report = session?.currentReport as TrainingReport | null;
-  const expectedConfirmation = session && confirmationMode === "WIPE" ? `WIPE ${session.id}` : session ? `COMMIT ${session.targetRepository}` : "";
+  const expectedConfirmation = session && confirmationMode === "WIPE" ? `WIPE ${session.id}` : "";
 
   return <>
-    <section className="welcome-panel compact-welcome"><p className="eyebrow">Guided improvement</p><h1>Training</h1><p>Work through a real question with PointGuide, rate each response, and review exactly what it learned before anything is proposed to a source repository.</p></section>
+    <section className="welcome-panel compact-welcome"><p className="eyebrow">Guided improvement</p><h1>Training</h1><p>Work through a real question with PointGuide, rate each response, and review exactly what it learned before anything is proposed to a source repository.</p><Link className="subpage-link" href="/training/sessions">Training Sessions <span aria-hidden="true">→</span></Link></section>
     {status ? <p className="training-status" role="status">{status}</p> : null}
     {!session ? <form className="training-session-card compact-card" onSubmit={start}><div><h2>Start a training session</h2><p>Use a real support question. The agent keeps this session in context while you coach the response.</p></div><label>Question<textarea required maxLength={8000} value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="What should PointGuide help someone solve?" /></label><label>Repository for accepted learning<select required value={targetRepository} onChange={(event) => setTargetRepository(event.target.value)}>{sources.map((source) => <option key={source.id} value={source.fullName}>{source.fullName}</option>)}</select></label><button type="submit" disabled={busy || !targetRepository || !question.trim()}>{busy ? "Preparing answer…" : "Start training"}</button></form> : <section className="training-session" aria-label="Active training session">
       <header className="training-session-header"><div><p className="eyebrow">Original question</p><h2>{session.originalQuestion}</h2></div><span>{session.state.replaceAll("_", " ")}</span></header>
@@ -43,6 +61,6 @@ export function TrainingWorkspace() {
       {session.state === "PROPOSED" ? <article className="training-finalize compact-card"><p className="eyebrow">Repository proposal created</p><h3>Training captured for review</h3><p>Proposal {session.proposalId} preserves the accepted learning. It will become available to PointGuide after the repository change is reviewed, merged, and reindexed.</p><button type="button" onClick={() => setSession(null)}>Start another session</button></article> : null}
     </section>}
     <details className="proposal-queue starter-accordion"><summary><span><span className="eyebrow">Repository governance</span><strong>Proposal review queue</strong></span><span>{proposals.length} ▾</span></summary><div>{proposals.length ? proposals.map((proposal) => <article key={proposal.id}><div><strong>{proposal.targetRepository}</strong><span>{proposal.targetPath}</span><small>{proposal.state} · {proposal.digest.slice(0, 12)}</small></div>{proposal.state === "IN_REVIEW" && ["ADMIN", "OWNER"].includes(role) ? <button type="button" disabled={busy} onClick={() => void approveProposal(proposal.id)}>Approve exact proposal</button> : null}</article>) : <p>No repository proposals are waiting.</p>}</div></details>
-    {session && confirmationMode ? <div className="confirmation-backdrop" role="presentation"><section className="confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="training-confirm-title"><p className="eyebrow">Confirmation required</p><h2 id="training-confirm-title">{confirmationMode === "WIPE" ? "Wipe this session?" : "Commit accepted learning?"}</h2><p>Type the exact confirmation below.</p><label><strong>{expectedConfirmation}</strong><input autoFocus value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></label><div><button type="button" onClick={() => setConfirmationMode(null)}>Cancel</button><button type="button" className={confirmationMode === "WIPE" ? "danger-button" : undefined} disabled={confirmation !== expectedConfirmation || busy} onClick={() => void finish()}>{confirmationMode === "WIPE" ? "Wipe session" : "Create proposal"}</button></div></section></div> : null}
+    {session && confirmationMode ? <div className="confirmation-backdrop" role="presentation"><section className="confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="training-confirm-title"><p className="eyebrow">Confirmation required</p><h2 id="training-confirm-title">{confirmationMode === "WIPE" ? "Wipe this session?" : "Commit accepted learning?"}</h2>{confirmationMode === "WIPE" ? <><p>Type the exact confirmation below. This permanently removes the training draft.</p><label><strong>{expectedConfirmation}</strong><input autoFocus value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></label></> : <p>This creates an auditable proposal for {session.targetRepository}. The learning is not source truth until the proposal is reviewed, merged, and reindexed.</p>}<div><button type="button" onClick={() => setConfirmationMode(null)}>Cancel</button><button autoFocus={confirmationMode === "COMMIT"} type="button" className={confirmationMode === "WIPE" ? "danger-button" : undefined} disabled={(confirmationMode === "WIPE" && confirmation !== expectedConfirmation) || busy} onClick={() => void finish()}>{confirmationMode === "WIPE" ? "Wipe session" : "Commit accepted learning"}</button></div></section></div> : null}
   </>;
 }

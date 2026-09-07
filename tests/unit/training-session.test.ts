@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryTrainingSessionStore } from "@/lib/training/store";
+
+afterEach(() => vi.useRealTimers());
 
 describe("organic training workflow", () => {
   it("requires response feedback, an accepted report, then an explicit outcome", async () => {
@@ -40,5 +42,20 @@ describe("organic training workflow", () => {
     await store.wipe(session.id, "trainer-a");
     await expect(store.get(session.id, "trainer-a")).rejects.toThrow("not found");
     await expect(store.wipe("missing", "trainer-a")).rejects.toThrow("not found");
+  });
+
+  it("searches only the current trainer's sessions and returns the newest activity first", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-07T12:00:00.000Z"));
+    const store = new MemoryTrainingSessionStore();
+    const older = await store.create({ trainerAccountId: "trainer-a", conversationId: "conversation-a", targetRepository: "PointCommunity/pointaudio", originalQuestion: "How do I route a monitor mix?" });
+    vi.setSystemTime(new Date("2026-09-07T12:01:00.000Z"));
+    const newer = await store.create({ trainerAccountId: "trainer-a", conversationId: "conversation-b", targetRepository: "PointCommunity/lighting", originalQuestion: "Why is the lobby projector dark?" });
+    await store.saveAnswer(newer.id, "trainer-a", { directAnswer: "Check the projector input source." });
+    await store.create({ trainerAccountId: "trainer-b", conversationId: "conversation-c", targetRepository: "PointCommunity/lighting", originalQuestion: "Private projector session" });
+
+    expect((await store.list("trainer-a")).map((session) => session.id)).toEqual([newer.id, older.id]);
+    expect(await store.list("trainer-a", "projector input")).toEqual([expect.objectContaining({ id: newer.id })]);
+    expect(await store.list("trainer-a", "private")).toEqual([]);
   });
 });

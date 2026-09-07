@@ -9,10 +9,30 @@
 </head>
 <body>
   <main>
-    <p class="eyebrow">Verification record · September 6, 2026</p>
+    <p class="eyebrow">Verification record · September 7, 2026</p>
     <h1>Release validation</h1>
     <p class="lede">This record separates the currently deployed production baseline from each immutable PointGuide candidate validated for Canary.</p>
     <nav><a href="index.html">Documentation home</a><a href="release.html">Release runbook</a></nav>
+    <h2>Training history and mobile navigation candidate</h2>
+    <table>
+      <thead><tr><th>Gate</th><th>Result</th><th>Evidence</th></tr></thead>
+      <tbody>
+        <tr><td>Training workflow</td><td>Passed</td><td>The new-session Training page no longer loads accumulated history. The restricted Training Sessions subpage provides bounded, newest-first, owner-scoped search across questions, responses, reports, and repositories, and can reopen unfinished sessions.</td></tr>
+        <tr><td>Commit confirmation</td><td>Passed</td><td>Accepted learning now uses one explicit confirmation button before creating a governed repository proposal. The typed phrase remains only for the destructive Wipe action.</td></tr>
+        <tr><td>Automated quality</td><td>Passed</td><td>136 code tests passed against disposable PostgreSQL with 87.06% statement, 75.92% branch, 89.14% function, and 91.77% line coverage. TypeScript, ESLint, production build, source security scan, and production dependency audit passed.</td></tr>
+        <tr><td>Browser matrix</td><td>Passed</td><td>58 applicable checks passed at 320, 390, 768, 1024, and 1440 pixels; 32 intentionally scope-limited repetitions were skipped. The matrix covers mobile More dismissal and focus restoration, Training Sessions search/resume, simplified commit, role boundaries, accessibility, touch sizing, and viewport overflow.</td></tr>
+        <tr><td>Canary delivery</td><td>Required</td><td>The exact source SHA, Zot digest, and homelab revision are recorded on the open pull request and in the Canary handoff after live verification. Production remains unchanged pending approval of that tuple.</td></tr>
+      </tbody>
+    </table>
+    <h2>Mobile navigation overflow candidate</h2>
+    <table>
+      <thead><tr><th>Gate</th><th>Result</th><th>Evidence</th></tr></thead>
+      <tbody>
+        <tr><td>Phone navigation</td><td>Passed</td><td>At 320 and 390 pixels, roles with more than four destinations receive four direct tabs plus a fifth three-line More control. Overflow pages retain their page icons, remain keyboard reachable, and close with Escape while restoring trigger focus.</td></tr>
+        <tr><td>Wider navigation</td><td>Passed</td><td>At 768, 1024, and 1440 pixels, all authorized destinations remain directly visible in one row.</td></tr>
+        <tr><td>Canary delivery</td><td>Required</td><td>The exact source SHA, Zot digest, and homelab revision are recorded on the open pull request and in the Canary handoff after live verification. Production remains unchanged pending approval of that tuple.</td></tr>
+      </tbody>
+    </table>
     <h2>Searchable support sessions candidate</h2>
     <table>
       <thead><tr><th>Gate</th><th>Result</th><th>Evidence</th></tr></thead>

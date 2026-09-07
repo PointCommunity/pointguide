@@ -12,9 +12,10 @@ import { parseEnvironment } from "@/lib/config/env";
 import { getCachedCorpusChunks } from "@/lib/evidence/runtime-corpus";
 
 const schema = z.object({ question: z.string().trim().min(1).max(8_000), targetRepository: z.string().regex(/^PointCommunity\/[A-Za-z0-9._-]+$/u) }).strict();
+const querySchema = z.string().trim().max(200);
 async function trainer(request: Request) { const actor = await authenticateRequest(request, getRuntimeSessionDependencies()); return requireRole(actor, ["TRAINER", "ADMIN", "OWNER"]); }
 
-export async function GET(request: Request) { try { const actor = await trainer(request); return Response.json({ sessions: await getRuntimeTrainingStore().list(actor.id), sources: (await getRuntimeSourceStore().list()).filter((source) => source.status === "ACTIVE") }); } catch (error) { return accountBoundaryErrorResponse(error); } }
+export async function GET(request: Request) { try { const actor = await trainer(request); const query = querySchema.safeParse(new URL(request.url).searchParams.get("q") ?? ""); if (!query.success) return Response.json({ error: { code: "INVALID_SEARCH", message: "Training session search is too long." } }, { status: 400 }); return Response.json({ sessions: await getRuntimeTrainingStore().list(actor.id, query.data) }); } catch (error) { return accountBoundaryErrorResponse(error); } }
 export async function POST(request: Request) {
   try {
     assertSameOrigin(request); const actor = await trainer(request); const parsed = schema.safeParse(await request.json().catch(() => null));

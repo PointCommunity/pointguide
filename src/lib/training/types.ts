@@ -7,7 +7,7 @@ export interface TrainingSessionRecord {
 }
 export interface TrainingSessionStore {
   create(input: { trainerAccountId: string; conversationId: string; targetRepository: string; originalQuestion: string }): Promise<TrainingSessionRecord>;
-  list(trainerAccountId: string): Promise<TrainingSessionRecord[]>;
+  list(trainerAccountId: string, query?: string): Promise<TrainingSessionRecord[]>;
   get(id: string, trainerAccountId: string): Promise<TrainingSessionRecord>;
   saveAnswer(id: string, trainerAccountId: string, answer: Readonly<Record<string, unknown>>, insight?: string): Promise<TrainingSessionRecord>;
   saveReport(id: string, trainerAccountId: string, rating: "HELPFUL" | "NOT_HELPFUL", explanation: string, report: TrainingReport): Promise<TrainingSessionRecord>;

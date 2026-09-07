@@ -18,11 +18,19 @@ const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("RATE"), rating: z.enum(["HELPFUL", "NOT_HELPFUL"]), explanation: z.string().trim().min(3).max(4_000) }).strict(),
   z.object({ action: z.literal("INSIGHT"), insight: z.string().trim().min(3).max(4_000) }).strict(),
   z.object({ action: z.literal("ACCEPT_REPORT") }).strict(),
-  z.object({ action: z.literal("COMMIT"), confirmation: z.string().min(1).max(300) }).strict(),
+  z.object({ action: z.literal("COMMIT") }).strict(),
   z.object({ action: z.literal("WIPE"), confirmation: z.string().min(1).max(300) }).strict(),
 ]);
 async function trainer(request: Request) { return requireRole(await authenticateRequest(request, getRuntimeSessionDependencies()), ["TRAINER", "ADMIN", "OWNER"]); }
 function failure(error: unknown) { return error instanceof TrainingStateError ? Response.json({ error: { code: error.code, message: error.message } }, { status: error.code === "TRAINING_NOT_FOUND" ? 404 : 409 }) : accountBoundaryErrorResponse(error); }
+
+export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
+  try {
+    const actor = await trainer(request); const { id } = await context.params;
+    if (!z.uuid().safeParse(id).success) return Response.json({ error: { code: "INVALID_TRAINING", message: "Training session ID is invalid." } }, { status: 400 });
+    return Response.json({ session: await getRuntimeTrainingStore().get(id, actor.id) });
+  } catch (error) { return failure(error); }
+}
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
@@ -45,7 +53,6 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     }
     if (parsed.data.action === "ACCEPT_REPORT") return Response.json({ session: await store.acceptReport(id, actor.id) });
     if (parsed.data.action === "WIPE") { if (session.state !== "REPORT_ACCEPTED") throw new TrainingStateError("INVALID_TRAINING_STATE", "Accept the learning report before wiping the session."); if (parsed.data.confirmation !== `WIPE ${id}`) return Response.json({ error: { code: "CONFIRMATION_REQUIRED", message: `Type WIPE ${id} to confirm.` } }, { status: 409 }); await store.wipe(id, actor.id); return new Response(null, { status: 204 }); }
-    if (parsed.data.confirmation !== `COMMIT ${session.targetRepository}`) return Response.json({ error: { code: "CONFIRMATION_REQUIRED", message: `Type COMMIT ${session.targetRepository} to confirm.` } }, { status: 409 });
     if (session.state !== "REPORT_ACCEPTED" || !session.currentReport) throw new TrainingStateError("INVALID_TRAINING_STATE", "Accept the learning report before committing it.");
     const source = (await getRuntimeSourceStore().list()).find((candidate) => candidate.fullName === session.targetRepository && candidate.status === "ACTIVE"); if (!source) return Response.json({ error: { code: "SOURCE_NOT_ACTIVE", message: "The target source repository is no longer active." } }, { status: 409 });
     const artifact = JSON.stringify({ schemaVersion: 1, kind: "pointguide-training-guidance", sessionId: session.id, originalQuestion: session.originalQuestion, acceptedReport: session.currentReport, evidenceBoundary: "Behavioral guidance only. Repository facts remain authoritative.", createdAt: new Date().toISOString() }, null, 2) + "\n";

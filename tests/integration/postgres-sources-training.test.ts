@@ -66,6 +66,8 @@ databaseTest("persists connected sources and wipes a training session with its c
   const training = new PostgresTrainingSessionStore(database);
   const session = await training.create({ trainerAccountId: actor.id, conversationId: conversation.id, targetRepository: linked.fullName, originalQuestion: "How do I set this up?" });
   await training.saveAnswer(session.id, actor.id, { directAnswer: "Use the verified steps." });
+  expect(await training.list(actor.id, "verified steps")).toEqual([expect.objectContaining({ id: session.id })]);
+  expect(await training.list(actor.id, "not in this session")).toEqual([]);
   await training.saveReport(session.id, actor.id, "HELPFUL", "Clear steps", { summary: "Keep clear steps.", learned: ["Clear steps help."], responseChanges: ["Retain steps."], evidenceBoundary: "Behavior guidance only." });
   await training.acceptReport(session.id, actor.id);
   await training.wipe(session.id, actor.id);

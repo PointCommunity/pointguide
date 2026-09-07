@@ -109,3 +109,16 @@
 - [x] T064 Add Sessions navigation/page with keyword search, recent-session summaries, and owned session continuation
 - [x] T065 Add RED tests and implement an authenticated, print-friendly PDF session export
 - [x] T066 Validate the complete source/security/browser suite, build the exact committed `linux/amd64` image locally, publish to Zot, and deploy/verify the immutable Canary candidate
+
+## Phase 11: Compact mobile navigation overflow
+
+- [x] T067 Add a failing phone navigation test for four direct destinations, a three-line More control, icon-preserving overflow links, and keyboard dismissal
+- [x] T068 Implement the single-row phone navigation overflow while retaining all direct destinations on tablet and desktop
+- [x] T069 Re-run the complete source/security/browser suite and deploy the exact immutable candidate to Canary
+
+## Phase 12: Searchable training history and streamlined commit
+
+- [x] T070 Add failing store and browser tests for newest-first owner-scoped Training Sessions search, clean Training entry, and resume
+- [x] T071 Implement the restricted Training Sessions subpage, bounded server-side search, and owned detail resume route
+- [x] T072 Replace the accepted-learning typed phrase with one explicit confirmation button while retaining the destructive wipe phrase
+- [x] T073 Re-run the complete source/security/browser suite and deploy the exact immutable candidate to Canary

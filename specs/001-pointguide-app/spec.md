@@ -174,10 +174,10 @@ Maintainers can index a pinned commit, migrate the database, inspect health, bui
 
 ### Role and navigation contract
 
-- Every approved role can use Ask. A User has no application navigation because Ask is their only application destination; Account remains reachable from the identity control.
+- Every approved role can use Ask and Sessions. Users receive only those two application destinations; Account remains reachable from the identity control.
 - Trainers, Admins, and Owners can use Knowledge and Training. Admins and Owners can use Accounts. Only Owners can see or open Agent Setup.
 - Restricted pages enforce the same role policy on the server as their APIs; hiding a navigation item is not an authorization control.
-- Navigation remains a fixed bottom bar at phone, tablet, and desktop widths and must not overlap page content or safe areas.
+- Navigation remains a fixed bottom bar at phone, tablet, and desktop widths and must not overlap page content or safe areas. Phone layouts show at most four direct destinations; when a role has more, the fifth tab is a three-line `More` control and every remaining authorized destination appears in its accessible overflow panel with its page icon. Tablet and desktop layouts show all authorized destinations directly.
 
 ### Compact Ask experience
 
@@ -203,7 +203,8 @@ Maintainers can index a pinned commit, migrate the database, inspect health, bui
 - A Trainer, Admin, or Owner starts with a real question and receives a grounded answer from the configured primary agent while the full bounded training-session context is retained.
 - Every agent answer is rated helpful or not helpful with an explanation. The agent returns a concise learning report that separates behavior guidance from factual evidence and invites further trainer insight.
 - The trainer may provide more insight, receive a revised answer, and repeat rating/report cycles until accepting the report.
-- After acceptance, the trainer must explicitly choose either to wipe the session or commit the accepted learning. Wipe permanently removes the draft session after typed confirmation. Commit creates a versioned training artifact through the governed repository proposal/PR workflow; it is not source truth until merged and reindexed.
+- The main Training page always opens as a clean new-session workspace. Accumulated sessions live on a separate Trainer/Admin/Owner-only Training Sessions page with bounded owner-scoped keyword search across the original question, response, learning report, and repository; unfinished sessions can be reopened and continued.
+- After acceptance, the trainer must explicitly choose either to wipe the session or commit the accepted learning. Wipe permanently removes the draft session after typed confirmation. Commit uses one explicit confirmation button and creates a versioned training artifact through the governed repository proposal/PR workflow; it is not source truth until merged and reindexed.
 
 ### Agent Setup language and default system prompt
 
@@ -215,8 +216,8 @@ Maintainers can index a pinned commit, migrate the database, inspect health, bui
 - Role-matrix unit, API, and direct-route tests reject every disallowed page and operation.
 - Conversation tests prove bounded history reaches the model and that one initial plus five follow-ups succeeds while the next turn fails.
 - Repository tests prove URL allow-listing, validation reports, indexing, archive/delete confirmations, and exclusion of archived chunks.
-- Training tests prove the question → answer → rated explanation → learning report → further insight → accepted report → wipe/commit state machine.
-- Playwright verifies compact layouts, fixed bottom navigation, User navigation removal, rotating collapsed suggestions, editable name, scalable account selection, confirmations, keyboard access, and no overflow at 320, 390, 768, 1024, and 1440 CSS pixels.
+- Training tests prove the question → answer → rated explanation → learning report → further insight → accepted report → wipe/commit state machine, searchable history isolation, and session resume behavior.
+- Playwright verifies compact layouts, fixed bottom navigation, User navigation limits, mobile More overflow, rotating collapsed suggestions, editable name, scalable account selection, confirmations, keyboard access, and no overflow at 320, 390, 768, 1024, and 1440 CSS pixels.
 
 ## 2026-09-07 session continuity amendment
 
