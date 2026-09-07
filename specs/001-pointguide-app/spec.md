@@ -169,3 +169,51 @@ Maintainers can index a pinned commit, migrate the database, inspect health, bui
 - 2026-09-06: Deep research is globally controlled and user-selected per query; same-model and cross-provider review are allowed.
 - 2026-09-06: Every agent statement must be evidence-grounded; no evidence means Unknown.
 - 2026-09-06: `PointGuide` is the approved application name; `PointCommunity/pointaudio` is its initial governed knowledge source rather than the application repository or identity.
+
+## 2026-09-07 usability and learning amendment
+
+### Role and navigation contract
+
+- Every approved role can use Ask. A User has no application navigation because Ask is their only application destination; Account remains reachable from the identity control.
+- Trainers, Admins, and Owners can use Knowledge and Training. Admins and Owners can use Accounts. Only Owners can see or open Agent Setup.
+- Restricted pages enforce the same role policy on the server as their APIs; hiding a navigation item is not an authorization control.
+- Navigation remains a fixed bottom bar at phone, tablet, and desktop widths and must not overlap page content or safe areas.
+
+### Compact Ask experience
+
+- The Ask page uses general Point Community Church technology language rather than promising only PointAudio or M32 coverage.
+- Suggested tasks rotate between sessions and are collapsed by default in a single accessible accordion.
+- One support session contains one initial question and at most five follow-up questions. The server rejects a seventh user turn, and the remaining allowance is shown immediately below the submit action.
+- Each model request receives the bounded prior session transcript so follow-up questions retain context.
+
+### Account and administration
+
+- Users can edit their own display name without changing their Cloudflare identity or email.
+- Account management uses one scalable account selector and one editor. Admins cannot list Owners, target themselves, grant Owner, or modify an Owner. Owners can manage every other account, including Owner membership, while neither role can change its own access.
+
+### Knowledge repositories
+
+- Knowledge managers can register a repository only after a server-side structural validation of an allow-listed GitHub repository URL, branch, governing instructions, evidence content, and integrity/index metadata.
+- A validation report records the checked commit, errors, warnings, supported files, skipped files, and indexed chunk count. Invalid repositories are not linked or searched.
+- Linked repository text is indexed into bounded database chunks and joins the configured local corpus during retrieval.
+- Archive removes a repository from active retrieval; deletion is allowed only after archival. Both actions require an explicit, server-validated confirmation value.
+
+### Organic Training workflow
+
+- A Trainer, Admin, or Owner starts with a real question and receives a grounded answer from the configured primary agent while the full bounded training-session context is retained.
+- Every agent answer is rated helpful or not helpful with an explanation. The agent returns a concise learning report that separates behavior guidance from factual evidence and invites further trainer insight.
+- The trainer may provide more insight, receive a revised answer, and repeat rating/report cycles until accepting the report.
+- After acceptance, the trainer must explicitly choose either to wipe the session or commit the accepted learning. Wipe permanently removes the draft session after typed confirmation. Commit creates a versioned training artifact through the governed repository proposal/PR workflow; it is not source truth until merged and reindexed.
+
+### Agent Setup language and default system prompt
+
+- The product calls the Owner-only page “Agent Setup” and calls profile direction “System Prompt.”
+- The active system prompt is returned to the Owner and remains editable. A new profile starts with a default prompt requiring concise evidence-grounded answers, explicit unknowns, safety boundaries, and clear one-action-per-step guidance written for non-technical beginners.
+
+### Amendment success criteria
+
+- Role-matrix unit, API, and direct-route tests reject every disallowed page and operation.
+- Conversation tests prove bounded history reaches the model and that one initial plus five follow-ups succeeds while the next turn fails.
+- Repository tests prove URL allow-listing, validation reports, indexing, archive/delete confirmations, and exclusion of archived chunks.
+- Training tests prove the question → answer → rated explanation → learning report → further insight → accepted report → wipe/commit state machine.
+- Playwright verifies compact layouts, fixed bottom navigation, User navigation removal, rotating collapsed suggestions, editable name, scalable account selection, confirmations, keyboard access, and no overflow at 320, 390, 768, 1024, and 1440 CSS pixels.

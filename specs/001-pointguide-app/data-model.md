@@ -108,6 +108,26 @@ Rules: factual/actionable/safety claims shown as supported require at least one 
 - `status`: `DRAFT | IN_REVIEW | APPROVED | SUPERSEDED | REJECTED`
 - author/reviewer, repository proposal link, timestamps/version
 
+### SourceRepository and SourceChunk
+
+- SourceRepository: repository identity, canonical GitHub URL, default branch, indexed commit, lifecycle state, validation state/report, actor/timestamps/version
+- SourceChunk: repository ID, stable chunk ID, source path/locator, title, authority, captured time, digest, bounded searchable text
+
+Rules: only `PointCommunity/*` GitHub repositories are accepted initially. Validation requires `AGENTS.md`, supported evidence content, and either `pointguide-source.yaml` or a checksum manifest. Invalid or archived repositories contribute no chunks. Archive and delete require exact confirmation; deletion requires archived state.
+
+### TrainingSession and TrainingTurn
+
+- TrainingSession: trainer, target repository, backing conversation, original question, workflow state, current answer/report, accepted report, timestamps/version
+- TrainingTurn: session, ordinal, actor, content, optional rating/explanation, optional answer ID, created timestamp
+
+Rules: only Trainer/Admin/Owner access is allowed. Agent answers must be rated with an explanation before a learning report exists. Reports can be refined through additional insight. Only an accepted report can be wiped or committed. Commit creates a governed repository artifact/proposal; wipe deletes the uncommitted session.
+
+### Conversation turn budget
+
+- `userTurnCount`: atomically reserved count from 0 through 6
+
+Rules: one initial question and five follow-ups are allowed. Failed generation releases its reservation. Model context contains at most the preceding five user/assistant pairs.
+
 ### WebFinding
 
 - `id`, URL, resolved URL, title, publisher, retrieved time, media type, bounded excerpt

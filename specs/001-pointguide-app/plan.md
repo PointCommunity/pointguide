@@ -67,6 +67,17 @@ specs/001-pointguide-app/      feature artifacts and contracts
 
 1. **Foundation demo**: pinned project, dark responsive shell, health endpoint, corpus manifest validation, deterministic repository search, fixture-grounded answer and feedback UI.
 2. **Identity**: Cloudflare JWT verification, transactional bootstrap Owner, Pending states, role matrix, account-management UI/API.
+
+## 2026-09-07 implementation extension
+
+1. Update the shared role policy, add server page guards, add self-service display-name mutation, and replace account cards with a filtered selector/editor.
+2. Add atomic six-turn conversation accounting and bounded transcript retrieval, then expose the subtle follow-up counter in the compact Ask composer.
+3. Add a validated source-repository registry, bounded GitHub tree/text indexer, lifecycle confirmations, active-chunk retrieval, and dark HTML structure guide.
+4. Add the persisted organic Training state machine and agent learning-report generation, then finalize accepted learning through the existing governed proposal/PR worker.
+5. Rename and compact Agent Setup, return its active System Prompt, and seed the evidence-first beginner-friendly default.
+6. Consolidate all role-aware navigation into a fixed bottom bar, compact shared surfaces, then run focused tests, the full suite, browser matrix, security checks, and an exact AMD64 build.
+
+The extension is delivered as vertical slices in this order because authorization and conversation limits are shared foundations; repository registration precedes training commit targets; final visual compaction follows stable component states.
 3. **Providers**: protected provider records, Codex device flow boundary, Ollama write-only key flow, dynamic catalogs, model/effort/profile/prompt UI.
 4. **Review**: primary structured claim ledger, optional Deep research reviewer, deterministic supported-claim renderer, global/user controls.
 5. **Learning and Git**: durable feedback, training review, web findings, bounded proposal state machine, Git worker fixture and audit.
