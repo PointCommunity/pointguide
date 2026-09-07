@@ -13,6 +13,14 @@ import type { ProviderHttpDependencies } from "@/lib/providers/http";
 const stores = new Map<string, ProviderConfigurationStore>();
 let codexProcess: CodexAppServerProcessClient | null = null;
 
+export function getRuntimeModelRuntime() {
+  const environment = parseEnvironment(process.env);
+  const secretKey = environment.AUTH_MODE === "fixture" ? Buffer.alloc(32, 7).toString("base64") : environment.PROVIDER_SECRET_KEY;
+  if (!secretKey) throw new Error("PROVIDER_SECRET_KEY is required.");
+  codexProcess ??= new CodexAppServerProcessClient();
+  return { secretKey, codexClient: codexProcess };
+}
+
 const fixtureCodexCatalog = normalizeCodexCatalog({
   data: [{
     id: "gpt-5.6-sol",
@@ -35,12 +43,12 @@ const fixtureOllamaCatalog = normalizeOllamaCatalog({
   models: [{ name: "gpt-oss:120b", model: "gpt-oss:120b", details: { family: "gptoss", parameter_size: "120B" } }],
 });
 
-function storeFor(mode: "cloudflare" | "fixture", databaseUrl: string | undefined): ProviderConfigurationStore {
+function storeFor(mode: "cloudflare" | "fixture", databaseUrl: string | undefined, reviewEnabled: boolean): ProviderConfigurationStore {
   const key = mode === "fixture" ? "fixture" : `postgres:${databaseUrl ?? "missing"}`;
   const existing = stores.get(key);
   if (existing) return existing;
   const store = mode === "fixture"
-    ? new MemoryProviderStore()
+    ? new MemoryProviderStore(reviewEnabled)
     : new PostgresProviderStore(getDatabase(databaseUrl ?? ""));
   stores.set(key, store);
   return store;
@@ -75,7 +83,7 @@ export function getRuntimeProviderDependencies(): ProviderHttpDependencies {
   if (!secretKey) throw new Error("PROVIDER_SECRET_KEY is required outside fixture mode.");
   return {
     session: getRuntimeSessionDependencies(),
-    store: storeFor(environment.AUTH_MODE, environment.DATABASE_URL),
+    store: storeFor(environment.AUTH_MODE, environment.DATABASE_URL, environment.REVIEW_ENABLED),
     secretKey,
     codex: codexFor(fixture, environment.LIVE_PROVIDERS_ENABLED),
     ollama: ollamaFor(fixture, environment.LIVE_PROVIDERS_ENABLED),

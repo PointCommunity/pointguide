@@ -139,3 +139,129 @@ export const applicationSettings = pgTable("application_settings", {
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull(),
   version: integer("version").notNull().default(1),
 }, (table) => [check("application_settings_version_positive", sql`${table.version} > 0`)]);
+
+export const corpusRevisions = pgTable("corpus_revisions", {
+  id: uuid("id").primaryKey(),
+  commitSha: text("commit_sha").notNull().unique(),
+  status: text("status").notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true, mode: "date" }).notNull(),
+  completedAt: timestamp("completed_at", { withTimezone: true, mode: "date" }),
+  validatorVersion: text("validator_version").notNull(),
+  counts: jsonb("counts").$type<Readonly<Record<string, number>>>().notNull().default({}),
+  errorSummary: text("error_summary"),
+});
+
+export const conversations = pgTable("conversations", {
+  id: uuid("id").primaryKey(),
+  ownerAccountId: uuid("owner_account_id").notNull().references(() => accounts.id),
+  title: text("title").notNull(),
+  status: text("status").notNull().default("ACTIVE"),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull(),
+});
+
+export const messages = pgTable("messages", {
+  id: uuid("id").primaryKey(),
+  conversationId: uuid("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
+  actor: text("actor").notNull(),
+  content: text("content").notNull(),
+  status: text("status").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
+});
+
+export const evidenceItems = pgTable("evidence_items", {
+  id: text("id").primaryKey(),
+  kind: text("kind").notNull(),
+  corpusRevisionId: uuid("corpus_revision_id").references(() => corpusRevisions.id),
+  sourceId: text("source_id"),
+  title: text("title").notNull(),
+  locator: text("locator"),
+  url: text("url"),
+  publisher: text("publisher"),
+  authority: text("authority").notNull(),
+  applicability: text("applicability"),
+  versionOrDate: text("version_or_date"),
+  capturedAt: timestamp("captured_at", { withTimezone: true, mode: "date" }).notNull(),
+  excerpt: text("excerpt").notNull(),
+  digest: text("digest").notNull(),
+});
+
+export const answers = pgTable("answers", {
+  id: uuid("id").primaryKey(),
+  messageId: uuid("message_id").references(() => messages.id),
+  corpusRevisionId: uuid("corpus_revision_id").references(() => corpusRevisions.id),
+  primaryProfileId: uuid("primary_profile_id").references(() => agentProfiles.id),
+  reviewerProfileId: uuid("reviewer_profile_id").references(() => agentProfiles.id),
+  reviewMode: text("review_mode").notNull(),
+  reviewStatus: text("review_status").notNull(),
+  directAnswer: text("direct_answer").notNull(),
+  steps: jsonb("steps").$type<string[]>().notNull(),
+  safetyAssumptions: jsonb("safety_assumptions").$type<string[]>().notNull(),
+  confidence: text("confidence").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
+});
+
+export const answerClaims = pgTable("answer_claims", {
+  id: uuid("id").primaryKey(),
+  answerId: uuid("answer_id").notNull().references(() => answers.id, { onDelete: "cascade" }),
+  ordinal: integer("ordinal").notNull(),
+  text: text("text").notNull(),
+  kind: text("kind").notNull(),
+  status: text("status").notNull(),
+  rationaleCode: text("rationale_code"),
+}, (table) => [unique("answer_claims_answer_ordinal_unique").on(table.answerId, table.ordinal)]);
+
+export const claimEvidence = pgTable("claim_evidence", {
+  claimId: uuid("claim_id").notNull().references(() => answerClaims.id, { onDelete: "cascade" }),
+  evidenceItemId: text("evidence_item_id").notNull().references(() => evidenceItems.id),
+}, (table) => [primaryKey({ columns: [table.claimId, table.evidenceItemId], name: "claim_evidence_pk" })]);
+
+export const feedbackRecords = pgTable("feedback", {
+  id: uuid("id").primaryKey(),
+  answerId: uuid("answer_id").notNull().references(() => answers.id),
+  accountId: uuid("account_id").notNull().references(() => accounts.id),
+  rating: text("rating").notNull(),
+  reason: text("reason"),
+  comment: text("comment"),
+  questionFingerprint: text("question_fingerprint").notNull(),
+  corpusCommit: text("corpus_commit").notNull(),
+  profileRevisionIds: jsonb("profile_revision_ids").$type<string[]>().notNull(),
+  evidenceIds: jsonb("evidence_ids").$type<string[]>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
+}, (table) => [unique("feedback_answer_account_unique").on(table.answerId, table.accountId)]);
+
+export const trainingExamples = pgTable("training_examples", {
+  id: uuid("id").primaryKey(),
+  feedbackId: uuid("feedback_id").references(() => feedbackRecords.id),
+  state: text("state").notNull(),
+  content: jsonb("content").$type<Readonly<Record<string, unknown>>>().notNull(),
+  authorId: uuid("author_id").notNull().references(() => accounts.id),
+  reviewerId: uuid("reviewer_id").references(() => accounts.id),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull(),
+  version: integer("version").notNull().default(1),
+});
+
+export const webFindings = pgTable("web_findings", {
+  id: uuid("id").primaryKey(),
+  url: text("url").notNull(), publisher: text("publisher"),
+  capturedAt: timestamp("captured_at", { withTimezone: true, mode: "date" }).notNull(),
+  digest: text("digest").notNull(), excerpt: text("excerpt").notNull(), authority: text("authority").notNull(),
+  reviewState: text("review_state").notNull(), flaggerId: uuid("flagger_id").notNull().references(() => accounts.id),
+  reviewerId: uuid("reviewer_id").references(() => accounts.id), notes: text("notes"),
+});
+
+export const changeProposals = pgTable("change_proposals", {
+  id: uuid("id").primaryKey(), proposerId: uuid("proposer_id").notNull().references(() => accounts.id), reviewerId: uuid("reviewer_id").references(() => accounts.id),
+  rationale: text("rationale").notNull(), targetRepository: text("target_repository").notNull(), baseCommit: text("base_commit").notNull(), targetPath: text("target_path").notNull(),
+  operation: text("operation").notNull(), proposedContent: text("proposed_content").notNull(), contentDigest: text("content_digest").notNull(), state: text("state").notNull(),
+  branchName: text("branch_name"), commitSha: text("commit_sha"), pullRequestUrl: text("pull_request_url"),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(), updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull(), version: integer("version").notNull().default(1),
+});
+
+export const jobs = pgTable("jobs", {
+  id: uuid("id").primaryKey(), kind: text("kind").notNull(), payload: jsonb("payload").$type<Readonly<Record<string, unknown>>>().notNull(),
+  status: text("status").notNull().default("READY"), attempts: integer("attempts").notNull().default(0),
+  availableAt: timestamp("available_at", { withTimezone: true, mode: "date" }).notNull(), leaseOwner: text("lease_owner"), leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true, mode: "date" }),
+  lastErrorCode: text("last_error_code"), lastErrorMessage: text("last_error_message"), createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(), updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull(),
+}, (table) => [index("jobs_lease_idx").on(table.status, table.availableAt, table.leaseExpiresAt)]);

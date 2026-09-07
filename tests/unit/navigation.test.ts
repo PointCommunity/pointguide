@@ -3,10 +3,10 @@ import { allowedNavigationKeys, lifecycleDestination } from "@/lib/auth/navigati
 
 describe("role-aware application navigation", () => {
   it.each([
-    ["USER", ["ask", "knowledge", "saved"]],
-    ["TRAINER", ["ask", "knowledge", "saved", "training"]],
-    ["ADMIN", ["ask", "knowledge", "saved", "training", "admin"]],
-    ["OWNER", ["ask", "knowledge", "saved", "training", "admin", "owner"]],
+    ["USER", ["ask", "knowledge"]],
+    ["TRAINER", ["ask", "knowledge", "training"]],
+    ["ADMIN", ["ask", "knowledge", "training", "admin"]],
+    ["OWNER", ["ask", "knowledge", "training", "admin", "owner"]],
   ] as const)("shows only authorized destinations to %s", (role, expected) => {
     expect(allowedNavigationKeys(role)).toEqual(expected);
   });

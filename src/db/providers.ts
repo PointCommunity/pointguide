@@ -19,6 +19,8 @@ import type {
   ProviderConnectionUpdate,
   ProviderId,
   ProviderModel,
+  ExecutionProfile,
+  ProfileRole,
   ReviewSetting,
 } from "@/lib/providers/types";
 
@@ -268,6 +270,22 @@ export class PostgresProviderStore implements ProviderConfigurationStore {
       updatedAt: profile.updatedAt,
       version: profile.version,
     }));
+  }
+
+  async getExecutionProfile(role: ProfileRole): Promise<ExecutionProfile | null> {
+    const [row] = await this.database.select({ profile: agentProfiles, connection: providerConnections, prompt: promptRevisions.ownerPrompt })
+      .from(agentProfiles)
+      .innerJoin(providerConnections, eq(agentProfiles.connectionId, providerConnections.id))
+      .innerJoin(promptRevisions, eq(agentProfiles.activePromptRevisionId, promptRevisions.id))
+      .where(and(eq(agentProfiles.role, role), eq(agentProfiles.enabled, true), eq(providerConnections.status, "CONNECTED"))).limit(1);
+    if (!row) return null;
+    return {
+      id: row.profile.id, name: row.profile.name, role: row.profile.role, provider: row.connection.provider,
+      connectionId: row.profile.connectionId, modelId: row.profile.modelId, reasoningEffort: row.profile.reasoningEffort,
+      enabled: row.profile.enabled, promptRevisionId: row.profile.activePromptRevisionId!, promptRevision: row.profile.version,
+      corePolicyRevision: "evidence-policy-v1", createdAt: row.profile.createdAt, updatedAt: row.profile.updatedAt,
+      version: row.profile.version, ownerPrompt: row.prompt, connection: connectionFromRow(row.connection),
+    };
   }
 
   async getReviewSetting(): Promise<ReviewSetting> {

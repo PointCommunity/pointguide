@@ -80,6 +80,11 @@ export interface AgentProfileRecord extends Omit<AgentProfileInput, "ownerPrompt
   version: number;
 }
 
+export interface ExecutionProfile extends AgentProfileRecord {
+  ownerPrompt: string;
+  connection: ProviderConnectionRecord;
+}
+
 export interface ReviewSetting {
   enabled: boolean;
   version: number;
@@ -103,6 +108,7 @@ export interface ProviderConfigurationStore {
   listModels(provider: ProviderId): Promise<ProviderModel[]>;
   saveProfile(actorId: string, input: AgentProfileInput, now?: Date): Promise<AgentProfileRecord>;
   listProfiles(): Promise<AgentProfileRecord[]>;
+  getExecutionProfile(role: ProfileRole): Promise<ExecutionProfile | null>;
   getReviewSetting(): Promise<ReviewSetting>;
   setReviewSetting(actorId: string, enabled: boolean, now?: Date): Promise<ReviewSetting>;
 }
@@ -118,6 +124,7 @@ export interface OllamaOperations {
 
 export interface AppServerClient {
   request(method: string, params: Readonly<Record<string, unknown>>): Promise<unknown>;
+  subscribe?(listener: (method: string, params: unknown) => void): () => void;
 }
 
 export type ProviderFetch = (input: string, init?: RequestInit) => Promise<Response>;

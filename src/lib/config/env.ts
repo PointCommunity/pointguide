@@ -24,6 +24,9 @@ const environmentSchema = z.object({
   LIVE_PROVIDERS_ENABLED: z.stringbool().default(false),
   GIT_WRITES_ENABLED: z.stringbool().default(false),
   WEB_SEARCH_ENABLED: z.stringbool().default(false),
+  CORPUS_ROOT: z.string().min(1).optional(),
+  CORPUS_COMMIT: z.string().regex(/^[a-f0-9]{40}$/u).optional(),
+  CORPUS_MANIFEST: z.string().min(1).default("research/midas-m32/checksums.sha256"),
 });
 
 export type Environment = z.infer<typeof environmentSchema>;
@@ -45,6 +48,8 @@ export function assertProductionEnvironment(environment: Environment): void {
     environment.CF_ACCESS_TEAM_DOMAIN ? null : "CF_ACCESS_TEAM_DOMAIN",
     environment.CF_ACCESS_AUDIENCE ? null : "CF_ACCESS_AUDIENCE",
     environment.PROVIDER_SECRET_KEY ? null : "PROVIDER_SECRET_KEY",
+    environment.CORPUS_ROOT ? null : "CORPUS_ROOT",
+    environment.CORPUS_COMMIT ? null : "CORPUS_COMMIT",
   ].filter((value): value is string => value !== null);
   if (missing.length) throw new Error(`Missing production configuration: ${missing.join(", ")}`);
 }

@@ -1,5 +1,6 @@
 import { AiSettingsWorkspace } from "@/components/ai-settings-workspace";
+import { AppShell } from "@/components/app-shell";
 
 export default function OwnerAiPage() {
-  return <AiSettingsWorkspace />;
+  return <AppShell><AiSettingsWorkspace /></AppShell>;
 }

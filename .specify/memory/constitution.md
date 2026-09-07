@@ -59,14 +59,27 @@ Human-facing documents and diagrams are responsive dark-mode HTML. Agent workflo
 - Production uses PostgreSQL while local deterministic browser tests use an in-memory store that is prohibited in production mode.
 - Navigation is derived from the approved account role; lifecycle redirects never replace server-side authorization.
 
+### Evidence, Review, and Governed Learning
+
+- Production retrieval validates the exact PointAudio commit and checksum manifest before loading searchable extracted-text chunks; readiness fails closed if the database or corpus is unavailable.
+- Primary and reviewing providers receive bounded evidence as untrusted data and return structured claims. Deterministic code rejects dangling citations and suppresses reviewer-rejected claims.
+- Feedback is immutable usefulness context. Trainers turn signals and web findings into exact-content proposals; Admin or Owner approval creates a leased job.
+- The Git worker verifies repository, path allow-list, base commit, and content digest, then opens a branch and pull request without merging or force-pushing.
+
+### Delivery Baseline
+
+- Additive digest-tracked migrations, a leased PostgreSQL worker, multi-stage non-root container, security headers, dependency/secret checks, and exact-source GitHub workflows are established.
+- Dark HTML operating guides cover development, identity/providers, release, rollback, and validation evidence.
+
 ## Governance
 
 Principle changes require stakeholder discussion and a major version increment. New compatible capabilities increment the minor version after validation; wording-only changes increment the patch version. Each feature must report constitution compliance and justified exceptions.
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.3.0 | 2026-09-07 | Added commit-bound corpus retrieval, grounded model orchestration, immutable feedback, governed Git proposals, training review, and delivery operations. |
 | 1.2.0 | 2026-09-07 | Added Owner-only provider connections, dynamic catalogs, encrypted secrets, versioned agent profiles, and governed review policy. |
 | 1.1.0 | 2026-09-06 | Added verified identity, transactional Owner bootstrap, account governance, and lifecycle capabilities. |
 | 1.0.0 | 2026-09-06 | Initial PointGuide governance derived from repository instructions and approved product decisions. |
 
-**Version**: 1.2.0 | **Ratified**: 2026-09-06 | **Last Amended**: 2026-09-07
+**Version**: 1.3.0 | **Ratified**: 2026-09-06 | **Last Amended**: 2026-09-07

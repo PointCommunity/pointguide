@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { authenticateRequest, SessionError, type SessionDependencies } from "@/lib/auth/session";
 import { AccountPolicyError } from "@/lib/auth/policy";
+import { assertSameOrigin } from "@/lib/auth/http";
 import { ProviderConfigurationError } from "@/lib/providers/memory-store";
 import { decryptSecret, encryptSecret, redactProviderConnection } from "@/lib/providers/secrets";
 import {
@@ -86,6 +87,7 @@ export async function handleProviderList(request: Request, dependencies: Provide
 
 export async function handleCodexLogin(request: Request, dependencies: ProviderHttpDependencies): Promise<Response> {
   try {
+    assertSameOrigin(request);
     const actor = await owner(request, dependencies);
     const login = await dependencies.codex.startDeviceLogin();
     await dependencies.store.updateConnection(actor.id, {
@@ -102,6 +104,7 @@ export async function handleCodexLogin(request: Request, dependencies: ProviderH
 
 export async function handleOllamaConnect(request: Request, dependencies: ProviderHttpDependencies): Promise<Response> {
   try {
+    assertSameOrigin(request);
     const actor = await owner(request, dependencies);
     const parsed = ollamaKeySchema.safeParse(await parseBody(request));
     if (!parsed.success) return errorResponse("INVALID_REQUEST", "A valid Ollama API key is required.", 400);
@@ -126,6 +129,7 @@ export async function handleProviderModels(
   dependencies: ProviderHttpDependencies,
 ): Promise<Response> {
   try {
+    if (refresh) assertSameOrigin(request);
     const actor = await owner(request, dependencies);
     const parsedProvider = z.enum(providerIds).safeParse(provider);
     if (!parsedProvider.success) return errorResponse("INVALID_PROVIDER", "Provider is invalid.", 404);
@@ -155,6 +159,7 @@ export async function handleProfilePut(
   dependencies: ProviderHttpDependencies,
 ): Promise<Response> {
   try {
+    assertSameOrigin(request);
     const actor = await owner(request, dependencies);
     const parsedId = z.uuid().safeParse(id);
     const parsed = profileSchema.safeParse(await parseBody(request));
@@ -167,6 +172,7 @@ export async function handleProfilePut(
 
 export async function handleReviewSetting(request: Request, dependencies: ProviderHttpDependencies): Promise<Response> {
   try {
+    assertSameOrigin(request);
     const actor = await owner(request, dependencies);
     const parsed = reviewSchema.safeParse(await parseBody(request));
     if (!parsed.success) return errorResponse("INVALID_REQUEST", "Review setting is invalid.", 400);

@@ -14,6 +14,12 @@ export class CodexAppServerProcessClient implements AppServerClient {
   private nextId = 1;
   private readonly pending = new Map<number, PendingRequest>();
   private lastStderr = "";
+  private readonly listeners = new Set<(method: string, params: unknown) => void>();
+
+  subscribe(listener: (method: string, params: unknown) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
 
   async request(method: string, params: Readonly<Record<string, unknown>>): Promise<unknown> {
     await this.ensureReady();
@@ -91,7 +97,13 @@ export class CodexAppServerProcessClient implements AppServerClient {
     } catch {
       return;
     }
-    if (!message || typeof message !== "object" || !("id" in message) || typeof message.id !== "number") return;
+    if (!message || typeof message !== "object") return;
+    if (!("id" in message) || typeof message.id !== "number") {
+      if ("method" in message && typeof message.method === "string") {
+        for (const listener of this.listeners) listener(message.method, "params" in message ? message.params : null);
+      }
+      return;
+    }
     const pending = this.pending.get(message.id);
     if (!pending) return;
     clearTimeout(pending.timeout);

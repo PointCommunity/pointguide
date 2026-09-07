@@ -28,6 +28,16 @@ function errorResponse(code: string, message: string, status: number): Response 
   return Response.json({ error: { code, message } }, { status });
 }
 
+export function assertSameOrigin(request: Request): void {
+  const origin = request.headers.get("origin");
+  if (!origin) return;
+  const requestUrl = new URL(request.url);
+  const expectedHost = request.headers.get("host") ?? requestUrl.host;
+  const expectedProtocol = request.headers.get("x-forwarded-proto")?.split(",")[0].trim() ?? requestUrl.protocol.replace(":", "");
+  const supplied = new URL(origin);
+  if (supplied.host !== expectedHost || supplied.protocol !== `${expectedProtocol}:`) throw new AccountPolicyError("FORBIDDEN", "Cross-origin mutations are not allowed.");
+}
+
 function policyErrorResponse(error: AccountPolicyError): Response {
   const status = error.code === "ACCOUNT_NOT_FOUND"
     ? 404
@@ -69,6 +79,7 @@ export async function handleAccountList(request: Request, dependencies: SessionD
 }
 
 export async function handleAccountUpdate(request: Request, targetId: string, dependencies: SessionDependencies): Promise<Response> {
+  try { assertSameOrigin(request); } catch (error) { return accountBoundaryErrorResponse(error); }
   let input: unknown;
   try {
     input = await request.json();

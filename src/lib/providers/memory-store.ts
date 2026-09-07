@@ -8,6 +8,8 @@ import type {
   ProviderConnectionUpdate,
   ProviderId,
   ProviderModel,
+  ExecutionProfile,
+  ProfileRole,
   ReviewSetting,
 } from "@/lib/providers/types";
 
@@ -30,8 +32,11 @@ export class MemoryProviderStore implements ProviderConfigurationStore {
   private readonly connections = new Map<ProviderId, ProviderConnectionRecord>();
   private readonly models = new Map<ProviderId, ProviderModel[]>();
   private readonly profiles = new Map<string, AgentProfileRecord>();
-  private review: ReviewSetting = { enabled: false, version: 0 };
+  private readonly prompts = new Map<string, string>();
+  private review: ReviewSetting;
   private lock: Promise<void> = Promise.resolve();
+
+  constructor(reviewEnabled = false) { this.review = { enabled: reviewEnabled, version: 0 }; }
 
   private async transaction<T>(operation: () => T | Promise<T>): Promise<T> {
     const previous = this.lock;
@@ -128,12 +133,21 @@ export class MemoryProviderStore implements ProviderConfigurationStore {
       }
       this.profiles.clear();
       for (const [id, candidate] of nextProfiles) this.profiles.set(id, candidate);
+      this.prompts.set(profile.id, input.ownerPrompt);
       return { ...profile };
     });
   }
 
   async listProfiles(): Promise<AgentProfileRecord[]> {
     return [...this.profiles.values()].map((profile) => ({ ...profile }));
+  }
+
+  async getExecutionProfile(role: ProfileRole): Promise<ExecutionProfile | null> {
+    const profile = [...this.profiles.values()].find((candidate) => candidate.role === role && candidate.enabled);
+    if (!profile) return null;
+    const connection = this.connections.get(profile.provider);
+    if (!connection) return null;
+    return { ...profile, ownerPrompt: this.prompts.get(profile.id) ?? "", connection: copyConnection(connection) };
   }
 
   async getReviewSetting(): Promise<ReviewSetting> {

@@ -28,7 +28,7 @@
 }
 
 * { box-sizing: border-box; }
-html { min-width: 20rem; background: var(--night); scroll-behavior: smooth; }
+html { min-width: 20rem; background: var(--night); scroll-behavior: smooth; scroll-padding-block: 5rem 6rem; }
 body { margin: 0; min-height: 100dvh; background: var(--night); color: var(--ink); font-size: 1rem; line-height: 1.55; }
 button, textarea, input, select { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
@@ -68,6 +68,9 @@ h2 { font-size: clamp(1.45rem, 5vw, 2.15rem); }
 .composer-shell textarea::placeholder { color: var(--faint); opacity: 1; }
 .composer-actions { display: flex; flex-direction: column; gap: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--line); }
 .composer-actions p { display: flex; align-items: center; gap: var(--space-2); margin: 0; color: var(--muted); font-size: .78rem; }
+.composer-actions > div { display: grid; gap: var(--space-2); }
+.deep-research-toggle { display: flex !important; min-height: 44px; align-items: center; gap: var(--space-2); margin: 0 !important; color: var(--ink) !important; cursor: pointer; }
+.deep-research-toggle input { width: 1.25rem; height: 1.25rem; accent-color: var(--mint); }
 .status-dot { display: inline-block; width: .5rem; height: .5rem; border-radius: 50%; background: var(--mint); box-shadow: 0 0 0 .2rem color-mix(in srgb, var(--mint) 14%, transparent); }
 .composer-actions button { min-height: 3rem; padding: var(--space-3) var(--space-4); border: 1px solid var(--mint); border-radius: var(--radius-sm); background: var(--mint); color: var(--night); font-weight: 850; cursor: pointer; }
 .composer-actions button:hover { background: var(--mint-soft); }
@@ -89,6 +92,7 @@ h2 { font-size: clamp(1.45rem, 5vw, 2.15rem); }
 .error-panel p { margin: var(--space-1) 0 0; color: var(--muted); }
 .answer-panel { margin-top: var(--space-6); padding-top: var(--space-6); border-top: 1px solid var(--line); }
 .answer-panel > header { display: flex; align-items: start; justify-content: space-between; gap: var(--space-4); }
+.answer-badges { display: flex; flex-wrap: wrap; justify-content: end; gap: var(--space-2); }
 .confidence { flex: none; padding: .2rem .5rem; border: 1px solid currentColor; color: var(--mint); font-size: .65rem; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
 .confidence.unknown { color: var(--amber); }
 .direct-answer { max-width: 50rem; margin: var(--space-5) 0; font-size: clamp(1.12rem, 3.5vw, 1.45rem); line-height: 1.5; }
@@ -178,6 +182,30 @@ h2 { font-size: clamp(1.45rem, 5vw, 2.15rem); }
 .settings-success, .settings-error { margin: 0; font-size: .78rem; }
 .settings-success { color: var(--mint); }
 .settings-error { color: var(--danger); }
+.training-status { padding: var(--space-4); border-left: 3px solid var(--amber); background: var(--panel); color: var(--muted); }
+.training-grid { display: grid; gap: var(--space-4); }
+.training-card, .proposal-form { padding: var(--space-4); border: 1px solid var(--line); background: var(--panel); }
+.knowledge-card { display: grid; gap: var(--space-4); padding: var(--space-5); border: 1px solid var(--line); background: var(--panel); }
+.knowledge-card h2 { margin: 0; font-size: 1.35rem; }
+.knowledge-card p { color: var(--muted); }
+.knowledge-card a { display: inline-flex; min-height: 44px; align-items: center; color: var(--mint); }
+.account-summary { display: grid; gap: var(--space-2); padding: var(--space-4); border: 1px solid var(--line); background: var(--panel); }
+.account-summary div { display: grid; grid-template-columns: 6rem minmax(0,1fr); gap: var(--space-3); padding: var(--space-2); border-bottom: 1px solid var(--line); }
+.account-summary dt { color: var(--muted); }.account-summary dd { margin: 0; overflow-wrap: anywhere; }
+.more-links { display: grid; gap: var(--space-2); }
+.more-links a { display: flex; min-height: 52px; align-items: center; padding: var(--space-3); border: 1px solid var(--line); text-decoration: none; }
+.training-card header { display: flex; align-items: center; justify-content: space-between; }
+.training-card h2, .proposal-form h2 { font-size: 1.35rem; }
+.training-card header span { color: var(--mint); }
+.training-card ul { display: grid; gap: var(--space-2); margin: var(--space-4) 0 0; padding: 0; list-style: none; }
+.training-card li { display: grid; padding: var(--space-3); border: 1px solid var(--line); }
+.training-card li span, .training-card li small, .training-card > p { color: var(--muted); }
+.training-card li button { min-height: 44px; margin-top: var(--space-2); border: 1px solid var(--line-strong); background: var(--night-soft); color: var(--mint); }
+.proposal-form { display: grid; gap: var(--space-4); margin-top: var(--space-6); }
+.proposal-form label { display: grid; gap: var(--space-2); color: var(--muted); font-size: .78rem; font-weight: 750; }
+.proposal-form input, .proposal-form textarea { min-height: 44px; padding: var(--space-3); border: 1px solid var(--line-strong); background: var(--night-soft); color: var(--ink); }
+.proposal-form textarea { min-height: 8rem; resize: vertical; }
+.proposal-form button { min-height: 48px; border: 1px solid var(--mint); background: var(--mint); color: var(--night); font-weight: 850; }
 .review-setting { display: grid; gap: var(--space-5); border-left: 3px solid var(--mint); }
 .review-setting p { max-width: 46rem; margin: var(--space-3) 0 0; color: var(--muted); }
 .review-setting .switch-row { padding: var(--space-2) var(--space-3); border: 1px solid var(--line-strong); background: var(--night-soft); }
@@ -211,6 +239,7 @@ h2 { font-size: clamp(1.45rem, 5vw, 2.15rem); }
 }
 
 @media (min-width: 64rem) {
+  html { scroll-padding-block: 1rem; }
   .app-frame { display: grid; grid-template-columns: var(--rail) minmax(0, 1fr); }
   .side-rail { position: sticky; top: 0; display: flex; height: 100dvh; flex-direction: column; padding: var(--space-6) var(--space-4); border-right: 1px solid var(--line); background: var(--night-soft); }
   .side-rail > .brand { padding-inline: var(--space-2); }
@@ -230,6 +259,7 @@ h2 { font-size: clamp(1.45rem, 5vw, 2.15rem); }
   .welcome-panel { padding-top: 0; }
   .composer-shell { padding: var(--space-6); }
   .provider-grid, .profile-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .training-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .provider-card, .profile-editor, .review-setting { padding: var(--space-5); }
   .review-setting { grid-template-columns: minmax(0, 1fr) minmax(15rem, .45fr); align-items: center; }
 }

@@ -1,0 +1,23 @@
+services:
+  database:
+    image: postgres:17-alpine
+    environment: { POSTGRES_USER: pointguide, POSTGRES_PASSWORD: pointguide, POSTGRES_DB: pointguide }
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U pointguide"], interval: 2s, timeout: 2s, retries: 20 }
+  migrate:
+    build: .
+    command: ["./node_modules/.bin/tsx", "scripts/migrate.ts"]
+    environment: { DATABASE_URL: "postgres://pointguide:pointguide@database:5432/pointguide" }
+    depends_on: { database: { condition: service_healthy } }
+  app:
+    build: .
+    ports: ["127.0.0.1:3100:3000"]
+    environment:
+      DATABASE_URL: "postgres://pointguide:pointguide@database:5432/pointguide"
+      AUTH_MODE: cloudflare
+      CF_ACCESS_TEAM_DOMAIN: "https://example.cloudflareaccess.com"
+      CF_ACCESS_AUDIENCE: local-smoke
+      PROVIDER_SECRET_KEY: "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc="
+      CORPUS_ROOT: /corpus
+      CORPUS_COMMIT: cc1f67121a8fed2fbfc6a7dfab0f974a44bd022d
+    volumes: ["../PointAudio:/corpus:ro"]
+    depends_on: { migrate: { condition: service_completed_successfully } }
