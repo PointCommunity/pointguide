@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
+import { sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { getDatabase } from "@/db/client";
 import { PostgresAccountStore } from "@/db/accounts";
-import { accounts, auditEvents } from "@/db/schema";
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 const databaseTest = testDatabaseUrl ? it : it.skip;
@@ -20,8 +20,7 @@ function assertDisposableDatabaseUrl(value: string): string {
 describe("PostgreSQL account governance", () => {
   databaseTest("serializes a real empty-table bootstrap without a stale transaction snapshot", async () => {
     const database = getDatabase(assertDisposableDatabaseUrl(testDatabaseUrl as string));
-    await database.delete(auditEvents);
-    await database.delete(accounts);
+    await database.execute(sql`truncate table accounts cascade`);
     const store = new PostgresAccountStore(database);
     const issuer = `https://test-${randomUUID()}.cloudflareaccess.com`;
     const identity = (subject: string) => ({ issuer, subject, email: `${subject}@example.com`, displayName: subject });

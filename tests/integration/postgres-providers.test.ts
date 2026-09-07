@@ -1,15 +1,10 @@
+import { sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { PostgresAccountStore } from "@/db/accounts";
 import { getDatabase } from "@/db/client";
 import { PostgresProviderStore } from "@/db/providers";
 import {
-  accounts,
-  agentProfiles,
-  applicationSettings,
   auditEvents,
-  promptRevisions,
-  providerConnections,
-  providerModels,
 } from "@/db/schema";
 import type { ProviderModel } from "@/lib/providers/types";
 
@@ -40,13 +35,7 @@ const model: ProviderModel = {
 describe("PostgreSQL provider governance", () => {
   databaseTest("persists connections, catalogs, prompt revisions, and review policy", async () => {
     const database = getDatabase(assertDisposableDatabaseUrl(testDatabaseUrl as string));
-    await database.delete(applicationSettings);
-    await database.delete(promptRevisions);
-    await database.delete(agentProfiles);
-    await database.delete(providerModels);
-    await database.delete(providerConnections);
-    await database.delete(auditEvents);
-    await database.delete(accounts);
+    await database.execute(sql`truncate table accounts cascade`);
 
     const owner = await new PostgresAccountStore(database).provisionAccount({
       issuer: "https://provider-test.cloudflareaccess.com",
