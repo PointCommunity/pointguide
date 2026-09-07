@@ -23,58 +23,58 @@
 
 ## Phase 3: Identity and Account Governance
 
-- [ ] T013 [US2] Write failing JWT, bootstrap-race, lifecycle, role-matrix, self-change, and final-Owner tests in `tests/unit/auth.test.ts` and `tests/integration/accounts.test.ts`
-- [ ] T014 [US2] Add initial SQL migration and Drizzle schema for accounts/audit in `migrations/0001_identity.sql` and `src/db/schema.ts`
-- [ ] T015 [US2] Implement Cloudflare assertion verification and transactional provisioning in `src/lib/auth/access.ts`, `src/lib/auth/provision.ts`, and `src/lib/auth/session.ts`
-- [ ] T016 [US2] Implement role/lifecycle policy and account APIs in `src/lib/auth/policy.ts`, `src/app/api/session/route.ts`, and `src/app/api/admin/users/[id]/route.ts`
-- [ ] T017 [US2] Implement Pending/Suspended pages and Admin account management in `src/app/pending/page.tsx`, `src/app/suspended/page.tsx`, and `src/app/admin/accounts/page.tsx`
-- [ ] T018 [US2] Add account-governance browser tests in `tests/e2e/accounts.spec.ts`
+- [x] T013 [US2] Write failing JWT, bootstrap-race, lifecycle, role-matrix, self-change, and final-Owner tests in `tests/unit/auth.test.ts` and `tests/integration/accounts.test.ts`
+- [x] T014 [US2] Add initial SQL migration and Drizzle schema for accounts/audit in `migrations/0001_identity.sql` and `src/db/schema.ts`
+- [x] T015 [US2] Implement Cloudflare assertion verification and transactional provisioning in `src/lib/auth/access.ts`, `src/lib/auth/provision.ts`, and `src/lib/auth/session.ts`
+- [x] T016 [US2] Implement role/lifecycle policy and account APIs in `src/lib/auth/policy.ts`, `src/app/api/session/route.ts`, and `src/app/api/admin/users/[id]/route.ts`
+- [x] T017 [US2] Implement Pending/Suspended pages and Admin account management in `src/app/pending/page.tsx`, `src/app/suspended/page.tsx`, and `src/app/admin/accounts/page.tsx`
+- [x] T018 [US2] Add account-governance browser tests in `tests/e2e/accounts.spec.ts`
 
 ## Phase 4: Owner Provider and Profile Control
 
-- [ ] T019 [US3] Write failing provider secret-redaction, catalog-normalization, supported-effort, and Owner-policy tests in `tests/unit/providers.test.ts`
-- [ ] T020 [US3] Add provider/profile/prompt/settings schema and migration in `migrations/0002_providers.sql` and `src/db/schema.ts`
-- [ ] T021 [US3] Implement provider-neutral interfaces and encrypted secret boundary in `src/lib/providers/types.ts`, `src/lib/providers/secrets.ts`, and `src/lib/providers/catalog.ts`
-- [ ] T022 [US3] Implement pinned Codex App Server device-login and model-list adapter in `src/lib/providers/codex.ts`
-- [ ] T023 [US3] Implement Ollama Cloud key verification and `/api/tags` adapter in `src/lib/providers/ollama.ts`
-- [ ] T024 [US3] Implement Owner-only provider/profile/review APIs under `src/app/api/owner/`
-- [ ] T025 [US3] Implement Owner AI settings UI with masked status, dynamic models/efforts, profiles, prompts, and review toggle in `src/app/owner/ai/page.tsx`
-- [ ] T026 [US3] Add deterministic Codex/Ollama contract fixtures and Owner UI browser tests in `tests/fixtures/providers/`, `tests/contract/providers.test.ts`, and `tests/e2e/owner-ai.spec.ts`
+- [x] T019 [US3] Write failing provider secret-redaction, catalog-normalization, supported-effort, and Owner-policy tests in `tests/unit/providers.test.ts`
+- [x] T020 [US3] Add provider/profile/prompt/settings schema and migration in `migrations/0002_providers.sql` and `src/db/schema.ts`
+- [x] T021 [US3] Implement provider-neutral interfaces and encrypted secret boundary in `src/lib/providers/types.ts`, `src/lib/providers/secrets.ts`, and `src/lib/providers/catalog.ts`
+- [x] T022 [US3] Implement pinned Codex App Server device-login and model-list adapter in `src/lib/providers/codex.ts`
+- [x] T023 [US3] Implement Ollama Cloud key verification and `/api/tags` adapter in `src/lib/providers/ollama.ts`
+- [x] T024 [US3] Implement Owner-only provider/profile/review APIs under `src/app/api/owner/`
+- [x] T025 [US3] Implement Owner AI settings UI with masked status, dynamic models/efforts, profiles, prompts, and review toggle in `src/app/owner/ai/page.tsx`
+- [x] T026 [US3] Add deterministic Codex/Ollama contract fixtures and Owner UI browser tests in `tests/fixtures/providers/`, `tests/contract/providers.test.ts`, and `tests/e2e/owner-ai.spec.ts`
 
 ## Phase 5: Reviewing Agent and Grounded Answer Pipeline
 
-- [ ] T027 [US1] [US3] Write failing orchestration tests for normal, same-model, cross-provider, dangling evidence, contradiction, timeout, and fail-closed paths in `tests/unit/orchestrator.test.ts`
-- [ ] T028 [US1] [US3] Implement primary structured output, reviewer findings, and deterministic renderer in `src/lib/agent/orchestrator.ts`, `src/lib/agent/reviewer.ts`, and `src/lib/agent/render.ts`
-- [ ] T029 [US1] Implement bounded supplemental web evidence adapter and SSRF/media/size protections in `src/lib/evidence/web.ts`
-- [ ] T030 [US1] Replace fixture Ask with persisted streaming conversation route and per-query Deep research in `src/app/api/conversations/[id]/messages/route.ts`
-- [ ] T031 [US1] Update Ask UI for streaming, global feature discovery, review states, failures, and claim-linked citations in `src/components/ask-workspace.tsx`
-- [ ] T032 [US1] [US3] Add integrated normal/Deep research success and failure browser tests in `tests/e2e/deep-research.spec.ts`
+- [x] T027 [US1] [US3] Write failing orchestration tests for normal, same-model, cross-provider, dangling evidence, contradiction, timeout, and fail-closed paths in `tests/unit/orchestrator.test.ts`
+- [x] T028 [US1] [US3] Implement primary structured output, reviewer findings, and deterministic renderer in `src/lib/agent/orchestrator.ts`, `src/lib/agent/reviewer.ts`, and `src/lib/agent/render.ts`
+- [x] T029 [US1] Implement bounded supplemental web evidence adapter and SSRF/media/size protections in `src/lib/evidence/web.ts`
+- [x] T030 [US1] Replace fixture Ask with persisted streaming conversation route and per-query Deep research in `src/app/api/conversations/[id]/messages/route.ts`
+- [x] T031 [US1] Update Ask UI for streaming, global feature discovery, review states, failures, and claim-linked citations in `src/components/ask-workspace.tsx`
+- [x] T032 [US1] [US3] Add integrated normal/Deep research success and failure browser tests in `tests/e2e/deep-research.spec.ts`
 
 ## Phase 6: Feedback, Training, and Governed Git
 
-- [ ] T033 [US4] [US5] Write failing feedback, training state, web finding, proposal transition, path allow-list, and exact-diff tests in `tests/unit/learning.test.ts` and `tests/unit/git-proposals.test.ts`
-- [ ] T034 [US4] [US5] Add conversation/evidence/answer/feedback/training/proposal/job schema in `migrations/0003_learning.sql` and `src/db/schema.ts`
-- [ ] T035 [US4] Implement immutable feedback and training services/APIs in `src/lib/feedback/`, `src/app/api/answers/[id]/feedback/route.ts`, and `src/app/api/training/`
-- [ ] T036 [US5] Implement web-finding intake and typed proposal state machine in `src/lib/git/proposals.ts`, `src/app/api/citations/[id]/flags/route.ts`, and `src/app/api/change-proposals/route.ts`
-- [ ] T037 [US5] Implement bounded GitHub branch/commit/PR worker adapter with disposable-repo integration tests in `src/lib/git/worker.ts` and `tests/integration/git-worker.test.ts`
-- [ ] T038 [US4] [US5] Implement Trainer review and proposal UI in `src/app/training/page.tsx`
-- [ ] T039 [US4] [US5] Add feedback/training/proposal browser tests in `tests/e2e/training.spec.ts`
+- [x] T033 [US4] [US5] Write failing feedback, training state, web finding, proposal transition, path allow-list, and exact-diff tests in `tests/unit/learning.test.ts` and `tests/unit/git-proposals.test.ts`
+- [x] T034 [US4] [US5] Add conversation/evidence/answer/feedback/training/proposal/job schema in `migrations/0003_learning.sql` and `src/db/schema.ts`
+- [x] T035 [US4] Implement immutable feedback and training services/APIs in `src/lib/feedback/`, `src/app/api/answers/[id]/feedback/route.ts`, and `src/app/api/training/`
+- [x] T036 [US5] Implement web-finding intake and typed proposal state machine in `src/lib/git/proposals.ts`, `src/app/api/citations/[id]/flags/route.ts`, and `src/app/api/change-proposals/route.ts`
+- [x] T037 [US5] Implement bounded GitHub branch/commit/PR worker adapter with disposable-repo integration tests in `src/lib/git/worker.ts` and `tests/integration/git-worker.test.ts`
+- [x] T038 [US4] [US5] Implement Trainer review and proposal UI in `src/app/training/page.tsx`
+- [x] T039 [US4] [US5] Add feedback/training/proposal browser tests in `tests/e2e/training.spec.ts`
 
 ## Phase 7: Operations and Delivery
 
-- [ ] T040 [US6] Implement migration, leased worker, and commit-pinned index commands in `scripts/migrate.ts`, `scripts/worker.ts`, and `scripts/index-repo.ts`
-- [ ] T041 [US6] Create a multi-stage non-root AMD64-capable image and local compose stack in `Dockerfile` and `compose.yaml`
-- [ ] T042 [US6] Add corpus, secret, dependency, contract, and release-identity checks in `scripts/security-check.mjs`, `scripts/verify-corpus.mjs`, and `scripts/verify-release.mjs`
-- [ ] T043 [US6] Add source quality and exact-head container workflows in `.github/workflows/quality.yml` and `.github/workflows/container.yml`
-- [ ] T044 [US6] Prepare dark HTML operating/runbook documentation in `docs/development.html`, `docs/identity-and-providers.html`, and `docs/release.html`
+- [x] T040 [US6] Implement migration, leased worker, and commit-pinned index commands in `scripts/migrate.ts`, `scripts/worker.ts`, and `scripts/index-repo.ts`
+- [x] T041 [US6] Create a multi-stage non-root AMD64-capable image and local compose stack in `Dockerfile` and `compose.yaml`
+- [x] T042 [US6] Add corpus, secret, dependency, contract, and release-identity checks in `scripts/security-check.mjs`, `scripts/verify-corpus.mjs`, and `scripts/verify-release.mjs`
+- [x] T043 [US6] Add source quality and exact-head container workflows in `.github/workflows/quality.yml` and `.github/workflows/container.yml`
+- [x] T044 [US6] Prepare dark HTML operating/runbook documentation in `docs/development.html`, `docs/identity-and-providers.html`, and `docs/release.html`
 - [ ] T045 [US6] After explicit publication authorization, build an exact clean archive locally for `linux/amd64`, smoke it, publish to Zot, and record the immutable digest
 - [ ] T046 [US6] After explicit GitOps authorization, create/update `apps/pointguide-canary` from current Gitea `origin/master`, push, reconcile, and verify exact digest plus whole-cluster health
 - [ ] T047 [US6] After explicit production authorization, promote the same reviewed digest and verify production/edge behavior
 
 ## Phase 8: Final Validation and Handoff
 
-- [ ] T048 Run unit/integration/contract tests with core coverage at or above 80%, typecheck, lint, build, security checks, and `git diff --check`
-- [ ] T049 Run Playwright at 320, 390, 768, 1024, and 1440 widths; check critical interactions, keyboard/focus, reduced motion, 200% zoom, console errors, touch targets, and page overflow
+- [x] T048 Run unit/integration/contract tests with core coverage at or above 80%, typecheck, lint, build, security checks, and `git diff --check`
+- [x] T049 Run Playwright at 320, 390, 768, 1024, and 1440 widths; check critical interactions, keyboard/focus, reduced motion, 200% zoom, console errors, touch targets, and page overflow
 - [ ] T050 Build and smoke the local `linux/amd64` container under emulation; verify non-root user, source revision, liveness/readiness, migrations, worker, and clean shutdown
 - [ ] T051 Update this task list, constitution capabilities, source/document indexes, and a dark HTML validation report with exact performed checks and residual gaps
 

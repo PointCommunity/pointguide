@@ -42,7 +42,9 @@ describe("server environment", () => {
       DATABASE_URL: "postgres://service/database",
       CF_ACCESS_TEAM_DOMAIN: "https://team.cloudflareaccess.com",
       CF_ACCESS_AUDIENCE: "audience",
-      PROVIDER_SECRET_KEY: "base64-key",
+      PROVIDER_SECRET_KEY: Buffer.alloc(32, 7).toString("base64"),
+      CORPUS_ROOT: "/corpus",
+      CORPUS_COMMIT: "a".repeat(40),
     });
     expect(() => assertProductionEnvironment(environment)).not.toThrow();
   });

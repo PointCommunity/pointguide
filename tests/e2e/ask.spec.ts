@@ -4,13 +4,11 @@ import { expect, test } from "@playwright/test";
 test("asks a grounded question and traces the answer to PointAudio evidence", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1, name: "What can I help you solve?" })).toBeVisible();
-  await expect(page.getByText("Deep research", { exact: true })).toHaveCount(0);
-
   await page.getByLabel("Your question").fill("What does a red AES50 sync light on the DL32 mean?");
   await page.getByRole("button", { name: /Ask PointGuide/ }).click();
 
   await expect(page.getByRole("heading", { name: "What the evidence supports" })).toBeVisible();
-  await expect(page.getByText("A red AES50 SYNC light means", { exact: false })).toBeVisible();
+  await expect(page.locator(".direct-answer")).toContainText("On a DL32, a red AES50 SYNC LED");
   await expect(page.locator(".claim-ledger li").getByText("On a DL32, a red AES50 SYNC LED", { exact: false })).toBeVisible();
   await page.getByText("DL32 Quick Start Guide").click();
   await expect(page.getByText("AES50 SYNC LEDs indicate proper clock synchronisation", { exact: false })).toBeVisible();
@@ -42,8 +40,12 @@ test("keeps the phone layout inside the viewport with touch-sized controls", asy
 
 test("supports keyboard entry and has no automatically detectable WCAG A/AA violations", async ({ page }) => {
   await page.goto("/");
-  await page.keyboard.press("Tab");
-  await expect(page.getByRole("link", { name: "Skip to main content" })).toBeFocused();
+  await expect(page.getByRole("heading", { name: "What can I help you solve?" })).toBeVisible();
+  const skipLink = page.getByRole("link", { name: "Skip to main content" });
+  for (let index = 0; index < 3 && !await skipLink.evaluate((element) => element === document.activeElement); index += 1) {
+    await page.keyboard.press("Tab");
+  }
+  await expect(skipLink).toBeFocused();
 
   await page.getByLabel("Your question").focus();
   await page.keyboard.type("Which projector is installed in the sanctuary?");

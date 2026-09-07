@@ -37,12 +37,49 @@ Human-facing documents and diagrams are responsive dark-mode HTML. Agent workflo
 - No secrets or sensitive personal/private-network data in Git, logs, prompts, or browser payloads.
 - No Cloudflare, 1Password, Gitea, Argo CD, registry, production, or live-system mutation without the applicable explicit authorization.
 
+## Project Capabilities
+
+### Identity and Account Governance
+
+- Cloudflare Access application assertions are verified against the configured issuer, audience, RS256 signature, expiry, subject, application-token type, and identity-provider email.
+- A serialized PostgreSQL bootstrap transaction creates one approved Owner; later identities start Pending.
+- Server-side account policy enforces lifecycle access, Admin and Owner role boundaries, optimistic versions, self-change protection, and retention of an active Owner.
+- The protected account API and mobile account directory expose only public account fields and emit bounded audit metadata.
+
+### Owner AI Governance
+
+- Only an approved Owner can connect Codex or Ollama Cloud, refresh catalogs, select models and advertised reasoning efforts, revise agent prompts, or change global review policy.
+- Codex uses the initialized App Server device-code flow and keeps its credential directory server-only. Ollama keys cross a write-only boundary and are stored only as AES-256-GCM ciphertext.
+- Provider catalogs, primary/reviewer profiles, immutable prompt revisions, and review policy persist in PostgreSQL with bounded audit metadata that excludes prompts and credentials.
+- Deep research cannot be enabled until both an enabled primary profile and enabled reviewer profile are valid; same-model and cross-provider profiles remain supported.
+
+### Established Patterns
+
+- Route handlers delegate authentication and authorization to testable server-only boundaries.
+- Production uses PostgreSQL while local deterministic browser tests use an in-memory store that is prohibited in production mode.
+- Navigation is derived from the approved account role; lifecycle redirects never replace server-side authorization.
+
+### Evidence, Review, and Governed Learning
+
+- Production retrieval validates the exact PointAudio commit and checksum manifest before loading searchable extracted-text chunks; readiness fails closed if the database or corpus is unavailable.
+- Primary and reviewing providers receive bounded evidence as untrusted data and return structured claims. Deterministic code rejects dangling citations and suppresses reviewer-rejected claims.
+- Feedback is immutable usefulness context. Trainers turn signals and web findings into exact-content proposals; Admin or Owner approval creates a leased job.
+- The Git worker verifies repository, path allow-list, base commit, and content digest, then opens a branch and pull request without merging or force-pushing.
+
+### Delivery Baseline
+
+- Additive digest-tracked migrations, a leased PostgreSQL worker, multi-stage non-root container, security headers, dependency/secret checks, and exact-source GitHub workflows are established.
+- Dark HTML operating guides cover development, identity/providers, release, rollback, and validation evidence.
+
 ## Governance
 
 Principle changes require stakeholder discussion and a major version increment. New compatible capabilities increment the minor version after validation; wording-only changes increment the patch version. Each feature must report constitution compliance and justified exceptions.
 
 | Version | Date | Changes |
 |---|---|---|
+| 1.3.0 | 2026-09-07 | Added commit-bound corpus retrieval, grounded model orchestration, immutable feedback, governed Git proposals, training review, and delivery operations. |
+| 1.2.0 | 2026-09-07 | Added Owner-only provider connections, dynamic catalogs, encrypted secrets, versioned agent profiles, and governed review policy. |
+| 1.1.0 | 2026-09-06 | Added verified identity, transactional Owner bootstrap, account governance, and lifecycle capabilities. |
 | 1.0.0 | 2026-09-06 | Initial PointGuide governance derived from repository instructions and approved product decisions. |
 
-**Version**: 1.0.0 | **Ratified**: 2026-09-06 | **Last Amended**: 2026-09-06
+**Version**: 1.3.0 | **Ratified**: 2026-09-06 | **Last Amended**: 2026-09-07

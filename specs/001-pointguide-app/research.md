@@ -30,7 +30,7 @@ This workflow artifact records implementation decisions. The linked sources are 
 
 ## Codex Provider
 
-**Decision**: Pin the Codex CLI/App Server runtime version in the image. An Owner starts `account/login/start` with `chatgptDeviceCode`; the server exposes only the verification URL, user code, expiry/status, and later connection status. Populate model and supported reasoning-effort choices from `model/list`.
+**Decision**: Pin the Codex CLI/App Server runtime version in the image. An Owner starts `account/login/start` with `chatgptDeviceCode`; the server exposes only the verification URL, user code, login identifier, and later connection status. Populate model and supported reasoning-effort choices from the paginated `model/list` response. Each transport connection must complete `initialize` and send `initialized` before these calls.
 
 **Rationale**: The official App Server protocol provides managed ChatGPT authentication and dynamic model metadata, including effort defaults. Device-code authentication is designed for headless environments.
 
@@ -38,8 +38,8 @@ This workflow artifact records implementation decisions. The linked sources are 
 
 **Primary sources**:
 
-- OpenAI App Server authentication and model catalog: https://learn.chatgpt.com/docs/app-server
-- OpenAI headless device-code authentication: https://learn.chatgpt.com/docs/auth
+- OpenAI App Server authentication and model catalog (verified 2026-09-07): https://learn.chatgpt.com/docs/app-server
+- OpenAI headless device-code authentication (verified 2026-09-07): https://learn.chatgpt.com/docs/auth
 
 **Alternatives considered**: API-key-only OpenAI integration (does not meet the requested admin/Owner OAuth experience); browser callback OAuth (less suitable for a headless homelab workload); granting the model Codex shell tools (unnecessary and unsafe).
 
@@ -49,7 +49,10 @@ This workflow artifact records implementation decisions. The linked sources are 
 
 **Rationale**: Ollama documents direct cloud API-key authentication and a model-list endpoint, allowing the UI to reflect the connected account rather than hard-code model names.
 
-**Primary source**: https://docs.ollama.com/cloud
+**Primary sources** (verified 2026-09-07):
+
+- Ollama Cloud API authentication and direct host: https://docs.ollama.com/cloud
+- Ollama `/api/tags` response contract: https://docs.ollama.com/api/tags
 
 **Alternatives considered**: Local Ollama host (not requested and operationally different); hard-coded cloud catalog (drifts); client-side key storage (unacceptable).
 

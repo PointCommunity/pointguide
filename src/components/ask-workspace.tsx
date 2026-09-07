@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, type FormEvent } from "react";
+import { useEffect, useId, useState, type FormEvent } from "react";
 import type { AnswerClaim, EvidenceItem } from "@/lib/agent/schema";
 
 interface DemoAnswer {
@@ -11,7 +11,7 @@ interface DemoAnswer {
   confidence: "CONFIRMED" | "SUPPORTED" | "TENTATIVE" | "UNKNOWN";
   claims: AnswerClaim[];
   evidence: EvidenceItem[];
-  reviewStatus: "NOT_REQUESTED";
+  reviewStatus: "NOT_REQUESTED" | "PASSED";
 }
 
 const starters = [
@@ -50,29 +50,70 @@ export function AskWorkspace() {
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState<"helpful" | "not-helpful" | null>(null);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [reviewEnabled, setReviewEnabled] = useState(false);
+  const [deepResearch, setDeepResearch] = useState(false);
+  const [progress, setProgress] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    void fetch("/api/conversations", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: "PointGuide support" }) })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Session unavailable");
+        return response.json() as Promise<{ conversation: { id: string }; reviewEnabled: boolean }>;
+      })
+      .then((payload) => { if (active) { setConversationId(payload.conversation.id); setReviewEnabled(payload.reviewEnabled); } })
+      .catch(() => { if (active) setError("PointGuide could not start a support session."); });
+    return () => { active = false; };
+  }, []);
 
   async function ask(nextQuestion: string) {
     const value = nextQuestion.trim();
-    if (!value || status === "loading") return;
+    if (!value || status === "loading" || !conversationId) return;
     setQuestion(value);
     setStatus("loading");
     setError("");
     setFeedback(null);
     try {
-      const response = await fetch("/api/demo/ask", {
+      const response = await fetch(`/api/conversations/${conversationId}/messages`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ question: value }),
+        body: JSON.stringify({ question: value, deepResearch }),
       });
-      const payload = await response.json() as { answer?: DemoAnswer; error?: { message?: string } };
-      if (!response.ok || !payload.answer) throw new Error(payload.error?.message ?? "PointGuide could not answer that question.");
-      setAnswer(payload.answer);
+      if (!response.ok || !response.body) throw new Error("PointGuide could not answer that question.");
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let completed: DemoAnswer | null = null;
+      for (;;) {
+        const chunk = await reader.read();
+        buffer += decoder.decode(chunk.value ?? new Uint8Array(), { stream: !chunk.done });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line) continue;
+          const item = JSON.parse(line) as { type: string; data: { message?: string; answer?: DemoAnswer } };
+          if (item.type === "status") setProgress(item.data.message ?? "Working");
+          if (item.type === "error") throw new Error(item.data.message ?? "PointGuide could not verify an answer.");
+          if (item.type === "answer" && item.data.answer) completed = item.data.answer;
+        }
+        if (chunk.done) break;
+      }
+      if (!completed) throw new Error("PointGuide did not return an answer.");
+      setAnswer(completed);
       setStatus("idle");
+      setProgress("");
     } catch (caught) {
       setAnswer(null);
       setStatus("error");
       setError(caught instanceof Error ? caught.message : "PointGuide could not answer that question.");
     }
+  }
+
+  async function rate(rating: "helpful" | "not-helpful") {
+    if (!answer) return;
+    const response = await fetch(`/api/answers/${answer.id}/feedback`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ rating: rating === "helpful" ? "HELPFUL" : "NOT_HELPFUL", question, evidenceIds: answer.evidence.map((item) => item.id) }) });
+    if (response.ok) setFeedback(rating); else setError("PointGuide could not save that rating.");
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -101,13 +142,16 @@ export function AskWorkspace() {
           placeholder="Example: Why is my DL32 showing a red AES50 sync light?"
         />
         <div className="composer-actions">
-          <p><span className="status-dot" aria-hidden="true" /> PointAudio repository sources first</p>
-          <button type="submit" disabled={status === "loading" || !question.trim()}>
+          <div>
+            <p><span className="status-dot" aria-hidden="true" /> PointAudio repository sources first</p>
+            {reviewEnabled ? <label className="deep-research-toggle"><input type="checkbox" checked={deepResearch} onChange={(event) => setDeepResearch(event.target.checked)} /> Deep research</label> : null}
+          </div>
+          <button type="submit" disabled={status === "loading" || !question.trim() || !conversationId}>
             {status === "loading" ? "Checking sources…" : "Ask PointGuide"} <span aria-hidden="true">↗</span>
           </button>
         </div>
         <p id={statusId} className="sr-only" aria-live="polite">
-          {status === "loading" ? "Checking repository evidence." : status === "error" ? error : answer ? "Answer ready." : ""}
+          {status === "loading" ? progress || "Checking repository evidence." : status === "error" ? error : answer ? "Answer ready." : ""}
         </p>
       </form>
 
@@ -121,7 +165,7 @@ export function AskWorkspace() {
         <article className="answer-panel" aria-labelledby="answer-title">
           <header>
             <div><p className="eyebrow">PointGuide answer</p><h2 id="answer-title">What the evidence supports</h2></div>
-            <span className={`confidence ${answer.confidence.toLowerCase()}`}>{answer.confidence.toLocaleLowerCase()}</span>
+            <div className="answer-badges"><span className={`confidence ${answer.confidence.toLowerCase()}`}>{answer.confidence.toLocaleLowerCase()}</span>{answer.reviewStatus === "PASSED" ? <span className="confidence">reviewed</span> : null}</div>
           </header>
           <p className="direct-answer">{answer.directAnswer}</p>
           {answer.safetyAndAssumptions.length ? (
@@ -141,10 +185,10 @@ export function AskWorkspace() {
           <footer className="feedback-bar">
             <div><strong>Was this useful?</strong><small>Your rating improves retrieval; it does not rewrite facts.</small></div>
             <div role="group" aria-label="Rate this answer">
-              <button className={feedback === "helpful" ? "selected" : undefined} type="button" aria-pressed={feedback === "helpful"} onClick={() => setFeedback("helpful")}>Helpful</button>
-              <button className={feedback === "not-helpful" ? "selected" : undefined} type="button" aria-pressed={feedback === "not-helpful"} onClick={() => setFeedback("not-helpful")}>Not helpful</button>
+              <button className={feedback === "helpful" ? "selected" : undefined} type="button" aria-pressed={feedback === "helpful"} onClick={() => void rate("helpful")}>Helpful</button>
+              <button className={feedback === "not-helpful" ? "selected" : undefined} type="button" aria-pressed={feedback === "not-helpful"} onClick={() => void rate("not-helpful")}>Not helpful</button>
             </div>
-            {feedback ? <p className="feedback-status" role="status">Rating captured for this demo. Persistent feedback arrives with the governed learning slice.</p> : null}
+            {feedback ? <p className="feedback-status" role="status">Rating captured. Trainers can review this signal; it never rewrites source facts automatically.</p> : null}
           </footer>
         </article>
       ) : (

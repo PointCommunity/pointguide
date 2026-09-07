@@ -1,0 +1,9 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><title>PointGuide development</title><link rel="stylesheet" href="style.css"></head><body><main><p class="eyebrow">Operating guide</p><h1>Local development</h1><p class="lede">PointGuide uses Node 22, Next.js, PostgreSQL, and a commit-bound PointAudio checkout. Fixture authentication is development-only.</p><nav><a href="index.html">Documentation home</a><a href="identity-and-providers.html">Identity and providers</a><a href="release.html">Release</a></nav><h2>Setup</h2><pre><code>npm ci
+cp .env.example .env.local
+npm run migrate
+npm run dev</code></pre><div class="card warning"><strong>Never commit secrets.</strong> Put database, Cloudflare, Ollama, and encryption values in the approved secret store or local ignored environment file.</div><h2>Quality gates</h2><pre><code>npm run typecheck
+npm run lint
+npm test
+npm run build
+npm run security:check
+git diff --check</code></pre><h2>Corpus validation</h2><p>Mount or check out PointAudio, set <code>CORPUS_ROOT</code> and exact <code>CORPUS_COMMIT</code>, then run <code>node scripts/verify-corpus.mjs</code>. The checksum manifest is <code>research/midas-m32/checksums.sha256</code>.</p><h2>Testing roles</h2><p>With <code>AUTH_MODE=fixture</code>, the first fixture identity is Owner. Subsequent identities are Pending so approval, Trainer, Admin, and Owner paths can be exercised without weakening production authentication.</p></main></body></html>

@@ -1,0 +1,10 @@
+import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
+const root=process.env.CORPUS_ROOT;
+const commit=process.env.CORPUS_COMMIT;
+if(!root||!existsSync(root)) throw new Error("CORPUS_ROOT must reference a mounted source checkout.");
+if(!commit||!/^[a-f0-9]{40}$/u.test(commit)) throw new Error("CORPUS_COMMIT must be an exact 40-character commit SHA.");
+const actual=execFileSync("git",["-C",root,"rev-parse","HEAD"],{encoding:"utf8"}).trim();
+if(actual!==commit) throw new Error(`Corpus revision mismatch: expected ${commit}, found ${actual}.`);
+execFileSync(process.execPath,["--import","tsx","scripts/index-repo.ts","--ref",commit],{stdio:"inherit",env:{...process.env,CORPUS_ROOT:root}});
+process.stdout.write(`corpus verified at ${commit}\n`);

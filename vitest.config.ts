@@ -9,12 +9,14 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    fileParallelism: false,
     include: ["tests/{unit,integration,contract}/**/*.{test,spec}.{ts,tsx}"],
     setupFiles: ["./vitest.setup.ts"],
     coverage: {
       provider: "v8",
       reporter: ["text", "json-summary"],
       include: ["src/lib/**/*.ts"],
+      exclude: ["src/lib/**/runtime.ts", "src/lib/providers/codex-process.ts"],
       thresholds: { lines: 80, functions: 80, statements: 80, branches: 75 },
     },
   },

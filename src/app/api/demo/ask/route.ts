@@ -4,6 +4,10 @@ import { validateGroundedAnswer } from "@/lib/agent/claims";
 import type { AnswerDraft } from "@/lib/agent/schema";
 import { demoChunks } from "@/lib/evidence/demo";
 import { searchCorpus } from "@/lib/evidence/search";
+import { accountBoundaryErrorResponse } from "@/lib/auth/http";
+import { requireApprovedAccount } from "@/lib/auth/policy";
+import { getRuntimeSessionDependencies } from "@/lib/auth/runtime";
+import { authenticateRequest, type SessionDependencies } from "@/lib/auth/session";
 
 const requestSchema = z.object({ question: z.string().trim().min(1).max(8_000) });
 
@@ -23,7 +27,13 @@ function unknownAnswer(question: string): AnswerDraft {
   };
 }
 
-export async function POST(request: Request): Promise<Response> {
+export async function handleDemoAsk(request: Request, dependencies: SessionDependencies): Promise<Response> {
+  try {
+    requireApprovedAccount(await authenticateRequest(request, dependencies));
+  } catch (error) {
+    return accountBoundaryErrorResponse(error);
+  }
+
   const parsed = requestSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
     return Response.json({ error: { code: "INVALID_QUESTION", message: "Enter a question between 1 and 8,000 characters." } }, { status: 400 });
@@ -58,4 +68,8 @@ export async function POST(request: Request): Promise<Response> {
       reviewStatus: "NOT_REQUESTED",
     },
   });
+}
+
+export function POST(request: Request): Promise<Response> {
+  return handleDemoAsk(request, getRuntimeSessionDependencies());
 }

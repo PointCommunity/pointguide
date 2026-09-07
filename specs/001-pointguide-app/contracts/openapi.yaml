@@ -169,12 +169,11 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [loginId, verificationUrl, userCode, expiresAt]
+                required: [loginId, verificationUrl, userCode]
                 properties:
                   loginId: { type: string }
                   verificationUrl: { type: string, format: uri }
                   userCode: { type: string }
-                  expiresAt: { type: string, format: date-time }
   /owner/providers/ollama:
     post:
       summary: Store or replace an Ollama Cloud key through a write-only boundary

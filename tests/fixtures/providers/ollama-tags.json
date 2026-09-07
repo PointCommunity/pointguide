@@ -1,0 +1,12 @@
+{
+  "models": [
+    {
+      "name": "gpt-oss:120b",
+      "model": "gpt-oss:120b",
+      "modified_at": "2026-09-06T00:00:00Z",
+      "size": 120000000000,
+      "digest": "sha256:pointguide-ollama-fixture",
+      "details": { "family": "gptoss", "parameter_size": "120B" }
+    }
+  ]
+}
