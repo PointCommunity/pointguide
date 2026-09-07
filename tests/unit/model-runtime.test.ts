@@ -10,7 +10,7 @@ const answer = { directAnswer: "Red means not synchronized.", steps: [], safetyA
 
 function profile(provider: "CODEX" | "OLLAMA_CLOUD", encryptedSecret: string | null = null): ExecutionProfile {
   const now = new Date();
-  return { id: "p1", name: "Primary", role: "PRIMARY", provider, connectionId: "x", modelId: "model", reasoningEffort: "high", enabled: true, promptRevisionId: "r1", promptRevision: 1, corePolicyRevision: "v1", createdAt: now, updatedAt: now, version: 1, ownerPrompt: "Be precise.", connection: { id: "x", provider, status: "CONNECTED", encryptedSecret, externalSecretRef: null, credentialLocation: null, accountLabel: null, catalogRefreshedAt: now, lastErrorCode: null, createdAt: now, updatedAt: now, version: 1 } };
+  return { id: "p1", name: "Primary", role: "PRIMARY", provider, connectionId: "x", modelId: "model", reasoningEffort: "high", enabled: true, systemPrompt: "Be precise.", promptRevisionId: "r1", promptRevision: 1, corePolicyRevision: "v1", createdAt: now, updatedAt: now, version: 1, ownerPrompt: "Be precise.", connection: { id: "x", provider, status: "CONNECTED", encryptedSecret, externalSecretRef: null, credentialLocation: null, accountLabel: null, catalogRefreshedAt: now, lastErrorCode: null, createdAt: now, updatedAt: now, version: 1 } };
 }
 
 describe("model execution boundary", () => {

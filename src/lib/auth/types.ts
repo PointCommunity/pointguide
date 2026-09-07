@@ -35,7 +35,7 @@ export interface AccountMutation {
 export interface AuditEvent {
   id: string;
   actorId: string | null;
-  action: "account.provisioned" | "account.updated";
+  action: "account.provisioned" | "account.updated" | "account.name_updated";
   targetType: "account";
   targetId: string;
   outcome: "SUCCEEDED";
@@ -48,4 +48,5 @@ export interface AccountStore {
   listAccounts(): Promise<Account[]>;
   getAccount(id: string): Promise<Account | null>;
   updateAccount(actorId: string, targetId: string, mutation: AccountMutation, now?: Date): Promise<Account>;
+  updateDisplayName(accountId: string, displayName: string, expectedVersion: number, now?: Date): Promise<Account>;
 }

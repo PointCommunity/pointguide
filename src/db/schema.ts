@@ -156,6 +156,7 @@ export const conversations = pgTable("conversations", {
   ownerAccountId: uuid("owner_account_id").notNull().references(() => accounts.id),
   title: text("title").notNull(),
   status: text("status").notNull().default("ACTIVE"),
+  userTurnCount: integer("user_turn_count").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull(),
 });
@@ -242,6 +243,31 @@ export const trainingExamples = pgTable("training_examples", {
   version: integer("version").notNull().default(1),
 });
 
+export const trainingSessions = pgTable("training_sessions", {
+  id: uuid("id").primaryKey(),
+  trainerAccountId: uuid("trainer_account_id").notNull().references(() => accounts.id),
+  conversationId: uuid("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
+  targetRepository: text("target_repository").notNull(),
+  originalQuestion: text("original_question").notNull(),
+  state: text("state").notNull().default("ACTIVE"),
+  currentAnswer: jsonb("current_answer").$type<Readonly<Record<string, unknown>>>(),
+  currentReport: jsonb("current_report").$type<Readonly<Record<string, unknown>>>(),
+  proposalId: uuid("proposal_id"),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull(),
+  version: integer("version").notNull().default(1),
+});
+
+export const trainingTurns = pgTable("training_turns", {
+  id: uuid("id").primaryKey(),
+  sessionId: uuid("session_id").notNull().references(() => trainingSessions.id, { onDelete: "cascade" }),
+  ordinal: integer("ordinal").notNull(),
+  actor: text("actor").notNull(),
+  kind: text("kind").notNull(),
+  content: jsonb("content").$type<Readonly<Record<string, unknown>>>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
+}, (table) => [unique("training_turns_session_ordinal_unique").on(table.sessionId, table.ordinal)]);
+
 export const webFindings = pgTable("web_findings", {
   id: uuid("id").primaryKey(),
   url: text("url").notNull(), publisher: text("publisher"),
@@ -250,6 +276,33 @@ export const webFindings = pgTable("web_findings", {
   reviewState: text("review_state").notNull(), flaggerId: uuid("flagger_id").notNull().references(() => accounts.id),
   reviewerId: uuid("reviewer_id").references(() => accounts.id), notes: text("notes"),
 });
+
+export const sourceRepositories = pgTable("source_repositories", {
+  id: uuid("id").primaryKey(),
+  fullName: text("full_name").notNull().unique(),
+  url: text("url").notNull(),
+  status: text("status").notNull().default("ACTIVE"),
+  defaultBranch: text("default_branch").notNull(),
+  indexedCommit: text("indexed_commit").notNull(),
+  validationReport: jsonb("validation_report").$type<Readonly<Record<string, unknown>>>().notNull(),
+  linkedBy: uuid("linked_by").references(() => accounts.id),
+  linkedAt: timestamp("linked_at", { withTimezone: true, mode: "date" }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull(),
+  version: integer("version").notNull().default(1),
+}, (table) => [check("source_repositories_version_positive", sql`${table.version} > 0`)]);
+
+export const sourceChunks = pgTable("source_chunks", {
+  repositoryId: uuid("repository_id").notNull().references(() => sourceRepositories.id, { onDelete: "cascade" }),
+  chunkId: text("chunk_id").notNull(),
+  sourceId: text("source_id").notNull(),
+  title: text("title").notNull(),
+  path: text("path").notNull(),
+  locator: text("locator").notNull(),
+  authority: text("authority").notNull(),
+  capturedAt: timestamp("captured_at", { withTimezone: true, mode: "date" }).notNull(),
+  digest: text("digest").notNull(),
+  content: text("content").notNull(),
+}, (table) => [primaryKey({ columns: [table.repositoryId, table.chunkId], name: "source_chunks_pk" })]);
 
 export const changeProposals = pgTable("change_proposals", {
   id: uuid("id").primaryKey(), proposerId: uuid("proposer_id").notNull().references(() => accounts.id), reviewerId: uuid("reviewer_id").references(() => accounts.id),

@@ -11,6 +11,7 @@ describe("governed Git worker", () => {
     const calls: Array<{ command: string; args: string[] }> = [];
     const runner: CommandRunner = async (command, args) => {
       calls.push({ command, args });
+      if (args[0] === "remote") return "https://github.com/PointCommunity/pointaudio.git";
       if (args[0] === "rev-parse") return "abc123";
       if (command === "gh") return "https://github.com/PointCommunity/pointaudio/pull/1";
       return "";
@@ -26,5 +27,11 @@ describe("governed Git worker", () => {
     let called = false;
     await expect(openProposalPullRequest({ id: "42", state: "APPROVED", targetRepository: "PointCommunity/pointaudio", baseCommit: "deadbeef", targetPath: "../AGENTS.md", proposedContent: "bad", digest: contentDigest("other"), rationale: "bad" }, "/tmp/safe", async () => { called = true; return ""; })).rejects.toThrow("governed boundary");
     expect(called).toBe(false);
+  });
+
+  it("refuses a checkout whose origin does not match the approved repository", async () => {
+    const checkout = await mkdtemp(join(tmpdir(), "pointguide-worker-origin-"));
+    const content = "verified\n";
+    await expect(openProposalPullRequest({ id: "43", state: "APPROVED", targetRepository: "PointCommunity/lighting", baseCommit: "deadbeef", targetPath: "research/training/item.json", proposedContent: content, digest: contentDigest(content), rationale: "Training" }, checkout, async (_command, args) => args[0] === "remote" ? "https://github.com/PointCommunity/pointaudio.git" : "" )).rejects.toThrow("does not match");
   });
 });

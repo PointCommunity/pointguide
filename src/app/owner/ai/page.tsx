@@ -1,6 +1,7 @@
-import { AiSettingsWorkspace } from "@/components/ai-settings-workspace";
-import { AppShell } from "@/components/app-shell";
+import { redirect } from "next/navigation";
+import { requirePageRole } from "@/lib/auth/page";
 
-export default function OwnerAiPage() {
-  return <AppShell><AiSettingsWorkspace /></AppShell>;
+export default async function OwnerAiPage() {
+  await requirePageRole(["OWNER"]);
+  redirect("/owner/agent");
 }

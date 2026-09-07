@@ -41,6 +41,7 @@ test("lets the Owner approve a Trainer from the mobile account screen", async ({
   await pendingApi.dispose();
 
   await page.goto("/admin/accounts");
+  await page.locator(".account-picker select").selectOption({ label: `${displayName} · Pending` });
   const card = page.getByRole("article", { name: `${displayName} account` });
   await expect(card).toBeVisible();
   await card.getByLabel("Role").selectOption("TRAINER");
@@ -63,4 +64,33 @@ test("keeps account controls touch-sized without page overflow", async ({ page }
   }));
   expect(dimensions.filter((item) => item.width < 44 || item.height < 44)).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+});
+
+test("lets a user edit their display name", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile-320", "One authenticated browser pass is sufficient.");
+  await page.goto("/account");
+  await page.getByLabel("Display name").fill("PointGuide Owner");
+  await page.getByRole("button", { name: "Save name" }).click();
+  await expect(page.getByText("Name updated.")).toBeVisible();
+});
+
+test("hides the single-page navigation and redirects a User from protected pages", async ({ browser, page, playwright }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile-320", "One complete authorization browser pass is sufficient.");
+  const subject = "user-navigation-boundary";
+  const userApi = await playwright.request.newContext({ baseURL, extraHTTPHeaders: identityHeaders(subject, "Standard User") });
+  expect((await userApi.get("/api/session")).status()).toBe(202);
+  await userApi.dispose();
+  const listing = await (await page.request.get("/api/admin/users")).json() as { accounts: Array<{ id: string; accessSubject?: string; email: string; version: number }> };
+  const user = listing.accounts.find((account) => account.email === `${subject}@pointguide.test`);
+  expect(user).toBeTruthy();
+  const approval = await page.request.patch(`/api/admin/users/${user!.id}`, { data: { expectedVersion: user!.version, role: "USER", status: "APPROVED" } });
+  expect(approval.ok()).toBe(true);
+  const context = await browser.newContext({ baseURL, viewport: { width: 390, height: 844 }, extraHTTPHeaders: identityHeaders(subject, "Standard User") });
+  const userPage = await context.newPage();
+  await userPage.goto("/");
+  await expect(userPage.getByRole("heading", { name: "What can I help you solve?" })).toBeVisible();
+  await expect(userPage.getByRole("navigation", { name: "Primary navigation" })).toHaveCount(0);
+  await userPage.goto("/knowledge");
+  await expect(userPage).toHaveURL(`${baseURL}/`);
+  await context.close();
 });

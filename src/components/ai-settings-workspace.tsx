@@ -10,6 +10,7 @@ import type {
   PublicProviderConnection,
   ReviewSetting,
 } from "@/lib/providers/types";
+import { DEFAULT_SYSTEM_PROMPT } from "@/lib/agent/default-prompt";
 
 interface SettingsPayload {
   providers: PublicProviderConnection[];
@@ -47,7 +48,7 @@ function ProfileEditor({ role, models, existing, onSaved }: {
   const selectedEffort = model?.reasoningEfforts.some((candidate) => candidate.effort === effort)
     ? effort
     : model?.reasoningEfforts.find((candidate) => candidate.isDefault)?.effort ?? model?.reasoningEfforts[0]?.effort ?? "";
-  const [prompt, setPrompt] = useState("");
+  const [prompt, setPrompt] = useState(existing?.systemPrompt || DEFAULT_SYSTEM_PROMPT);
   const [enabled, setEnabled] = useState(existing?.enabled ?? false);
   const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
@@ -65,10 +66,10 @@ function ProfileEditor({ role, models, existing, onSaved }: {
           modelId: model.id,
           reasoningEffort: selectedEffort || null,
           enabled,
-          ownerPrompt: prompt,
+          systemPrompt: prompt,
         }),
       }));
-      setPrompt("");
+      setPrompt(saved.systemPrompt);
       setState("saved");
       onSaved(saved);
     } catch {
@@ -96,8 +97,8 @@ function ProfileEditor({ role, models, existing, onSaved }: {
               {model?.reasoningEfforts.length ? model.reasoningEfforts.map((value) => <option key={value.effort} value={value.effort}>{value.effort}</option>) : <option value="">Provider default</option>}
             </select>
           </label>
-          <label className="prompt-field">Owner direction
-            <textarea value={prompt} onChange={(event) => { setPrompt(event.target.value); setState("idle"); }} placeholder={existing ? "Enter new direction to create another immutable revision" : "Describe this agent’s role and boundaries"} maxLength={12000} />
+          <label className="prompt-field">System Prompt
+            <textarea value={prompt} onChange={(event) => { setPrompt(event.target.value); setState("idle"); }} placeholder="Define this agent’s role and evidence boundaries" maxLength={12000} />
           </label>
           <label className="switch-row"><input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} /><span>Use this {role.toLocaleLowerCase("en-US")} profile</span></label>
           <button type="button" onClick={() => void save()} disabled={!model || !prompt.trim() || state === "saving"}>{state === "saving" ? "Saving…" : "Save profile"}</button>
@@ -109,7 +110,7 @@ function ProfileEditor({ role, models, existing, onSaved }: {
   );
 }
 
-export function AiSettingsWorkspace() {
+export function AgentSettingsWorkspace() {
   const [settings, setSettings] = useState<SettingsPayload | null>(null);
   const [models, setModels] = useState<Record<ProviderId, ProviderModel[]>>({ CODEX: [], OLLAMA_CLOUD: [] });
   const [login, setLogin] = useState<DeviceLogin | null>(null);
@@ -137,7 +138,7 @@ export function AiSettingsWorkspace() {
         setSettings(payload);
         await Promise.all(payload.providers.filter((provider) => provider.status === "CONNECTED").map((provider) => loadModels(provider.provider)));
       })
-      .catch(() => { if (active) setError("AI settings could not be loaded."); });
+      .catch(() => { if (active) setError("Agent settings could not be loaded."); });
     return () => { active = false; };
   }, [loadModels]);
 
@@ -193,7 +194,7 @@ export function AiSettingsWorkspace() {
   return (
     <>
       <section className="welcome-panel compact-welcome" aria-labelledby="ai-title">
-        <p className="eyebrow">Owner controls</p><h1 id="ai-title">AI setup</h1>
+        <p className="eyebrow">Owner controls</p><h1 id="ai-title">Agent Setup</h1>
         <p>Connect server-side providers, choose only their advertised models and efforts, and govern how PointGuide answers and reviews evidence.</p>
       </section>
       {error ? <section className="error-panel" role="alert"><strong>Setup needs attention.</strong><p>{error}</p></section> : null}

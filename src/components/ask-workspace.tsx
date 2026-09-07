@@ -14,11 +14,23 @@ interface DemoAnswer {
   reviewStatus: "NOT_REQUESTED" | "PASSED";
 }
 
-const starters = [
+const starterPool = [
   { title: "Troubleshoot stage-box sync", detail: "DL16, DL32, AES50 and clocking", question: "What does a red AES50 sync light on the DL32 mean?" },
   { title: "Set up a monitor mix", detail: "M32 buses, sends and personal monitoring", question: "How do I set up a monitor mix on the M32?" },
   { title: "Prepare for a firmware update", detail: "Compatibility, backup and rollback checks", question: "How should I prepare for an M32 firmware update?" },
+  { title: "Fix a projector problem", detail: "Signal path, source selection and safe checks", question: "What should I check when a ministry room projector has no picture?" },
+  { title: "Restore a livestream feed", detail: "Video, audio and network evidence", question: "Help me troubleshoot a missing livestream feed." },
+  { title: "Check a wireless microphone", detail: "Power, frequency, receiver and routing", question: "Why is a wireless microphone not reaching the sound system?" },
+  { title: "Prepare a room for an event", detail: "A beginner-friendly technology checklist", question: "Give me a step-by-step technology checklist for preparing a room for an event." },
+  { title: "Find the right procedure", detail: "Search all connected church technology sources", question: "Where can I find the approved setup procedure for this room?" },
+  { title: "Report missing documentation", detail: "Capture facts without guessing", question: "How do I document a technology issue that PointGuide cannot answer yet?" },
 ] as const;
+
+function rotatingStarters(seed: string | null) {
+  let offset = 0;
+  for (const character of seed ?? "") offset = (offset + character.charCodeAt(0)) % starterPool.length;
+  return Array.from({ length: 3 }, (_, index) => starterPool[(offset + index) % starterPool.length]);
+}
 
 function EvidenceCard({ item, claims }: { item: EvidenceItem; claims: AnswerClaim[] }) {
   const supportedClaims = claims.filter((claim) => claim.evidenceIds.includes(item.id));
@@ -54,15 +66,16 @@ export function AskWorkspace() {
   const [reviewEnabled, setReviewEnabled] = useState(false);
   const [deepResearch, setDeepResearch] = useState(false);
   const [progress, setProgress] = useState("");
+  const [turnNumber, setTurnNumber] = useState(0);
 
   useEffect(() => {
     let active = true;
     void fetch("/api/conversations", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: "PointGuide support" }) })
       .then(async (response) => {
         if (!response.ok) throw new Error("Session unavailable");
-        return response.json() as Promise<{ conversation: { id: string }; reviewEnabled: boolean }>;
+        return response.json() as Promise<{ conversation: { id: string }; reviewEnabled: boolean; usage: { turnNumber: number } }>;
       })
-      .then((payload) => { if (active) { setConversationId(payload.conversation.id); setReviewEnabled(payload.reviewEnabled); } })
+      .then((payload) => { if (active) { setConversationId(payload.conversation.id); setReviewEnabled(payload.reviewEnabled); setTurnNumber(payload.usage.turnNumber); } })
       .catch(() => { if (active) setError("PointGuide could not start a support session."); });
     return () => { active = false; };
   }, []);
@@ -92,10 +105,10 @@ export function AskWorkspace() {
         buffer = lines.pop() ?? "";
         for (const line of lines) {
           if (!line) continue;
-          const item = JSON.parse(line) as { type: string; data: { message?: string; answer?: DemoAnswer } };
+          const item = JSON.parse(line) as { type: string; data: { message?: string; answer?: DemoAnswer; usage?: { turnNumber: number } } };
           if (item.type === "status") setProgress(item.data.message ?? "Working");
           if (item.type === "error") throw new Error(item.data.message ?? "PointGuide could not verify an answer.");
-          if (item.type === "answer" && item.data.answer) completed = item.data.answer;
+          if (item.type === "answer" && item.data.answer) { completed = item.data.answer; if (item.data.usage) setTurnNumber(item.data.usage.turnNumber); }
         }
         if (chunk.done) break;
       }
@@ -126,7 +139,7 @@ export function AskWorkspace() {
       <section className="welcome-panel" aria-labelledby="page-title">
         <p className="eyebrow">Evidence before assumption</p>
         <h1 id="page-title">What can I help you solve?</h1>
-        <p>Ask about the M32 ecosystem. Every factual answer is tied to the checked PointAudio corpus, and gaps stay visible.</p>
+        <p>Ask for help with Point Community Church technology. PointGuide checks connected source repositories, shows its evidence, and keeps unknowns visible.</p>
       </section>
 
       <form className="composer-shell" onSubmit={submit} aria-describedby={statusId}>
@@ -139,17 +152,18 @@ export function AskWorkspace() {
           required
           value={question}
           onChange={(event) => setQuestion(event.target.value)}
-          placeholder="Example: Why is my DL32 showing a red AES50 sync light?"
+          placeholder="What technology issue can PointGuide help you work through?"
         />
         <div className="composer-actions">
           <div>
-            <p><span className="status-dot" aria-hidden="true" /> PointAudio repository sources first</p>
+            <p><span className="status-dot" aria-hidden="true" /> Connected church sources first</p>
             {reviewEnabled ? <label className="deep-research-toggle"><input type="checkbox" checked={deepResearch} onChange={(event) => setDeepResearch(event.target.checked)} /> Deep research</label> : null}
           </div>
-          <button type="submit" disabled={status === "loading" || !question.trim() || !conversationId}>
+          <button type="submit" disabled={status === "loading" || !question.trim() || !conversationId || turnNumber >= 6}>
             {status === "loading" ? "Checking sources…" : "Ask PointGuide"} <span aria-hidden="true">↗</span>
           </button>
         </div>
+        <p className="turn-counter">{turnNumber === 0 ? "Initial question + 5 follow-ups available" : `${Math.max(0, 6 - turnNumber)} follow-up${6 - turnNumber === 1 ? "" : "s"} remaining in this session`}</p>
         <p id={statusId} className="sr-only" aria-live="polite">
           {status === "loading" ? progress || "Checking repository evidence." : status === "error" ? error : answer ? "Answer ready." : ""}
         </p>
@@ -193,19 +207,19 @@ export function AskWorkspace() {
         </article>
       ) : (
         <>
-          <section className="starter-section" aria-labelledby="starters-title">
-            <div className="section-heading"><div><p className="eyebrow">Start with a real task</p><h2 id="starters-title">Common questions</h2></div><span>{starters.length} suggestions</span></div>
-            <div className="starter-list">
-              {starters.map((starter, index) => (
+          <details className="starter-section starter-accordion">
+            <summary><span><span className="eyebrow">Need an idea?</span><strong id="starters-title">Suggested tasks</strong></span><span aria-hidden="true">⌄</span></summary>
+            <div className="starter-list" aria-labelledby="starters-title">
+              {rotatingStarters(conversationId).map((starter, index) => (
                 <button key={starter.title} type="button" onClick={() => void ask(starter.question)}>
                   <span className="starter-index">{String(index + 1).padStart(2, "0")}</span>
                   <span><strong>{starter.title}</strong><small>{starter.detail}</small></span><span aria-hidden="true">→</span>
                 </button>
               ))}
             </div>
-          </section>
+          </details>
           <aside className="evidence-note" aria-label="Current knowledge status">
-            <span aria-hidden="true">✓</span><div><strong>Locally verified PointAudio corpus</strong><p>41 checksums passed on September 6, 2026. PointGuide currently sees 20 M32-related source records.</p></div>
+            <span aria-hidden="true">✓</span><div><strong>Evidence-led support</strong><p>Answers use validated connected repositories. Missing evidence is reported instead of guessed.</p></div>
           </aside>
         </>
       )}

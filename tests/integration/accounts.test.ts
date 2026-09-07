@@ -35,7 +35,7 @@ describe("account provisioning and governance", () => {
     expect(again.id).toBe(first.id);
     expect(again.role).toBe("OWNER");
     expect(again.status).toBe("APPROVED");
-    expect(again.version).toBe(first.version + 1);
+    expect(again.version).toBe(first.version);
     expect(await store.listAccounts()).toHaveLength(1);
   });
 

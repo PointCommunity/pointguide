@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MemoryAccountStore } from "@/lib/auth/memory-store";
-import { handleAccountList, handleAccountUpdate, handleSession } from "@/lib/auth/http";
+import { handleAccountList, handleAccountUpdate, handleDisplayNameUpdate, handleSession } from "@/lib/auth/http";
 import type { SessionDependencies } from "@/lib/auth/session";
 
 function request(subject: string, email = `${subject}@example.com`, init: RequestInit = {}): Request {
@@ -101,5 +101,34 @@ describe("account API boundary", () => {
     const response = await handleSession(request("spoofed"), deps);
     expect(response.status).toBe(401);
     expect(await response.json()).toEqual({ error: { code: "AUTH_REQUIRED", message: "A valid Cloudflare Access identity is required." } });
+  });
+
+  it("lets an approved account edit its display name without changing access", async () => {
+    const deps = dependencies();
+    const original = await (await handleSession(request("owner"), deps)).json();
+    const response = await handleDisplayNameUpdate(request("owner", undefined, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ displayName: "  Chris Nelson  ", expectedVersion: original.version }),
+    }), deps);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ displayName: "Chris Nelson", role: "OWNER", status: "APPROVED" });
+  });
+
+  it("hides Owners from Admin account listings while Owners see every account", async () => {
+    const deps = dependencies();
+    const owner = await (await handleSession(request("owner"), deps)).json();
+    const pendingAdmin = await (await handleSession(request("admin"), deps)).json();
+    await handleAccountUpdate(request("owner", undefined, {
+      method: "PATCH",
+      body: JSON.stringify({ expectedVersion: pendingAdmin.version, role: "ADMIN", status: "APPROVED" }),
+    }), pendingAdmin.id, deps);
+
+    const adminListing = await (await handleAccountList(request("admin"), deps)).json();
+    const ownerListing = await (await handleAccountList(request("owner"), deps)).json();
+
+    expect(adminListing.accounts.map((account: { role: string }) => account.role)).not.toContain("OWNER");
+    expect(ownerListing.accounts.map((account: { id: string }) => account.id)).toContain(owner.id);
   });
 });

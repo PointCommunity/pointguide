@@ -16,6 +16,6 @@ export async function POST(request: Request): Promise<Response> {
     if (!parsed.success) return Response.json({ error: { code: "INVALID_REQUEST", message: "A conversation title is required." } }, { status: 400 });
     const conversation = await getRuntimeLearningRepository().createConversation(actor.id, parsed.data.title);
     const review = await getRuntimeProviderDependencies().store.getReviewSetting();
-    return Response.json({ conversation, reviewEnabled: review.enabled }, { status: 201 });
+    return Response.json({ conversation, reviewEnabled: review.enabled, usage: { turnNumber: 0, maxTurns: 6, followUpsRemaining: 5 } }, { status: 201 });
   } catch (error) { return accountBoundaryErrorResponse(error); }
 }

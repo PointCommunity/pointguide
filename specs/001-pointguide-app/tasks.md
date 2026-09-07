@@ -91,11 +91,11 @@
 
 ## Phase 9: Compact role-aware support and organic learning
 
-- [ ] T052 Update the role/navigation contract and add server-enforced restricted-page guards
-- [ ] T053 Add self-service display-name editing and scalable, filtered account administration
-- [ ] T054 Add atomic one-plus-five conversation turns, bounded transcript context, and the Ask counter
-- [ ] T055 Add validated source repository registration, indexing, archive/delete confirmation, retrieval, and source-structure documentation
-- [ ] T056 Add persisted organic Training sessions, iterative ratings/reports, accepted wipe/commit outcomes, and governed training artifacts
-- [ ] T057 Rename Agent Setup/System Prompt, return the active prompt, and add the evidence-first beginner-friendly default
-- [ ] T058 Compact all page surfaces and implement fixed bottom navigation at every viewport, with no navigation for Users
+- [x] T052 Update the role/navigation contract and add server-enforced restricted-page guards
+- [x] T053 Add self-service display-name editing and scalable, filtered account administration
+- [x] T054 Add atomic one-plus-five conversation turns, bounded transcript context, and the Ask counter
+- [x] T055 Add validated source repository registration, indexing, archive/delete confirmation, retrieval, and source-structure documentation
+- [x] T056 Add persisted organic Training sessions, iterative ratings/reports, accepted wipe/commit outcomes, and governed training artifacts
+- [x] T057 Rename Agent Setup/System Prompt, return the active prompt, and add the evidence-first beginner-friendly default
+- [x] T058 Compact all page surfaces and implement fixed bottom navigation at every viewport, with no navigation for Users
 - [ ] T059 Run focused RED/GREEN tests per slice, full quality/security gates, responsive Playwright validation, and exact AMD64 image verification

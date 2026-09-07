@@ -113,12 +113,12 @@ describe("Owner provider API boundary", () => {
     }, "PUT"), crypto.randomUUID(), deps);
     const accepted = await handleProfilePut(request("owner", {
       name: "Primary guide", role: "PRIMARY", provider: "CODEX", modelId: "gpt-5.6-sol",
-      reasoningEffort: "medium", enabled: true, ownerPrompt: "Help with PCC technology.",
+      reasoningEffort: "medium", enabled: true, systemPrompt: "Help with PCC technology.",
     }, "PUT"), crypto.randomUUID(), deps);
 
     expect(rejected.status).toBe(400);
     expect(accepted.status).toBe(200);
-    expect(await accepted.json()).toMatchObject({ modelId: "gpt-5.6-sol", reasoningEffort: "medium", promptRevision: 1 });
+    expect(await accepted.json()).toMatchObject({ modelId: "gpt-5.6-sol", reasoningEffort: "medium", systemPrompt: "Help with PCC technology.", promptRevision: 1 });
   });
 
   it("keeps the review feature disabled until an Owner enables it", async () => {

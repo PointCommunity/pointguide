@@ -4,10 +4,13 @@ import { expect, test } from "@playwright/test";
 test("asks a grounded question and traces the answer to PointAudio evidence", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1, name: "What can I help you solve?" })).toBeVisible();
+  await expect(page.getByText("Initial question + 5 follow-ups available")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Troubleshoot stage-box sync" })).not.toBeVisible();
   await page.getByLabel("Your question").fill("What does a red AES50 sync light on the DL32 mean?");
   await page.getByRole("button", { name: /Ask PointGuide/ }).click();
 
   await expect(page.getByRole("heading", { name: "What the evidence supports" })).toBeVisible();
+  await expect(page.getByText("5 follow-ups remaining in this session")).toBeVisible();
   await expect(page.locator(".direct-answer")).toContainText("On a DL32, a red AES50 SYNC LED");
   await expect(page.locator(".claim-ledger li").getByText("On a DL32, a red AES50 SYNC LED", { exact: false })).toBeVisible();
   await page.getByText("DL32 Quick Start Guide").click();

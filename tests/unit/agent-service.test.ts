@@ -28,6 +28,18 @@ describe("persisted answer service", () => {
     await expect(answerQuestion({ actor, conversationId: conversation.id, question: "q", deepResearch: false, providers: new MemoryProviderStore(), learning, fixture: false })).rejects.toThrow("PRIMARY_NOT_CONFIGURED");
   });
 
+  it("retains context for one initial question and five follow-ups, then stops", async () => {
+    const learning = new MemoryLearningRepository();
+    const conversation = await learning.createConversation(actor.id, "bounded support");
+    for (let turn = 1; turn <= 6; turn += 1) {
+      const result = await answerQuestion({ actor, conversationId: conversation.id, question: `red AES50 DL32 turn ${turn}`, deepResearch: false, providers: new MemoryProviderStore(), learning, fixture: true });
+      expect(result.usage.turnNumber).toBe(turn);
+      expect(result.usage.followUpsRemaining).toBe(6 - turn);
+    }
+    expect(await learning.listMessages(conversation.id, actor.id)).toHaveLength(12);
+    await expect(answerQuestion({ actor, conversationId: conversation.id, question: "one more", deepResearch: false, providers: new MemoryProviderStore(), learning, fixture: true })).rejects.toThrow("TURN_LIMIT_REACHED");
+  });
+
   it("stores immutable feedback context and rejects duplicate ratings", async () => {
     const learning = new MemoryLearningRepository();
     const input = { answerId: "a", accountId: "u", rating: "HELPFUL" as const, questionFingerprint: "q", corpusCommit: "c", profileRevisionIds: [], evidenceIds: [] };

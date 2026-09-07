@@ -22,8 +22,9 @@ const profileSchema = z.object({
   modelId: z.string().trim().min(1).max(200),
   reasoningEffort: z.string().trim().min(1).max(100).nullable().default(null),
   enabled: z.boolean(),
-  ownerPrompt: z.string().trim().min(1).max(12_000),
-}).strict();
+  systemPrompt: z.string().trim().min(1).max(12_000).optional(),
+  ownerPrompt: z.string().trim().min(1).max(12_000).optional(),
+}).strict().refine((value) => Boolean(value.systemPrompt || value.ownerPrompt));
 const reviewSchema = z.object({ enabled: z.boolean() }).strict();
 
 export interface ProviderHttpDependencies {
@@ -164,7 +165,16 @@ export async function handleProfilePut(
     const parsedId = z.uuid().safeParse(id);
     const parsed = profileSchema.safeParse(await parseBody(request));
     if (!parsedId.success || !parsed.success) return errorResponse("INVALID_REQUEST", "Agent profile is invalid.", 400);
-    return Response.json(await dependencies.store.saveProfile(actor.id, { id, ...parsed.data }));
+    return Response.json(await dependencies.store.saveProfile(actor.id, {
+      id,
+      name: parsed.data.name,
+      role: parsed.data.role,
+      provider: parsed.data.provider,
+      modelId: parsed.data.modelId,
+      reasoningEffort: parsed.data.reasoningEffort,
+      enabled: parsed.data.enabled,
+      ownerPrompt: parsed.data.systemPrompt ?? parsed.data.ownerPrompt!,
+    }));
   } catch (error) {
     return boundaryError(error);
   }

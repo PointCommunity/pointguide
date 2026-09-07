@@ -12,9 +12,9 @@ type IconName = NavigationKey;
 const navigation: ReadonlyArray<{ href: string; label: string; icon: IconName }> = [
   { href: "/", label: "Ask", icon: "ask" },
   { href: "/knowledge", label: "Knowledge", icon: "knowledge" },
-  { href: "/training", label: "Train", icon: "training" },
+  { href: "/training", label: "Training", icon: "training" },
   { href: "/admin/accounts", label: "Admin", icon: "admin" },
-  { href: "/owner/ai", label: "AI setup", icon: "owner" },
+  { href: "/owner/agent", label: "Agent Setup", icon: "owner" },
 ];
 
 interface SessionAccount {
@@ -83,37 +83,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isActive = (href: string) => href === "/" ? pathname === "/" : pathname.startsWith(href);
 
   return (
-    <div className="app-frame">
+    <div className={`app-frame ${visibleNavigation.length > 1 ? "has-bottom-nav" : ""}`}>
       <a className="skip-link" href="#main-content">Skip to main content</a>
-      <aside className="side-rail">
-        <Link className="brand" href="/" aria-label="PointGuide home">
-          <span className="brand-mark" aria-hidden="true"><span>P</span><i /></span>
-          <span><strong>PointGuide</strong><small>PCC technology support</small></span>
-        </Link>
-        <nav aria-label="Primary navigation">
-          <ul className="rail-nav">
-            {visibleNavigation.map((item) => (
-              <li key={item.href}>
-                <Link className={isActive(item.href) ? "active" : undefined} href={item.href} aria-current={isActive(item.href) ? "page" : undefined}>
-                  <NavIcon name={item.icon} />
-                  <span>{item.label}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </nav>
-        <div className="rail-status">
-          <span className="status-dot" aria-hidden="true" />
-          <span><strong>Corpus ready</strong><small>20 sources · M32</small></span>
-        </div>
-        <Link className="account-chip" href="/account">
-          <span className="avatar" aria-hidden="true">{initials}</span>
-          <span><strong>{name}</strong><small>{account.role.toLocaleLowerCase("en-US")}</small></span>
-          <span aria-hidden="true">›</span>
-        </Link>
-      </aside>
       <div className="work-area">
-        <header className="mobile-header">
+        <header className="mobile-header app-header">
           <Link className="brand compact" href="/" aria-label="PointGuide home">
             <span className="brand-mark" aria-hidden="true"><span>P</span><i /></span>
             <strong>PointGuide</strong>
@@ -122,14 +95,13 @@ export function AppShell({ children }: { children: ReactNode }) {
         </header>
         <main id="main-content">{children}</main>
       </div>
-      <nav className="bottom-nav" aria-label="Mobile navigation">
-        {visibleNavigation.slice(0, 3).map((item) => (
+      {visibleNavigation.length > 1 ? <nav className="bottom-nav" aria-label="Primary navigation">
+        {visibleNavigation.map((item) => (
           <Link key={item.href} className={isActive(item.href) ? "active" : undefined} href={item.href} aria-current={isActive(item.href) ? "page" : undefined}>
             <NavIcon name={item.icon} /><span>{item.label}</span>
           </Link>
         ))}
-        <Link href="/more"><span className="more-dots" aria-hidden="true">•••</span><span>More</span></Link>
-      </nav>
+      </nav> : null}
     </div>
   );
 }

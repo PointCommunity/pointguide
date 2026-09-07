@@ -27,10 +27,10 @@ export class PostgresAccountStore implements AccountStore {
       if (existing) {
         const [updated] = await transaction.update(accounts).set({
           email: identity.email,
-          displayName: identity.displayName,
+          displayName: existing.displayName ?? identity.displayName,
           lastLoginAt: now,
           updatedAt: now,
-          version: existing.version + 1,
+          version: existing.version,
         }).where(eq(accounts.id, existing.id)).returning();
         if (!updated) throw new AccountPolicyError("ACCOUNT_NOT_FOUND", "Account was not found.");
         return accountFromRow(updated);
@@ -113,6 +113,22 @@ export class PostgresAccountStore implements AccountStore {
         outcome: "SUCCEEDED",
         metadata: { role: updated.role, status: updated.status, version: updated.version },
         occurredAt: now,
+      });
+      return accountFromRow(updated);
+    }, { isolationLevel: "read committed", accessMode: "read write" });
+  }
+
+  async updateDisplayName(accountId: string, displayName: string, expectedVersion: number, now = new Date()): Promise<Account> {
+    return this.database.transaction(async (transaction) => {
+      const [account] = await transaction.select().from(accounts).where(eq(accounts.id, accountId)).limit(1);
+      if (!account) throw new AccountPolicyError("ACCOUNT_NOT_FOUND", "Account was not found.");
+      if (account.version !== expectedVersion) throw new AccountPolicyError("VERSION_CONFLICT", "Account changed since it was loaded.");
+      const [updated] = await transaction.update(accounts).set({ displayName, updatedAt: now, version: account.version + 1 })
+        .where(and(eq(accounts.id, accountId), eq(accounts.version, expectedVersion))).returning();
+      if (!updated) throw new AccountPolicyError("VERSION_CONFLICT", "Account changed since it was loaded.");
+      await transaction.insert(auditEvents).values({
+        id: randomUUID(), actorId: accountId, action: "account.name_updated", targetType: "account", targetId: accountId,
+        outcome: "SUCCEEDED", metadata: { version: updated.version }, occurredAt: now,
       });
       return accountFromRow(updated);
     }, { isolationLevel: "read committed", accessMode: "read write" });

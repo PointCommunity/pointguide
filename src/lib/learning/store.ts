@@ -1,16 +1,20 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import type { PointGuideDatabase } from "@/db/client";
 import { answerClaims, answers, claimEvidence, conversations, evidenceItems, feedbackRecords, messages } from "@/db/schema";
 import type { OrchestratedAnswer, ReviewMode } from "@/lib/agent/orchestrator";
 import type { EvidenceItem } from "@/lib/agent/schema";
 import type { FeedbackInput, FeedbackRecord } from "@/lib/feedback/store";
 
-export interface StoredConversation { id: string; ownerAccountId: string; title: string; createdAt: string }
+export interface StoredConversation { id: string; ownerAccountId: string; title: string; createdAt: string; userTurnCount: number }
+export interface ConversationMessage { actor: "USER" | "ASSISTANT"; content: string }
 
 export interface LearningRepository {
   createConversation(ownerAccountId: string, title: string): Promise<StoredConversation>;
   ownsConversation(id: string, ownerAccountId: string): Promise<boolean>;
+  reserveTurn(id: string, ownerAccountId: string, maxTurns?: number): Promise<number>;
+  releaseTurn(id: string, ownerAccountId: string): Promise<void>;
+  listMessages(id: string, ownerAccountId: string): Promise<ConversationMessage[]>;
   saveAnswer(input: { conversationId: string; question: string; answer: OrchestratedAnswer; evidence: EvidenceItem[]; reviewMode: ReviewMode }): Promise<OrchestratedAnswer & { id: string }>;
   saveFeedback(input: FeedbackInput): Promise<FeedbackRecord>;
   listFeedback(): Promise<FeedbackRecord[]>;
@@ -19,17 +23,36 @@ export interface LearningRepository {
 export class MemoryLearningRepository implements LearningRepository {
   private readonly conversations = new Map<string, StoredConversation>();
   private readonly answers = new Map<string, OrchestratedAnswer & { id: string }>();
+  private readonly messages = new Map<string, ConversationMessage[]>();
   private readonly feedback: FeedbackRecord[] = [];
 
   async createConversation(ownerAccountId: string, title: string): Promise<StoredConversation> {
-    const value = { id: randomUUID(), ownerAccountId, title: title.slice(0, 120), createdAt: new Date().toISOString() };
+    const value = { id: randomUUID(), ownerAccountId, title: title.slice(0, 120), createdAt: new Date().toISOString(), userTurnCount: 0 };
     this.conversations.set(value.id, value);
     return { ...value };
   }
   async ownsConversation(id: string, ownerAccountId: string): Promise<boolean> { return this.conversations.get(id)?.ownerAccountId === ownerAccountId; }
-  async saveAnswer(input: { conversationId: string; answer: OrchestratedAnswer }): Promise<OrchestratedAnswer & { id: string }> {
+  async reserveTurn(id: string, ownerAccountId: string, maxTurns = 6): Promise<number> {
+    const conversation = this.conversations.get(id);
+    if (!conversation || conversation.ownerAccountId !== ownerAccountId) throw new Error("CONVERSATION_NOT_FOUND");
+    if (conversation.userTurnCount >= maxTurns) throw new Error("TURN_LIMIT_REACHED");
+    conversation.userTurnCount += 1;
+    return conversation.userTurnCount;
+  }
+  async releaseTurn(id: string, ownerAccountId: string): Promise<void> {
+    const conversation = this.conversations.get(id);
+    if (conversation?.ownerAccountId === ownerAccountId) conversation.userTurnCount = Math.max(0, conversation.userTurnCount - 1);
+  }
+  async listMessages(id: string, ownerAccountId: string): Promise<ConversationMessage[]> {
+    if (!await this.ownsConversation(id, ownerAccountId)) throw new Error("CONVERSATION_NOT_FOUND");
+    return (this.messages.get(id) ?? []).map((message) => ({ ...message }));
+  }
+  async saveAnswer(input: { conversationId: string; question: string; answer: OrchestratedAnswer }): Promise<OrchestratedAnswer & { id: string }> {
     const value = { ...input.answer, id: randomUUID() };
     this.answers.set(value.id, value);
+    const history = this.messages.get(input.conversationId) ?? [];
+    history.push({ actor: "USER", content: input.question }, { actor: "ASSISTANT", content: input.answer.directAnswer });
+    this.messages.set(input.conversationId, history);
     return value;
   }
   async saveFeedback(input: FeedbackInput): Promise<FeedbackRecord> {
@@ -48,11 +71,29 @@ export class PostgresLearningRepository implements LearningRepository {
     const now = new Date();
     const [row] = await this.database.insert(conversations).values({ id: randomUUID(), ownerAccountId, title: title.slice(0, 120), createdAt: now, updatedAt: now }).returning();
     if (!row) throw new Error("Conversation insert failed.");
-    return { id: row.id, ownerAccountId: row.ownerAccountId, title: row.title, createdAt: row.createdAt.toISOString() };
+    return { id: row.id, ownerAccountId: row.ownerAccountId, title: row.title, createdAt: row.createdAt.toISOString(), userTurnCount: row.userTurnCount };
   }
   async ownsConversation(id: string, ownerAccountId: string): Promise<boolean> {
     const [row] = await this.database.select({ id: conversations.id }).from(conversations).where(and(eq(conversations.id, id), eq(conversations.ownerAccountId, ownerAccountId))).limit(1);
     return Boolean(row);
+  }
+  async reserveTurn(id: string, ownerAccountId: string, maxTurns = 6): Promise<number> {
+    const [row] = await this.database.update(conversations).set({ userTurnCount: sql`${conversations.userTurnCount} + 1`, updatedAt: new Date() })
+      .where(and(eq(conversations.id, id), eq(conversations.ownerAccountId, ownerAccountId), sql`${conversations.userTurnCount} < ${maxTurns}`))
+      .returning({ count: conversations.userTurnCount });
+    if (row) return row.count;
+    if (!await this.ownsConversation(id, ownerAccountId)) throw new Error("CONVERSATION_NOT_FOUND");
+    throw new Error("TURN_LIMIT_REACHED");
+  }
+  async releaseTurn(id: string, ownerAccountId: string): Promise<void> {
+    await this.database.update(conversations).set({ userTurnCount: sql`greatest(0, ${conversations.userTurnCount} - 1)`, updatedAt: new Date() })
+      .where(and(eq(conversations.id, id), eq(conversations.ownerAccountId, ownerAccountId)));
+  }
+  async listMessages(id: string, ownerAccountId: string): Promise<ConversationMessage[]> {
+    if (!await this.ownsConversation(id, ownerAccountId)) throw new Error("CONVERSATION_NOT_FOUND");
+    const rows = await this.database.select({ actor: messages.actor, content: messages.content }).from(messages)
+      .where(eq(messages.conversationId, id)).orderBy(asc(messages.createdAt));
+    return rows.filter((row): row is ConversationMessage => (row.actor === "USER" || row.actor === "ASSISTANT"));
   }
   async saveAnswer(input: { conversationId: string; question: string; answer: OrchestratedAnswer; evidence: EvidenceItem[]; reviewMode: ReviewMode }): Promise<OrchestratedAnswer & { id: string }> {
     return this.database.transaction(async (transaction) => {

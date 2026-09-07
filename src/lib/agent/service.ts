@@ -13,8 +13,12 @@ function evidenceDraft(question: string, evidence: EvidenceItem[]): AnswerDraft 
   return { directAnswer: "A red AES50 SYNC light means the DL32's AES50 connection is present but not synchronized. Verify the clock relationship and cable path before changing routing.", steps: ["Confirm the indicator is red—not off—and note whether it is on AES50 A or B.", "Verify the connected console and DL32 are configured for one valid clock relationship before changing signal routing."], safetyAndAssumptions: ["This applies to a confirmed Midas DL32. Clock changes can interrupt audio; record current state and use an approved service window."], confidence: "CONFIRMED", claims: [{ id: "dl32-sync-red", text: "On a DL32, a red AES50 SYNC LED indicates that the AES50 connection is not synchronized.", kind: "FACTUAL", status: "SUPPORTED", evidenceIds: [evidence[0].id] }] };
 }
 
-export async function answerQuestion(input: { actor: Account; conversationId: string; question: string; deepResearch: boolean; providers: ProviderConfigurationStore; learning: LearningRepository; modelRuntime?: ModelRuntime; fixture: boolean; chunks?: IndexedChunk[] }) {
+export async function answerQuestion(input: { actor: Account; conversationId: string; question: string; deepResearch: boolean; providers: ProviderConfigurationStore; learning: LearningRepository; modelRuntime?: ModelRuntime; fixture: boolean; chunks?: IndexedChunk[]; maxTurns?: number }) {
   if (!await input.learning.ownsConversation(input.conversationId, input.actor.id)) throw new Error("CONVERSATION_NOT_FOUND");
+  const maxTurns = input.maxTurns ?? 6;
+  const turnNumber = await input.learning.reserveTurn(input.conversationId, input.actor.id, maxTurns);
+  try {
+  const history = await input.learning.listMessages(input.conversationId, input.actor.id);
   const evidence = searchCorpus(input.question, input.chunks ?? demoChunks);
   const reviewSetting = await input.providers.getReviewSetting();
   if (input.deepResearch && !reviewSetting.enabled) throw new Error("REVIEW_DISABLED");
@@ -25,11 +29,15 @@ export async function answerQuestion(input: { actor: Account; conversationId: st
   const mode: ReviewMode = input.deepResearch ? "DEEP_RESEARCH" : "NONE";
   const answer = await orchestrateAnswer({
     evidence, mode,
-    primary: () => primaryProfile && input.modelRuntime ? generateAnswer(primaryProfile, input.question, evidence, input.modelRuntime) : Promise.resolve(evidenceDraft(input.question, evidence)),
+    primary: () => primaryProfile && input.modelRuntime ? generateAnswer(primaryProfile, input.question, evidence, input.modelRuntime, history) : Promise.resolve(evidenceDraft(input.question, evidence)),
     reviewer: mode === "DEEP_RESEARCH" ? (draft, items) => reviewerProfile && input.modelRuntime
       ? generateReview(reviewerProfile, draft, items, input.modelRuntime)
       : Promise.resolve({ findings: draft.claims.map((claim) => ({ claimId: claim.id, verdict: claim.status === "SUPPORTED" ? "SUPPORTED" as const : "REJECTED" as const, rationaleCode: claim.status === "SUPPORTED" ? "ENTAILED" as const : "INSUFFICIENT" as const })) }) : undefined,
   });
   const stored = await input.learning.saveAnswer({ conversationId: input.conversationId, question: input.question, answer, evidence, reviewMode: mode });
-  return { answer: { ...stored, evidence }, reviewEnabled: reviewSetting.enabled };
+  return { answer: { ...stored, evidence }, reviewEnabled: reviewSetting.enabled, usage: { turnNumber, maxTurns, followUpsRemaining: Math.max(0, maxTurns - turnNumber) } };
+  } catch (error) {
+    await input.learning.releaseTurn(input.conversationId, input.actor.id);
+    throw error;
+  }
 }
