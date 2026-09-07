@@ -98,4 +98,4 @@
 - [x] T056 Add persisted organic Training sessions, iterative ratings/reports, accepted wipe/commit outcomes, and governed training artifacts
 - [x] T057 Rename Agent Setup/System Prompt, return the active prompt, and add the evidence-first beginner-friendly default
 - [x] T058 Compact all page surfaces and implement fixed bottom navigation at every viewport, with no navigation for Users
-- [ ] T059 Run focused RED/GREEN tests per slice, full quality/security gates, responsive Playwright validation, and exact AMD64 image verification
+- [x] T059 Run focused RED/GREEN tests per slice, full quality/security gates, responsive Playwright validation, and exact AMD64 image verification

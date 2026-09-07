@@ -11,8 +11,22 @@
   <main>
     <p class="eyebrow">Verification record · September 6, 2026</p>
     <h1>Release validation</h1>
-    <p class="lede">PointGuide was built from an exact clean source archive, validated locally as Linux/AMD64, promoted unchanged through canary, and deployed to production through the homelab GitOps pipeline.</p>
+    <p class="lede">This record separates the currently deployed production baseline from the compact, role-aware support and training candidate validated locally.</p>
     <nav><a href="index.html">Documentation home</a><a href="release.html">Release runbook</a></nav>
+    <h2>Compact support candidate</h2>
+    <table>
+      <thead><tr><th>Gate</th><th>Result</th><th>Evidence</th></tr></thead>
+      <tbody>
+        <tr><td>Source revision</td><td>Passed</td><td>Exact clean PointGuide archive <code>1633368695614f26056ae5bd10475baac3de16bf</code>; PointAudio corpus source <code>cc1f67121a8fed2fbfc6a7dfab0f974a44bd022d</code>.</td></tr>
+        <tr><td>Source quality</td><td>Passed</td><td>TypeScript, ESLint, the Next.js production build, OpenAPI YAML parsing, repository diff checks, and the production dependency audit completed without errors or reported vulnerabilities.</td></tr>
+        <tr><td>Unit, integration, contract</td><td>Passed</td><td>All application tests and the disposable PostgreSQL source/training persistence test passed. Core coverage: 82.31% statements, 75.20% branches, 84.41% functions, and 87.21% lines.</td></tr>
+        <tr><td>Browser matrix</td><td>Passed</td><td>50 applicable checks passed at 320, 390, 768, 1024, and 1440 pixels; 20 scope-specific matrix repetitions were intentionally skipped.</td></tr>
+        <tr><td>Exact AMD64 image</td><td>Passed</td><td>Local image <code>pointguide:1633368</code> was built from the clean archive for <code>linux/amd64</code>. Local immutable digest: <code>sha256:ab655783ae352ae514ef8ed8f082c6ac733a6695dd6a546ed7c1da2c6b1868b1</code>.</td></tr>
+        <tr><td>Container smoke</td><td>Passed</td><td>Non-root UID 1000, exact source identity, Git and GitHub CLI, four migrations, PostgreSQL readiness, writes-disabled worker startup, 5,237 corpus chunks, security headers, zero restarts, and termination without a runtime error were verified under AMD64 emulation.</td></tr>
+        <tr><td>External release</td><td>Not performed</td><td>The candidate was not pushed to Zot and no canary or production GitOps references were changed. The deployed baseline below remains authoritative.</td></tr>
+      </tbody>
+    </table>
+    <h2>Deployed baseline</h2>
     <table>
       <thead><tr><th>Gate</th><th>Result</th><th>Evidence</th></tr></thead>
       <tbody>
