@@ -67,16 +67,16 @@
 - [x] T042 [US6] Add corpus, secret, dependency, contract, and release-identity checks in `scripts/security-check.mjs`, `scripts/verify-corpus.mjs`, and `scripts/verify-release.mjs`
 - [x] T043 [US6] Add source quality and exact-head container workflows in `.github/workflows/quality.yml` and `.github/workflows/container.yml`
 - [x] T044 [US6] Prepare dark HTML operating/runbook documentation in `docs/development.html`, `docs/identity-and-providers.html`, and `docs/release.html`
-- [ ] T045 [US6] After explicit publication authorization, build an exact clean archive locally for `linux/amd64`, smoke it, publish to Zot, and record the immutable digest
-- [ ] T046 [US6] After explicit GitOps authorization, create/update `apps/pointguide-canary` from current Gitea `origin/master`, push, reconcile, and verify exact digest plus whole-cluster health
-- [ ] T047 [US6] After explicit production authorization, promote the same reviewed digest and verify production/edge behavior
+- [x] T045 [US6] After explicit publication authorization, build an exact clean archive locally for `linux/amd64`, smoke it, publish to Zot, and record the immutable digest
+- [x] T046 [US6] After explicit GitOps authorization, create/update `apps/pointguide-canary` from current Gitea `origin/master`, push, reconcile, and verify exact digest plus whole-cluster health
+- [x] T047 [US6] After explicit production authorization, promote the same reviewed digest and verify production/edge behavior
 
 ## Phase 8: Final Validation and Handoff
 
 - [x] T048 Run unit/integration/contract tests with core coverage at or above 80%, typecheck, lint, build, security checks, and `git diff --check`
 - [x] T049 Run Playwright at 320, 390, 768, 1024, and 1440 widths; check critical interactions, keyboard/focus, reduced motion, 200% zoom, console errors, touch targets, and page overflow
-- [ ] T050 Build and smoke the local `linux/amd64` container under emulation; verify non-root user, source revision, liveness/readiness, migrations, worker, and clean shutdown
-- [ ] T051 Update this task list, constitution capabilities, source/document indexes, and a dark HTML validation report with exact performed checks and residual gaps
+- [x] T050 Build and smoke the local `linux/amd64` container under emulation; verify non-root user, source revision, liveness/readiness, migrations, worker, and clean shutdown
+- [x] T051 Update this task list, constitution capabilities, source/document indexes, and a dark HTML validation report with exact performed checks and residual gaps
 
 ## Dependencies and Traceability
 
