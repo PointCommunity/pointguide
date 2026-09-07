@@ -22,7 +22,7 @@ interface AccountListing {
 const roleLabels: Record<Role, string> = { USER: "User", TRAINER: "Trainer", ADMIN: "Admin", OWNER: "Owner" };
 const statusLabels: Record<Status, string> = { PENDING: "Pending", APPROVED: "Approved", SUSPENDED: "Suspended" };
 
-function AccountCard({ account, actor, onUpdated }: {
+function AccountEditor({ account, actor, onUpdated }: {
   account: PublicAccount;
   actor: PublicAccount;
   onUpdated: (account: PublicAccount) => void;
@@ -54,7 +54,7 @@ function AccountCard({ account, actor, onUpdated }: {
 
   const name = account.displayName || account.email;
   return (
-    <article className="account-card" aria-label={`${name} account`}>
+    <article className="account-card compact-card" aria-label={`${name} account`}>
       <header>
         <span className="avatar" aria-hidden="true">{name.slice(0, 2).toLocaleUpperCase("en-US")}</span>
         <span><strong>{name}</strong><small>{account.email}</small></span>
@@ -85,6 +85,7 @@ function AccountCard({ account, actor, onUpdated }: {
 export function AccountsWorkspace() {
   const [listing, setListing] = useState<AccountListing | null>(null);
   const [error, setError] = useState(false);
+  const [selectedId, setSelectedId] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -93,7 +94,7 @@ export function AccountsWorkspace() {
         if (!response.ok) throw new Error("Account directory unavailable.");
         return response.json() as Promise<AccountListing>;
       })
-      .then((payload) => { if (active) setListing(payload); })
+      .then((payload) => { if (active) { setListing(payload); setSelectedId(payload.accounts.find((account) => account.id !== payload.actor.id)?.id ?? ""); } })
       .catch(() => { if (active) setError(true); });
     return () => { active = false; };
   }, []);
@@ -104,6 +105,9 @@ export function AccountsWorkspace() {
       accounts: current.accounts.map((account) => account.id === updated.id ? updated : account),
     } : current);
   }
+
+  const manageable = listing?.accounts.filter((account) => account.id !== listing.actor.id) ?? [];
+  const selected = manageable.find((account) => account.id === selectedId);
 
   return (
     <>
@@ -116,10 +120,8 @@ export function AccountsWorkspace() {
       {!listing && !error ? <p className="loading-state" role="status">Loading verified accounts…</p> : null}
       {listing ? (
         <section className="accounts-section" aria-label="Verified accounts">
-          <div className="section-heading"><div><p className="eyebrow">Directory</p><h2>People and access</h2></div><span>{listing.accounts.length} account{listing.accounts.length === 1 ? "" : "s"}</span></div>
-          <div className="account-list">
-            {listing.accounts.map((account) => <AccountCard key={account.id} account={account} actor={listing.actor} onUpdated={updateAccount} />)}
-          </div>
+          <div className="section-heading"><div><p className="eyebrow">Directory</p><h2>Manage one account</h2></div><span>{manageable.length} available</span></div>
+          {manageable.length ? <><label className="account-picker">Account<select value={selectedId} onChange={(event) => setSelectedId(event.target.value)}>{manageable.map((account) => <option key={account.id} value={account.id}>{account.displayName || account.email} · {statusLabels[account.status]}</option>)}</select></label>{selected ? <AccountEditor key={selected.id} account={selected} actor={listing.actor} onUpdated={updateAccount} /> : null}</> : <p className="empty-state">No other accounts are available to manage. Your own access cannot be changed here.</p>}
         </section>
       ) : null}
     </>

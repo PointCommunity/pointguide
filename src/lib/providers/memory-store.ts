@@ -109,6 +109,7 @@ export class MemoryProviderStore implements ProviderConfigurationStore {
         modelId: input.modelId,
         reasoningEffort: input.reasoningEffort,
         enabled: input.enabled,
+        systemPrompt: input.ownerPrompt,
         promptRevisionId: randomUUID(),
         promptRevision: (current?.promptRevision ?? 0) + 1,
         corePolicyRevision: "evidence-policy-v1",
@@ -147,7 +148,7 @@ export class MemoryProviderStore implements ProviderConfigurationStore {
     if (!profile) return null;
     const connection = this.connections.get(profile.provider);
     if (!connection) return null;
-    return { ...profile, ownerPrompt: this.prompts.get(profile.id) ?? "", connection: copyConnection(connection) };
+    return { ...profile, systemPrompt: this.prompts.get(profile.id) ?? profile.systemPrompt, ownerPrompt: this.prompts.get(profile.id) ?? "", connection: copyConnection(connection) };
   }
 
   async getReviewSetting(): Promise<ReviewSetting> {

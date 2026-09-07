@@ -71,6 +71,7 @@ export interface AgentProfileInput {
 }
 
 export interface AgentProfileRecord extends Omit<AgentProfileInput, "ownerPrompt"> {
+  systemPrompt: string;
   connectionId: string;
   promptRevisionId: string;
   promptRevision: number;

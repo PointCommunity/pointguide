@@ -24,6 +24,8 @@ const environmentSchema = z.object({
   LIVE_PROVIDERS_ENABLED: z.stringbool().default(false),
   GIT_WRITES_ENABLED: z.stringbool().default(false),
   WEB_SEARCH_ENABLED: z.stringbool().default(false),
+  GITHUB_TOKEN: z.string().min(1).optional(),
+  POINTGUIDE_SOURCE_OWNERS: z.string().min(1).default("PointCommunity"),
   CORPUS_ROOT: z.string().min(1).optional(),
   CORPUS_COMMIT: z.string().regex(/^[a-f0-9]{40}$/u).optional(),
   CORPUS_MANIFEST: z.string().min(1).default("research/midas-m32/checksums.sha256"),

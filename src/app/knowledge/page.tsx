@@ -1,2 +1,4 @@
 import { AppShell } from "@/components/app-shell";
-export default function KnowledgePage() { return <AppShell><section className="welcome-panel compact-welcome"><p className="eyebrow">Checked source repositories</p><h1>Knowledge</h1><p>PointGuide currently uses the verified M32 research corpus from PointAudio. Repository content remains authoritative; web findings stay supplemental until reviewed and merged.</p></section><section className="knowledge-card"><span className="source-badge">Repository</span><div><h2>PointAudio · M32 ecosystem</h2><p>20 source records · 41 manifest checksums · manufacturer documentation prioritized</p><a href="https://github.com/PointCommunity/pointaudio" rel="noreferrer" target="_blank">Open source repository <span aria-hidden="true">↗</span></a></div></section></AppShell>; }
+import { requirePageRole } from "@/lib/auth/page";
+import { KnowledgeWorkspace } from "@/components/knowledge-workspace";
+export default async function KnowledgePage() { await requirePageRole(["TRAINER", "ADMIN", "OWNER"]); return <AppShell><KnowledgeWorkspace /></AppShell>; }

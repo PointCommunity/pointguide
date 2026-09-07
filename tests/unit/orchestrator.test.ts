@@ -26,6 +26,12 @@ describe("grounded orchestration", () => {
     await expect(orchestrateAnswer({ evidence, mode:"DEEP_RESEARCH", primary: async () => draft, reviewer: async () => ({ findings:[{ claimId:"c1", verdict:"REJECTED", rationaleCode:"CONTRADICTED" }] }) })).rejects.toMatchObject({ code:"REVIEW_REJECTED" });
   });
 
+  it("lets review confirm that an unsupported question remains explicitly unknown", async () => {
+    const unknown: AnswerDraft = { directAnswer: "No evidence.", steps: ["Collect the model and location."], safetyAndAssumptions: [], confidence: "UNKNOWN", claims: [{ id: "unknown", text: "The requested fact is not established.", kind: "UNKNOWN", status: "UNKNOWN", evidenceIds: [] }] };
+    const result = await orchestrateAnswer({ evidence: [], mode: "DEEP_RESEARCH", primary: async () => unknown, reviewer: async () => ({ findings: [{ claimId: "unknown", verdict: "REJECTED", rationaleCode: "INSUFFICIENT" }] }) });
+    expect(result).toMatchObject({ confidence: "UNKNOWN", reviewStatus: "PASSED", claims: [{ status: "UNKNOWN" }] });
+  });
+
   it("fails closed on missing reviewer, malformed findings, and timeout", async () => {
     await expect(orchestrateAnswer({ evidence, mode:"DEEP_RESEARCH", primary: async () => draft })).rejects.toMatchObject({ code:"REVIEW_UNAVAILABLE" });
     await expect(orchestrateAnswer({ evidence, mode:"DEEP_RESEARCH", primary: async () => draft, reviewer: async () => ({ findings:[] }) })).rejects.toMatchObject({ code:"REVIEW_INVALID" });

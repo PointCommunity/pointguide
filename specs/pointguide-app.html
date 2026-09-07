@@ -107,7 +107,7 @@
       <div class="table-wrap"><table>
         <thead><tr><th>Role</th><th>Capabilities</th><th>Restrictions</th></tr></thead>
         <tbody>
-          <tr><td>USER</td><td>Ask questions, continue conversations, inspect citations, search the knowledge base, rate responses, and flag web findings.</td><td>Cannot approve training material, manage accounts, or mutate Git.</td></tr>
+          <tr><td>USER</td><td>Ask questions, inspect citations, rate responses, search owned sessions, resume available follow-ups, and download session PDFs.</td><td>Cannot open Knowledge or Training, approve training material, manage accounts, or mutate Git.</td></tr>
           <tr><td>TRAINER</td><td>All User capabilities plus review flagged findings, curate examples, edit proposed knowledge, and submit training/Git proposals.</td><td>Cannot manage accounts or bypass review controls.</td></tr>
           <tr><td>ADMIN</td><td>All Trainer capabilities plus approve/suspend accounts, assign User/Trainer/Admin roles, approve proposals, manage sources, and inspect audit events.</td><td>Cannot grant Owner, change provider credentials/models/prompts, or bypass protected-branch and live-system safety boundaries.</td></tr>
           <tr><td>OWNER</td><td>All Admin capabilities plus grant/revoke Owner access and exclusively manage AI providers, credentials, models, reasoning efforts, agent prompts, and global review policy.</td><td>Cannot remove the final active Owner, expose secrets, bypass protected branches, or bypass live-system safety boundaries.</td></tr>
@@ -131,6 +131,7 @@
         <li>Every displayed substantive factual or actionable claim maps to one or more captured evidence records. Unsupported claims are removed or shown explicitly as unknown.</li>
         <li>Owners can connect Codex through headless device-code OAuth or Ollama Cloud through an API key, refresh each provider's model catalog, select model/reasoning settings, and test the configuration without exposing credentials.</li>
         <li>When global review is enabled, a user can opt into Deep research for a query. A configured same- or cross-provider reviewer independently verifies the primary answer claim by claim; a failed review never appears as a reviewed answer.</li>
+        <li>Every approved user can search only their own session titles, questions, and answers; open an earlier result; spend any remaining follow-ups; and download a print-friendly evidence record as PDF.</li>
         <li>Admins and Trainers can manage training examples and guidance as versioned repository proposals with an audit trail.</li>
         <li>The UI is dark by default, has no horizontal scrolling at 320 CSS pixels, uses touch targets of at least 44×44 CSS pixels, supports keyboard access, and remains usable at 200% zoom.</li>
         <li>The source app passes typecheck, lint, unit/integration tests, browser tests, production build, dependency/security checks, and container smoke tests.</li>
@@ -143,14 +144,15 @@
 
       <h3>Mobile information architecture</h3>
       <ul>
-        <li><strong>Ask:</strong> default screen with conversation history, question composer, optional “Search the web too” control, and quick prompts.</li>
+        <li><strong>Ask:</strong> default screen with question composer, optional Deep research control, rotating collapsed suggestions, visible working phases, and a newest-first session transcript.</li>
+        <li><strong>Sessions:</strong> visible to every approved role; keyword search across the current account's session titles, questions, and answers, with resume and PDF download actions.</li>
         <li><strong>Knowledge:</strong> source browser and keyword search across manuals, procedures, equipment, software, and research.</li>
-        <li><strong>Saved:</strong> the user’s saved conversations and flagged findings.</li>
-        <li><strong>Train:</strong> visible only to Trainers/Admins/Owners; review queue, examples, guidance, and repository proposal history.</li>
+        <li><strong>Training:</strong> visible only to Trainers/Admins/Owners; a clean new-session workspace for contextual coaching, learning reports, accepted memory proposals, and repository proposal history.</li>
+        <li><strong>Training Sessions:</strong> a Training subpage with bounded keyword search across the current trainer's questions, responses, reports, and repositories; unfinished sessions can be reopened and continued.</li>
         <li><strong>Admin:</strong> visible only to Admins/Owners; pending accounts, User/Trainer/Admin access, sources, audit events, and Git integration health.</li>
         <li><strong>Owner:</strong> visible only to Owners; provider connections, model catalogs, primary/reviewer profiles, reasoning effort, versioned system prompts, global Deep research policy, and Owner access.</li>
       </ul>
-      <p>On narrow screens, Ask is the single dominant destination and the other destinations sit in a bottom navigation bar that respects device safe areas. On wider screens, navigation becomes a compact left rail and the answer/source panes can appear side by side.</p>
+      <p>Navigation remains a compact fixed bottom bar at phone, tablet, and desktop widths. It respects device safe areas and stays on one row: phones show at most four direct destinations followed by a three-line More control that opens the remaining authorized pages with their icons, while tablets and desktops show every authorized destination directly.</p>
 
       <h3>Answer contract</h3>
       <ol>
@@ -231,7 +233,7 @@
           <tr><td>users</td><td>Identity, role, and lifecycle</td><td>Cloudflare subject, email, display name, User/Trainer/Admin/Owner role, Pending/Approved/Suspended status, first/last login</td></tr>
           <tr><td>provider_connections</td><td>Owner-managed authentication state</td><td>provider, encrypted secret reference, connection status, catalog refresh time; never raw secret output</td></tr>
           <tr><td>agent_profiles / prompt_revisions</td><td>Versioned primary and reviewer configuration</td><td>provider, model, effort, role, enabled state, prompt revision, actor, timestamp</td></tr>
-          <tr><td>conversations / messages</td><td>User support history</td><td>owner, content, provider response ID, status, timestamps</td></tr>
+          <tr><td>conversations / messages</td><td>User support history</td><td>owner, derived title, turn count, message ordinal/content/status, timestamps</td></tr>
           <tr><td>source_documents / source_chunks</td><td>Commit-bound search index</td><td>commit SHA, source ID, path, locator, authority, version, digest, text, search vector</td></tr>
           <tr><td>answers / answer_claims / answer_citations</td><td>Immutable answer and claim ledger</td><td>answer version, primary/reviewer profiles, review status, claim text/status, evidence IDs, prompt revisions, citation rank/excerpt</td></tr>
           <tr><td>feedback</td><td>Helpfulness and diagnosis</td><td>rating, reasons, comment, question fingerprint, answer/citation IDs</td></tr>
@@ -248,6 +250,7 @@
       <ul>
         <li><code>POST /api/conversations</code>, <code>GET /api/conversations</code>, <code>GET /api/conversations/:id</code></li>
         <li><code>POST /api/conversations/:id/messages</code> for a streaming answer</li>
+        <li><code>GET /api/conversations/:id/pdf</code> for an owner-scoped, print-friendly evidence record</li>
         <li><code>POST /api/answers/:id/feedback</code> and <code>POST /api/citations/:id/flags</code></li>
         <li><code>GET /api/knowledge</code> and <code>GET /api/sources/:id</code></li>
         <li><code>GET /api/training/review</code>, <code>POST /api/training/examples</code>, <code>POST /api/change-proposals</code></li>

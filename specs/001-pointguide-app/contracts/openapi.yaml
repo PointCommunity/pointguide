@@ -124,13 +124,12 @@ paths:
           application/json:
             schema:
               type: object
-              required: [content]
+              required: [question]
               properties:
-                content: { type: string, minLength: 1, maxLength: 8000 }
-                includeWeb: { type: boolean, default: false }
+                question: { type: string, minLength: 1, maxLength: 8000 }
                 deepResearch: { type: boolean, default: false }
       responses:
-        '200': { description: Server-sent answer events ending in an Answer }
+        '200': { description: NDJSON answer events ending in an Answer and turn usage; one initial question plus five follow-ups }
         '409': { description: Provider or reviewer not configured }
         '422': { description: Evidence or review contract rejected }
   /answers/{id}/feedback:
@@ -138,6 +137,27 @@ paths:
       summary: Create or replace current user's feedback
       parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
       responses: { '200': { description: Feedback saved } }
+  /conversations:
+    get:
+      summary: Search the current user's support sessions
+      parameters:
+        - { name: q, in: query, required: false, schema: { type: string, maxLength: 200 } }
+      responses: { '200': { description: Owner-scoped session summaries ordered by recent activity } }
+    post:
+      summary: Create a support session for the current user
+      responses: { '201': { description: New support session and current turn allowance } }
+  /conversations/{id}:
+    get:
+      summary: Read one owned session with structured turns
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Session transcript }, '404': { description: Session not found or not owned } }
+  /conversations/{id}/pdf:
+    get:
+      summary: Download one owned session as a print-friendly PDF
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: PDF attachment, content: { application/pdf: { schema: { type: string, format: binary } } } }
+        '404': { description: Session not found or not owned }
   /knowledge:
     get:
       summary: Search the indexed authoritative corpus
@@ -148,6 +168,10 @@ paths:
     get:
       summary: List accounts for Admin or Owner
       responses: { '200': { description: Paginated accounts } }
+  /account:
+    patch:
+      summary: Update the current approved user's display name
+      responses: { '200': { description: Updated account }, '409': { description: Version conflict } }
   /admin/users/{id}:
     patch:
       summary: Approve, suspend, or assign non-Owner role; Owner role requires Owner actor
@@ -209,6 +233,32 @@ paths:
     get:
       summary: List feedback, findings, examples, and proposals for Trainer or above
       responses: { '200': { description: Paginated review queue } }
+  /training/sessions:
+    get:
+      summary: List the current Trainer's organic training sessions and active sources
+      responses: { '200': { description: Training workspace state } }
+    post:
+      summary: Start a contextual training session and generate the first grounded response
+      responses: { '201': { description: Training session with first answer } }
+  /training/sessions/{id}:
+    patch:
+      summary: Rate, revise, accept, wipe, or propose accepted training with explicit state validation
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses: { '200': { description: Updated training session }, '204': { description: Session wiped }, '409': { description: Invalid state or confirmation } }
+  /knowledge/sources:
+    get:
+      summary: List connected source repositories for Trainer or above
+      responses: { '200': { description: Source registry } }
+    post:
+      summary: Validate, index, and link an allowlisted GitHub source repository
+      responses: { '201': { description: Source linked }, '422': { description: Structure validation report } }
+  /knowledge/sources/{id}:
+    patch:
+      summary: Archive a source after exact typed confirmation
+      responses: { '200': { description: Source archived } }
+    delete:
+      summary: Permanently remove an archived source after exact typed confirmation
+      responses: { '204': { description: Archived registry record and indexed chunks removed } }
   /change-proposals:
     post:
       summary: Create a provenance-rich repository change proposal

@@ -239,6 +239,7 @@ export class PostgresProviderStore implements ProviderConfigurationStore {
         modelId: saved.modelId,
         reasoningEffort: saved.reasoningEffort,
         enabled: saved.enabled,
+        systemPrompt: input.ownerPrompt,
         promptRevisionId,
         promptRevision: existingRevisions.length + 1,
         corePolicyRevision: "evidence-policy-v1",
@@ -263,6 +264,7 @@ export class PostgresProviderStore implements ProviderConfigurationStore {
       modelId: profile.modelId,
       reasoningEffort: profile.reasoningEffort,
       enabled: profile.enabled,
+      systemPrompt: revisions.find((revision) => revision.id === profile.activePromptRevisionId)?.ownerPrompt ?? "",
       promptRevisionId: profile.activePromptRevisionId ?? "",
       promptRevision: revisions.filter((revision) => revision.profileId === profile.id).length,
       corePolicyRevision: revisions.find((revision) => revision.id === profile.activePromptRevisionId)?.corePolicyRevision ?? "evidence-policy-v1",
@@ -282,7 +284,7 @@ export class PostgresProviderStore implements ProviderConfigurationStore {
     return {
       id: row.profile.id, name: row.profile.name, role: row.profile.role, provider: row.connection.provider,
       connectionId: row.profile.connectionId, modelId: row.profile.modelId, reasoningEffort: row.profile.reasoningEffort,
-      enabled: row.profile.enabled, promptRevisionId: row.profile.activePromptRevisionId!, promptRevision: row.profile.version,
+      enabled: row.profile.enabled, systemPrompt: row.prompt, promptRevisionId: row.profile.activePromptRevisionId!, promptRevision: row.profile.version,
       corePolicyRevision: "evidence-policy-v1", createdAt: row.profile.createdAt, updatedAt: row.profile.updatedAt,
       version: row.profile.version, ownerPrompt: row.prompt, connection: connectionFromRow(row.connection),
     };

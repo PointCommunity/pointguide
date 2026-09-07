@@ -67,6 +67,27 @@ specs/001-pointguide-app/      feature artifacts and contracts
 
 1. **Foundation demo**: pinned project, dark responsive shell, health endpoint, corpus manifest validation, deterministic repository search, fixture-grounded answer and feedback UI.
 2. **Identity**: Cloudflare JWT verification, transactional bootstrap Owner, Pending states, role matrix, account-management UI/API.
+
+## 2026-09-07 implementation extension
+
+1. Update the shared role policy, add server page guards, add self-service display-name mutation, and replace account cards with a filtered selector/editor.
+2. Add atomic six-turn conversation accounting and bounded transcript retrieval, then expose the subtle follow-up counter in the compact Ask composer.
+3. Add a validated source-repository registry, bounded GitHub tree/text indexer, lifecycle confirmations, active-chunk retrieval, and dark HTML structure guide.
+4. Add the persisted organic Training state machine and agent learning-report generation, then finalize accepted learning through the existing governed proposal/PR worker.
+5. Rename and compact Agent Setup, return its active System Prompt, and seed the evidence-first beginner-friendly default.
+6. Consolidate all role-aware navigation into a fixed bottom bar, compact shared surfaces, then run focused tests, the full suite, browser matrix, security checks, and an exact AMD64 build.
+7. Separate accumulated coaching history from the new-session Training workspace, add owner-scoped bounded search and resume routes, and simplify accepted-learning commit to one explicit confirmation action while preserving the typed destructive wipe guard.
+
+The extension is delivered as vertical slices in this order because authorization and conversation limits are shared foundations; repository registration precedes training commit targets; final visual compaction follows stable component states.
+
+## 2026-09-07 session continuity extension
+
+1. Extend the learning repository with owner-scoped session summaries and structured turns reconstructed from existing conversation, message, answer, claim, and evidence records. Search remains bounded and server-side across title and message content.
+2. Add authenticated session list/detail routes, then make the Ask workspace create or resume one conversation without duplicating state. Use optimistic question insertion and real streamed status events for immediate feedback.
+3. Keep transcript state newest-first only at the presentation boundary; persisted/model context remains chronological. Collapse each answer's evidence under one disclosure containing the existing per-source disclosures.
+4. Add an all-role Sessions route and a responsive fixed-bottom navigation layout that keeps four direct phone destinations plus a fifth More overflow control while retaining all direct destinations on tablet and desktop.
+5. Generate owner-scoped PDF exports from the structured session detail using a server-only PDF renderer with bounded text, page-aware wrapping, deterministic metadata, and attachment headers.
+6. Exercise repository, API, UI, ownership, accessibility, responsive, and PDF rendering checks before the mandatory exact-archive AMD64 Zot build and Canary-only GitOps deployment.
 3. **Providers**: protected provider records, Codex device flow boundary, Ollama write-only key flow, dynamic catalogs, model/effort/profile/prompt UI.
 4. **Review**: primary structured claim ledger, optional Deep research reviewer, deterministic supported-claim renderer, global/user controls.
 5. **Learning and Git**: durable feedback, training review, web findings, bounded proposal state machine, Git worker fixture and audit.

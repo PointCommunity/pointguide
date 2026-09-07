@@ -88,3 +88,37 @@
 - Learning/Git T033-T039 covers FR-012-FR-016 and FR-026.
 - Operations T040-T047 covers FR-006-FR-007 and FR-028-FR-030; T045-T047 are explicit external authorization gates.
 - Final validation T048-T051 covers every success criterion and cannot claim gated external actions that were not performed.
+
+## Phase 9: Compact role-aware support and organic learning
+
+- [x] T052 Update the role/navigation contract and add server-enforced restricted-page guards
+- [x] T053 Add self-service display-name editing and scalable, filtered account administration
+- [x] T054 Add atomic one-plus-five conversation turns, bounded transcript context, and the Ask counter
+- [x] T055 Add validated source repository registration, indexing, archive/delete confirmation, retrieval, and source-structure documentation
+- [x] T056 Add persisted organic Training sessions, iterative ratings/reports, accepted wipe/commit outcomes, and governed training artifacts
+- [x] T057 Rename Agent Setup/System Prompt, return the active prompt, and add the evidence-first beginner-friendly default
+- [x] T058 Compact all page surfaces and implement fixed bottom navigation at every viewport, with no navigation for Users
+- [x] T059 Run focused RED/GREEN tests per slice, full quality/security gates, responsive Playwright validation, and exact AMD64 image verification
+
+## Phase 10: Searchable support sessions and exports
+
+- [x] T060 Add RED tests for owned session listing/search/detail, recognizable first-question titles, and structured historical turns
+- [x] T061 Implement bounded session repository queries and authenticated list/detail APIs
+- [x] T062 Add RED browser tests for visible Ask phases, cleared composer, newest-first turns, nested evidence, and resumed follow-ups
+- [x] T063 Refactor Ask into a persisted transcript with accessible progress and top-level Evidence disclosure
+- [x] T064 Add Sessions navigation/page with keyword search, recent-session summaries, and owned session continuation
+- [x] T065 Add RED tests and implement an authenticated, print-friendly PDF session export
+- [x] T066 Validate the complete source/security/browser suite, build the exact committed `linux/amd64` image locally, publish to Zot, and deploy/verify the immutable Canary candidate
+
+## Phase 11: Compact mobile navigation overflow
+
+- [x] T067 Add a failing phone navigation test for four direct destinations, a three-line More control, icon-preserving overflow links, and keyboard dismissal
+- [x] T068 Implement the single-row phone navigation overflow while retaining all direct destinations on tablet and desktop
+- [x] T069 Re-run the complete source/security/browser suite and deploy the exact immutable candidate to Canary
+
+## Phase 12: Searchable training history and streamlined commit
+
+- [x] T070 Add failing store and browser tests for newest-first owner-scoped Training Sessions search, clean Training entry, and resume
+- [x] T071 Implement the restricted Training Sessions subpage, bounded server-side search, and owned detail resume route
+- [x] T072 Replace the accepted-learning typed phrase with one explicit confirmation button while retaining the destructive wipe phrase
+- [x] T073 Re-run the complete source/security/browser suite and deploy the exact immutable candidate to Canary

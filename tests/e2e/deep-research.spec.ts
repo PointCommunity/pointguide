@@ -1,14 +1,15 @@
 import { expect, test } from "@playwright/test";
 
 test("uses the configured reviewing profile and labels the reviewed answer", async ({ page }) => {
-  await page.goto("/owner/ai");
+  await page.goto("/owner/agent");
   await page.getByRole("button", { name: "Start Codex sign-in" }).click();
   await page.getByRole("button", { name: "Refresh Codex models" }).click();
   for (const name of ["Primary profile", "Reviewer profile"]) {
     const profile = page.getByRole("article").filter({ has: page.getByRole("heading", { name }) });
-    await profile.getByLabel("Owner direction").fill("Independently validate every claim against supplied evidence.");
+    await profile.getByLabel("System Prompt").fill("Independently validate every claim against supplied evidence.");
     await profile.getByRole("checkbox").check();
     await profile.getByRole("button", { name: "Save profile" }).click();
+    await expect(profile.getByText("Profile saved as a new prompt revision.")).toBeVisible();
   }
   const reviewToggle = page.getByRole("checkbox", { name: "Enable Deep research" });
   if (!await reviewToggle.isChecked()) {

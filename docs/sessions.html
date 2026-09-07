@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><title>PointGuide sessions and PDF exports</title><link rel="stylesheet" href="style.css"></head>
+<body><main>
+  <p class="eyebrow">Support continuity</p>
+  <h1>Sessions and PDF exports</h1>
+  <p class="lede">Every approved account can return to its own evidence-grounded support history, use any remaining follow-ups, and save a print-friendly record.</p>
+  <nav><a href="index.html">Documentation home</a><a href="development.html">Development</a><a href="identity-and-providers.html">Identity and providers</a><a href="release.html">Release</a></nav>
+  <h2>Conversation contract</h2>
+  <ul><li>One session supports one initial question and five follow-up questions.</li><li>Persisted and model-facing context stays chronological and bounded; the Ask page displays the newest question first.</li><li>The first completed question becomes the session title. Empty sessions are not shown in history.</li><li>Evidence is collapsed as one main disclosure, with a nested disclosure for each source.</li></ul>
+  <h2>Search and ownership</h2>
+  <p>Session search is case-insensitive, limited to 200 characters, and matches the current account's session titles, questions, and direct answer text. List, detail, resume, and PDF endpoints always apply the authenticated account ID; a non-owner receives the same not-found response as an absent session.</p>
+  <h2>PDF export</h2>
+  <p>The authenticated export route produces a Letter-sized PDF containing questions, direct answers, safety notes, steps, claim status, evidence titles, locators, and excerpts. Text is bounded and normalized for the embedded print font, sections wrap across pages, and the response is private, uncached, download-only content.</p>
+  <div class="card warning"><strong>Evidence remains authoritative.</strong> A PDF is a snapshot of the answer and evidence available when the session was created. Check PointGuide again before making a time-sensitive or disruptive change.</div>
+</main></body>
+</html>

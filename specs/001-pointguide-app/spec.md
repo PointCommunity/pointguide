@@ -169,3 +169,77 @@ Maintainers can index a pinned commit, migrate the database, inspect health, bui
 - 2026-09-06: Deep research is globally controlled and user-selected per query; same-model and cross-provider review are allowed.
 - 2026-09-06: Every agent statement must be evidence-grounded; no evidence means Unknown.
 - 2026-09-06: `PointGuide` is the approved application name; `PointCommunity/pointaudio` is its initial governed knowledge source rather than the application repository or identity.
+
+## 2026-09-07 usability and learning amendment
+
+### Role and navigation contract
+
+- Every approved role can use Ask and Sessions. Users receive only those two application destinations; Account remains reachable from the identity control.
+- Trainers, Admins, and Owners can use Knowledge and Training. Admins and Owners can use Accounts. Only Owners can see or open Agent Setup.
+- Restricted pages enforce the same role policy on the server as their APIs; hiding a navigation item is not an authorization control.
+- Navigation remains a fixed bottom bar at phone, tablet, and desktop widths and must not overlap page content or safe areas. Phone layouts show at most four direct destinations; when a role has more, the fifth tab is a three-line `More` control and every remaining authorized destination appears in its accessible overflow panel with its page icon. Tablet and desktop layouts show all authorized destinations directly.
+
+### Compact Ask experience
+
+- The Ask page uses general Point Community Church technology language rather than promising only PointAudio or M32 coverage.
+- Suggested tasks rotate between sessions and are collapsed by default in a single accessible accordion.
+- One support session contains one initial question and at most five follow-up questions. The server rejects a seventh user turn, and the remaining allowance is shown immediately below the submit action.
+- Each model request receives the bounded prior session transcript so follow-up questions retain context.
+
+### Account and administration
+
+- Users can edit their own display name without changing their Cloudflare identity or email.
+- Account management uses one scalable account selector and one editor. Admins cannot list Owners, target themselves, grant Owner, or modify an Owner. Owners can manage every other account, including Owner membership, while neither role can change its own access.
+
+### Knowledge repositories
+
+- Knowledge managers can register a repository only after a server-side structural validation of an allow-listed GitHub repository URL, branch, governing instructions, evidence content, and integrity/index metadata.
+- A validation report records the checked commit, errors, warnings, supported files, skipped files, and indexed chunk count. Invalid repositories are not linked or searched.
+- Linked repository text is indexed into bounded database chunks and joins the configured local corpus during retrieval.
+- Archive removes a repository from active retrieval; deletion is allowed only after archival. Both actions require an explicit, server-validated confirmation value.
+
+### Organic Training workflow
+
+- A Trainer, Admin, or Owner starts with a real question and receives a grounded answer from the configured primary agent while the full bounded training-session context is retained.
+- Every agent answer is rated helpful or not helpful with an explanation. The agent returns a concise learning report that separates behavior guidance from factual evidence and invites further trainer insight.
+- The trainer may provide more insight, receive a revised answer, and repeat rating/report cycles until accepting the report.
+- The main Training page always opens as a clean new-session workspace. Accumulated sessions live on a separate Trainer/Admin/Owner-only Training Sessions page with bounded owner-scoped keyword search across the original question, response, learning report, and repository; unfinished sessions can be reopened and continued.
+- After acceptance, the trainer must explicitly choose either to wipe the session or commit the accepted learning. Wipe permanently removes the draft session after typed confirmation. Commit uses one explicit confirmation button and creates a versioned training artifact through the governed repository proposal/PR workflow; it is not source truth until merged and reindexed.
+
+### Agent Setup language and default system prompt
+
+- The product calls the Owner-only page “Agent Setup” and calls profile direction “System Prompt.”
+- The active system prompt is returned to the Owner and remains editable. A new profile starts with a default prompt requiring concise evidence-grounded answers, explicit unknowns, safety boundaries, and clear one-action-per-step guidance written for non-technical beginners.
+
+### Amendment success criteria
+
+- Role-matrix unit, API, and direct-route tests reject every disallowed page and operation.
+- Conversation tests prove bounded history reaches the model and that one initial plus five follow-ups succeeds while the next turn fails.
+- Repository tests prove URL allow-listing, validation reports, indexing, archive/delete confirmations, and exclusion of archived chunks.
+- Training tests prove the question → answer → rated explanation → learning report → further insight → accepted report → wipe/commit state machine, searchable history isolation, and session resume behavior.
+- Playwright verifies compact layouts, fixed bottom navigation, User navigation limits, mobile More overflow, rotating collapsed suggestions, editable name, scalable account selection, confirmations, keyboard access, and no overflow at 320, 390, 768, 1024, and 1440 CSS pixels.
+
+## 2026-09-07 session continuity amendment
+
+### Ask progress and transcript
+
+- Submitting a question immediately clears the composer and creates a visible `Point Question` turn below it. While the answer is being prepared, that turn exposes an accessible, visibly animated progress state with plain-language phases for reading the question, searching connected knowledge, checking evidence, and reviewing when Deep research is selected.
+- Completed answers render directly below their question. Follow-up turns are added to the same transcript with the newest question first, while model context remains chronological and bounded to one initial question plus five follow-ups.
+- Each answer's Evidence area is collapsed into one top-level accordion by default. Individual evidence sources remain independently expandable inside it.
+
+### Searchable Sessions
+
+- Every approved role can see and open a `Sessions` navigation destination. Users therefore receive a compact two-destination bottom navigation for Ask and Sessions.
+- Sessions lists only the signed-in account's conversations, ordered by most recent activity, and supports bounded, case-insensitive keyword search across session titles, user questions, and answer text.
+- Opening a session shows its persisted questions, structured answers, claims, and evidence. A session with remaining turns can be continued in place; a session at its limit remains readable but cannot accept another question.
+- A new session derives a concise title from its first question so history remains recognizable without user setup.
+
+### PDF export
+
+- An authenticated user can download only their own completed session as a print-friendly PDF containing the session title, questions, direct answers, steps, safety notes, confidence/review state, claims, and human-readable evidence references.
+- PDF generation is bounded, escapes or normalizes unsupported characters, uses page-aware wrapping, and never exposes another account's session or provider credentials.
+
+### Amendment success criteria
+
+- Unit and API tests prove ownership isolation, search across question/answer text, newest-first display data, first-question title derivation, turn-limit preservation, and PDF response headers/content.
+- Playwright proves visible progress, cleared composer, newest-first follow-ups, nested evidence disclosure, Sessions search/open/resume, PDF download, role-wide navigation, 44-pixel targets, and no overlap or horizontal overflow at release viewports.

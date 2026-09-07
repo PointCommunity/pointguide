@@ -8,6 +8,7 @@ import { getRuntimeModelRuntime, getRuntimeProviderDependencies } from "@/lib/pr
 import { parseEnvironment } from "@/lib/config/env";
 import { answerQuestion } from "@/lib/agent/service";
 import { getCachedCorpusChunks } from "@/lib/evidence/runtime-corpus";
+import { getRuntimeSourceStore } from "@/lib/sources/runtime";
 
 const bodySchema = z.object({ question: z.string().trim().min(1).max(8_000), deepResearch: z.boolean().default(false) }).strict();
 const encoder = new TextEncoder();
@@ -30,13 +31,18 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         const environment = parseEnvironment(process.env);
         if (parsed.data.deepResearch) controller.enqueue(event("status", { stage: "review", message: "Independent review requested" }));
         const fixture = environment.AUTH_MODE === "fixture";
-        const chunks = fixture ? undefined : await getCachedCorpusChunks(environment.CORPUS_ROOT!, environment.CORPUS_COMMIT!, environment.CORPUS_MANIFEST);
+        const sourceStore = getRuntimeSourceStore();
+        const configuredSources = await sourceStore.list();
+        const configuredChunks = await sourceStore.activeChunks();
+        const pointAudioActive = configuredSources.some((source) => source.fullName === "PointCommunity/pointaudio" && source.status === "ACTIVE");
+        const localChunks = fixture || !pointAudioActive ? [] : await getCachedCorpusChunks(environment.CORPUS_ROOT!, environment.CORPUS_COMMIT!, environment.CORPUS_MANIFEST);
+        const chunks = fixture ? (pointAudioActive && configuredChunks.length === 0 ? undefined : configuredChunks) : [...localChunks, ...configuredChunks];
         const result = await answerQuestion({ actor, conversationId: id, question: parsed.data.question, deepResearch: parsed.data.deepResearch, providers: getRuntimeProviderDependencies().store, learning: getRuntimeLearningRepository(), fixture, chunks, modelRuntime: fixture ? undefined : getRuntimeModelRuntime() });
         controller.enqueue(event("answer", result));
         controller.enqueue(event("done", {}));
       } catch (error) {
         const code = error instanceof Error ? error.message : "ANSWER_FAILED";
-        controller.enqueue(event("error", { code, message: code === "REVIEW_DISABLED" ? "Deep research is disabled by the Owner." : code === "CONVERSATION_NOT_FOUND" ? "Conversation was not found." : code.includes("CONFIGURED") ? "The required agent profile is not configured." : "PointGuide could not produce a verified answer." }));
+        controller.enqueue(event("error", { code, message: code === "TURN_LIMIT_REACHED" ? "This support session has reached its limit of five follow-up questions. Start a new session to continue." : code === "REVIEW_DISABLED" ? "Deep research is disabled by the Owner." : code === "CONVERSATION_NOT_FOUND" ? "Conversation was not found." : code.includes("CONFIGURED") ? "The required agent profile is not configured." : "PointGuide could not produce a verified answer." }));
       } finally { controller.close(); }
     },
   });

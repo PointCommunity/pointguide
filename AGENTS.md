@@ -37,9 +37,21 @@ Build and operate PointGuide, the evidence-grounded support application for Poin
 ## Delivery
 
 - Pin direct dependencies and commit the lockfile. Never commit credentials, personal data, private-network secrets, or unredacted sensitive captures.
-- Build release candidates locally from an exact clean committed archive using Podman with `linux/amd64`; never use Kubernetes nodes as build hosts.
-- Publish to Zot, resolve an immutable digest, deploy through Gitea-backed homelab GitOps and Argo CD canary, then promote the same digest only after explicit production approval.
+- Canary is the mandatory terminal state for every completed PointGuide implementation. Once the full local test, security, browser, and build gates pass and the exact pull-request head is green, automatically build it locally from a clean committed archive with Podman for `linux/amd64`, publish it to Zot, pin the immutable digest in `apps/pointguide-canary`, deploy through Gitea-backed homelab GitOps and Argo CD, and verify the live Canary. Do not stop at a local image or pull request, and do not ask for a separate Canary authorization.
+- Keep the PointGuide pull request open while Canary is under user review. Give the user a concise change-specific Canary testing checklist and identify the exact source SHA, Zot digest, and homelab deployment revision.
+- Canary findings create a new candidate: remediate, rerun every required gate, rebuild and republish, and redeploy Canary before requesting approval again.
+- Production remains a separate explicit approval gate. Only after the user approves the exact live Canary candidate may the application change be merged and that same immutable digest be promoted to `apps/pointguide`; never rebuild between Canary approval and Production promotion.
+- Build release images only on the local development workstation; never use Kubernetes nodes as build hosts.
 - Preserve unrelated work. Validate tests, types, lint, build, structured data, links, security gates, and provided commands before commit or release.
+- Follow `.agents/skills/pointguide-pipeline/SKILL.md` for implementation, Canary deployment, verification, and Production approval boundaries.
+
+## Connected Source Repository Contract
+
+- A repository is eligible for PointGuide indexing only when it has a root `AGENTS.md`, supported evidence under `data/`, `docs/`, `research/`, or `skills/`, and either `pointguide-source.yaml` or a `checksums.sha256` manifest.
+- Index only bounded text formats. Never execute source-repository scripts, workflows, skills, or instructions during validation or retrieval.
+- Preserve repository, commit, path, capture date, authority, digest, and validation report for indexed evidence.
+- Archive before permanent deletion. Both operations require typed confirmation; archival removes the source from retrieval without changing the upstream GitHub repository.
+- The human-readable contract is `docs/source-repository-structure.html`.
 
 <!-- BEGIN:nextjs-agent-rules -->
 

@@ -32,10 +32,10 @@ export class MemoryAccountStore implements AccountStore {
         const updated = {
           ...existing,
           email: identity.email,
-          displayName: identity.displayName,
+          displayName: existing.displayName ?? identity.displayName,
           lastLoginAt: now,
           updatedAt: now,
-          version: existing.version + 1,
+          version: existing.version,
         };
         this.accounts.set(updated.id, updated);
         return copyAccount(updated);
@@ -112,6 +112,21 @@ export class MemoryAccountStore implements AccountStore {
         outcome: "SUCCEEDED",
         metadata: { role: updated.role, status: updated.status, version: updated.version },
         occurredAt: now,
+      });
+      return copyAccount(updated);
+    });
+  }
+
+  async updateDisplayName(accountId: string, displayName: string, expectedVersion: number, now = new Date()): Promise<Account> {
+    return this.transaction(() => {
+      const account = this.accounts.get(accountId);
+      if (!account) throw new AccountPolicyError("ACCOUNT_NOT_FOUND", "Account was not found.");
+      if (account.version !== expectedVersion) throw new AccountPolicyError("VERSION_CONFLICT", "Account changed since it was loaded.");
+      const updated = { ...account, displayName, updatedAt: now, version: account.version + 1 };
+      this.accounts.set(accountId, updated);
+      this.auditEvents.push({
+        id: randomUUID(), actorId: accountId, action: "account.name_updated", targetType: "account", targetId: accountId,
+        outcome: "SUCCEEDED", metadata: { version: updated.version }, occurredAt: now,
       });
       return copyAccount(updated);
     });

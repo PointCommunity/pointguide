@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AccountPolicyError, requireRole } from "@/lib/auth/policy";
+import { AccountPolicyError, requireApprovedAccount, requireRole } from "@/lib/auth/policy";
 import { authenticateRequest, SessionError, type SessionDependencies } from "@/lib/auth/session";
 import { accountRoles, accountStatuses, type Account } from "@/lib/auth/types";
 
@@ -8,6 +8,10 @@ const accountUpdateSchema = z.object({
   role: z.enum(accountRoles).optional(),
   status: z.enum(accountStatuses).optional(),
 }).strict().refine((value) => value.role !== undefined || value.status !== undefined);
+const displayNameSchema = z.object({
+  displayName: z.string().trim().min(2).max(80),
+  expectedVersion: z.number().int().positive(),
+}).strict();
 
 function publicAccount(account: Account) {
   return {
@@ -72,7 +76,20 @@ export async function handleAccountList(request: Request, dependencies: SessionD
   try {
     const actor = requireRole(await authenticateRequest(request, dependencies), ["ADMIN", "OWNER"]);
     const accounts = await dependencies.store.listAccounts();
-    return Response.json({ actor: publicAccount(actor), accounts: accounts.map(publicAccount) });
+    const visibleAccounts = actor.role === "ADMIN" ? accounts.filter((account) => account.role !== "OWNER") : accounts;
+    return Response.json({ actor: publicAccount(actor), accounts: visibleAccounts.map(publicAccount) });
+  } catch (error) {
+    return accountBoundaryErrorResponse(error);
+  }
+}
+
+export async function handleDisplayNameUpdate(request: Request, dependencies: SessionDependencies): Promise<Response> {
+  try { assertSameOrigin(request); } catch (error) { return accountBoundaryErrorResponse(error); }
+  const parsed = displayNameSchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) return errorResponse("INVALID_REQUEST", "Enter a name between 2 and 80 characters.", 400);
+  try {
+    const actor = requireApprovedAccount(await authenticateRequest(request, dependencies));
+    return Response.json(publicAccount(await dependencies.store.updateDisplayName(actor.id, parsed.data.displayName, parsed.data.expectedVersion)));
   } catch (error) {
     return accountBoundaryErrorResponse(error);
   }

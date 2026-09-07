@@ -5,7 +5,7 @@ import { accountBoundaryErrorResponse, assertSameOrigin } from "@/lib/auth/http"
 import { getRuntimeSessionDependencies } from "@/lib/auth/runtime";
 import { getRuntimeProposalRepository } from "@/lib/git/runtime";
 
-const schema = z.object({ rationale: z.string().trim().min(1).max(2_000), targetRepository: z.literal("PointCommunity/pointaudio"), baseCommit: z.string().regex(/^[a-f0-9]{7,64}$/u), targetPath: z.string().min(1).max(500), operation: z.enum(["CREATE", "UPDATE", "SUPERSEDE"]), proposedContent: z.string().min(1).max(500_000) }).strict();
+const schema = z.object({ rationale: z.string().trim().min(1).max(2_000), targetRepository: z.string().regex(/^PointCommunity\/[A-Za-z0-9._-]+$/u), baseCommit: z.string().regex(/^[a-f0-9]{7,64}$/u), targetPath: z.string().min(1).max(500), operation: z.enum(["CREATE", "UPDATE", "SUPERSEDE"]), proposedContent: z.string().min(1).max(500_000) }).strict();
 
 export async function GET(request: Request): Promise<Response> {
   try { requireRole(await authenticateRequest(request, getRuntimeSessionDependencies()), ["TRAINER", "ADMIN", "OWNER"]); return Response.json({ proposals: await getRuntimeProposalRepository().list() }); }
