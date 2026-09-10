@@ -1,0 +1,4 @@
+interface:
+  display_name: "Playwright Cli"
+  short_description: "Inspect and automate web interfaces with Microsoft's Playwright CLI using revision-pinned, safe workflows."
+  default_prompt: "Use $playwright-cli for this request, following the canonical PointGuide instructions."

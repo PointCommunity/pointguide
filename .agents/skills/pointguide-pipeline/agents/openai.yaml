@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pointguide Pipeline"
+  short_description: "Route complete PointGuide work through its Issue, review, Canary, approval, Production, closure, and health sk"
+  default_prompt: "Use $pointguide-pipeline for this request, following the canonical PointGuide instructions."

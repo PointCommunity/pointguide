@@ -10,7 +10,7 @@ export default defineConfig({
   test: {
     environment: "node",
     fileParallelism: false,
-    include: ["tests/{unit,integration,contract}/**/*.{test,spec}.{ts,tsx}"],
+    include: ["tests/{unit,integration,contract}/**/*.{test,spec}.{ts,tsx,mjs}"],
     setupFiles: ["./vitest.setup.ts"],
     coverage: {
       provider: "v8",

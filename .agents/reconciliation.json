@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "files": {
+    ".github/pull_request_template.md": {
+      "sourceSha256": "283de4a7c8893f35044d0d1a59782ded22dabcdb0c4d77c3d70fc665e8c2bf60",
+      "targetSha256": "c0a231cfdfdeb5d5ad75092ff9b8959926242a2459eba08ffa36e01f56992d52",
+      "rationale": "Explicitly exempt framework maintenance from Issue and application PM Testing sections."
+    },
+    ".agents/pipeliner-policy.html": {
+      "sourceSha256": "b331062146622916d9d4bec51cb4f4a52f4b2277d990a9d24eb7b511198c9399",
+      "targetSha256": "c5444d27ebba3340f9f9660be29ca3f3cfb10cd95e0750492ad93573d92e1896",
+      "rationale": "Explain PointGuide no-Issue maintenance, agent-owned QA, Canary approval and disabled automations before generic lifecycle reference."
+    },
+    ".agents/skills/pipeliner-adopt/SKILL.md": {
+      "sourceSha256": "b557ab2ce9a02dd3799c3d6675c7631a644644bb964f0b69da5ffb2659504b79",
+      "targetSha256": "16a8a2eac294068092ead2a8abc4c2d88316b1604b6582a0f78a13587ede5bc2",
+      "rationale": "Retain complete adoption workflow with explicit PM-directed no-Issue maintenance exception."
+    },
+    ".agents/skills/pipeliner-release-candidate/SKILL.md": {
+      "sourceSha256": "adfffcb0515330b7d2dca4a0c11e88c0d69ade6b04e9a5a3e65b730cdb3c6b40",
+      "targetSha256": "a6b944798f157afdfa0b64afd1b2a2c964ce54ca0b4c7bacac19f77f19a507c5",
+      "rationale": "Route the generic application lifecycle to the existing PointGuide specialization, preserving stronger exact Canary, Production, data and Issue gates without duplicate approval flows."
+    },
+    ".agents/skills/pipeliner-pipeline-health/SKILL.md": {
+      "sourceSha256": "5c6a4605e8c0f5afbca234843c8dbea346a5483390c108de9b86a2e55056008b",
+      "targetSha256": "a3b0b802b12ff88d0011ee624c2f9d006876075a9f677497d1e78ed062735aa6",
+      "rationale": "Route the generic application lifecycle to the existing PointGuide specialization, preserving stronger exact Canary, Production, data and Issue gates without duplicate approval flows."
+    },
+    ".agents/skills/pipeliner-create-issue/SKILL.md": {
+      "sourceSha256": "ecf83483fd37f22c141397c9795efebb4ab3ee21ecea35244535746d908a1229",
+      "targetSha256": "5089895468f335b175c2b70c6636aa645c4b7003896d7f5ba53f3ddf5d73f972",
+      "rationale": "Route the generic application lifecycle to the existing PointGuide specialization, preserving stronger exact Canary, Production, data and Issue gates without duplicate approval flows."
+    },
+    ".agents/skills/pipeliner-close-issue/SKILL.md": {
+      "sourceSha256": "91ccb39818ada243ffe3129d9ec544978c88fac53ec0e4112a2c9177f378a1f9",
+      "targetSha256": "dad328475c02b3ca6d8f43890a6681034166971cd1c3e754aa92f2062f290dec",
+      "rationale": "Route the generic application lifecycle to the existing PointGuide specialization, preserving stronger exact Canary, Production, data and Issue gates without duplicate approval flows."
+    },
+    ".agents/skills/pipeliner-review-issue/SKILL.md": {
+      "sourceSha256": "112f4aac91845e3be1f5b9f0e919511ee4b64cdf3e963dc821c42863da9e5194",
+      "targetSha256": "ca7ba7115609d75e053bde17fc8309d6b9599d7ee0476102871509a4947d3442",
+      "rationale": "Route the generic application lifecycle to the existing PointGuide specialization, preserving stronger exact Canary, Production, data and Issue gates without duplicate approval flows."
+    },
+    ".agents/skills/pipeliner-audit-backlog/SKILL.md": {
+      "sourceSha256": "b256a744fce697c73088891025bd39fc85d214f9b0fb0dd1022c18a899a87e68",
+      "targetSha256": "b395c793d727a1297f052f2ed68318c47a927d585edb136338e66d411a4c9bed",
+      "rationale": "Route the generic application lifecycle to the existing PointGuide specialization, preserving stronger exact Canary, Production, data and Issue gates without duplicate approval flows."
+    },
+    ".agents/skills/pipeliner-release-production/SKILL.md": {
+      "sourceSha256": "056f170c8e09eac5dbc9327743f71987c694bac9d6ab04304f13da64ffd073fb",
+      "targetSha256": "fa77e2484abc0da61a15c6923d280016be7c370d1dc21ec78b70b92646961e50",
+      "rationale": "Route the generic application lifecycle to the existing PointGuide specialization, preserving stronger exact Canary, Production, data and Issue gates without duplicate approval flows."
+    },
+    ".agents/skills/pipeliner-work-issue/SKILL.md": {
+      "sourceSha256": "877f5a20d5932ade1ba6371d35a3e0d7c4099556c796d6345bd545560379fe49",
+      "targetSha256": "19a6b4f6195f1dd822926ffb9c631238fa18f76b13ed2c164a76dc020ed6049a",
+      "rationale": "Route the generic application lifecycle to the existing PointGuide specialization, preserving stronger exact Canary, Production, data and Issue gates without duplicate approval flows."
+    },
+    ".agents/skills/pipeliner-work-issue/references/local-qa.md": {
+      "sourceSha256": "42eca9b0c87e92926a802955083908200f6a92d9d4f3e6ba15bd6461cb864a6b",
+      "targetSha256": "934103d7dd82f990dc0bc75353adbb3908bd3878e122bb25d6e84dc953a19440",
+      "rationale": "Document confirmed single Mac local QA, tested release PM deferral and concrete disposable database/server cleanup."
+    },
+    "AGENTS.md": {
+      "sourceSha256": "9ccb55ad570db181e548e3271e453faedc53082d39416d4b717bebf8530a5fd1",
+      "targetSha256": "eb200f687eac0fd72f21ff7ec13a5780e4e143dc7eab021611f38747e65fea4e",
+      "rationale": "Preserve PointGuide evidence, authorization, immutable release and data safety. Integrate no-Issue maintenance, explicit routing, local QA and disabled protection."
+    },
+    "blueprints/github-labels.json": {
+      "sourceSha256": "fde4722934324c3aba849d289d6a97604d1db256e0130272ce2b98af6b23d799",
+      "targetSha256": "eed6faa9d3a4e9088c034e521fe4969a4292307ba6d40f74ffe6727fd46b92a2",
+      "rationale": "Retain live PointGuide governed taxonomy, including deployment area, without redundant release/tooling labels."
+    },
+    "schema/pipeliner.schema.json": {
+      "sourceSha256": "6b86dd0f69889b85d23b2194a760b66a88bbf9a73666697a4f9a2384c8ab0472",
+      "targetSha256": "6b253f7689af564b80fb13971fe5082c718e4a0cc796c1b3740a0951ca62883d",
+      "rationale": "Define optional pmGate enum with default upstream local behavior and explicit release deferral."
+    },
+    "scripts/audit-project.mjs": {
+      "sourceSha256": "b808ec0ca0c41a31422211c3222ab0b29ec9d03bc3adece379624b32cd07dfb6",
+      "targetSha256": "babb0dbc7556eaecf1ebb7d1dd696be7efc6f8add556bfb6cacc79ba6529bacf",
+      "rationale": "Use configured PointGuide identity and private Project with disabled automatic transitions; never audit against upstream public repository identity."
+    },
+    "scripts/lib/qa.mjs": {
+      "sourceSha256": "62ded45fade6ed0713559aa6f520d616cc65ddf2e535be87c7184507a823778d",
+      "targetSha256": "4056d9c14e4a4b40eb645c083f4497d7b56a4eada9da4fa74a5002ff1e785583",
+      "rationale": "Tested optional release PM gate preserves default local approvals and all candidate, suite and cleanup checks; keeps PointGuide In Progress until verified Canary."
+    },
+    "scripts/lib/validation.mjs": {
+      "sourceSha256": "04ffb96524fdef12bec0c99a50f1583ece0507d7079e4f43bf3ed05522bcc07b",
+      "targetSha256": "348137cc0e7efb5c30f00965411edada8e4eeb23b50ed6e6da54484ccb7a4c22",
+      "rationale": "Tested adopter-specific Project identity and stricter agent-owned workflow expectations, preserving upstream template validation."
+    }
+  }
+}

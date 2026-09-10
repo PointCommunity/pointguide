@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pointguide Close Issue"
+  short_description: "Close an approved PointGuide Issue by validating the exact Canary candidate, squash-merging its PR, promoting "
+  default_prompt: "Use $pointguide-close-issue for this request, following the canonical PointGuide instructions."

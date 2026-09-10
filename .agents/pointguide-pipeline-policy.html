@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PointGuide Development Pipeline Policy</title>
+  <style>
+    :root { color-scheme: dark; --bg:#0b0d0e; --panel:#151918; --ink:#f4f0e7; --muted:#b7b0a4; --accent:#d8b76f; --line:#343a37; }
+    * { box-sizing: border-box; }
+    body { max-width: 980px; margin: auto; padding: 48px 24px 96px; background: var(--bg); color: var(--ink); font: 16px/1.65 system-ui,sans-serif; overflow-wrap: anywhere; }
+    h1,h2 { font-family: Georgia,serif; font-weight: 500; }
+    h1 { font-size: 48px; } h2 { margin-top: 40px; color: var(--accent); }
+    p,li,td { color: var(--muted); } code { color: #f0d18c; }
+    table { width:100%; border-collapse:collapse; background:var(--panel); }
+    th,td { padding:12px; border:1px solid var(--line); text-align:left; vertical-align:top; }
+    th { color:var(--ink); }
+    a { color:#8ddfd2; text-underline-offset:.2em; }
+    a:focus-visible { outline:3px solid #8bd9ff; outline-offset:3px; }
+    @media (max-width: 40rem) { body { padding:32px 16px 72px; } h1 { font-size:clamp(2rem,12vw,3rem); } table { display:block; overflow-x:auto; } }
+  </style>
+</head>
+<body>
+<main>
+<section><h2>PointGuide framework maintenance and QA</h2><p>Adoption and updates are direct maintenance without a GitHub Issue, active slot, PM Testing, application deployment, or bootstrap approval. The agent validates and publishes the exact maintenance tree. Application work uses PointGuide lifecycle specializations and retains all release gates.</p><p>Local QA is agent-owned on brimdor’s Apple Silicon Mac. PM Testing occurs in verified Canary; <code>Approved to merge and deploy production</code> authorizes same-digest Production promotion and verified completion. No additional local or post-Production PM gate applies. Builds stay local; hosted Actions run lightweight contract, security and whitespace checks.</p><p>The private Project has Backlog and Kanban boards. Automatic closure and status changes remain disabled; the agent performs and verifies them. Branch protection remains disabled by PM choice.</p></section>
+
+  <h1>PointGuide Development Pipeline</h1>
+  <p>This is the shared policy source for repository-owned PointGuide workflow skills. It governs <code>PointCommunity/pointguide</code> and the private PointCommunity Project <code>PointGuide</code> (number 2).</p>
+
+  <h2>Project schema</h2>
+  <table>
+    <tr><th>Concern</th><th>Controlled values</th></tr>
+    <tr><td>Status</td><td>Backlog, On Hold, In Progress, In Review, Done</td></tr>
+    <tr><td>Active</td><td>In Progress or In Review; one Issue maximum across both</td></tr>
+    <tr><td>Priority</td><td>P0 critical, P1 high, P2 normal, P3 low</td></tr>
+    <tr><td>Impact</td><td>High, Medium, Low</td></tr>
+    <tr><td>Effort</td><td>XS, S, M, L, XL</td></tr>
+    <tr><td>Labels</td><td>Exactly one governed type label and one or more governed area labels</td></tr>
+  </table>
+
+  <h2>State flow</h2>
+  <ol>
+    <li>After the PM approves a new Issue draft, the agent creates it and moves its Project card to Backlog, open, unassigned, and inactive.</li>
+    <li>After the PM selects ready work, the agent moves that card to In Progress, assigns only <code>brimdor</code>, and verifies the live Project state before implementation.</li>
+    <li>The agent implements on <code>issue/&lt;number&gt;-&lt;slug&gt;</code>, validates locally, and opens a PR using <code>Refs #&lt;number&gt;</code>.</li>
+    <li>The agent completes local QA, including relevant browser interaction testing against a local instance, builds one immutable image from the exact committed PR head, deploys that digest to Canary, and verifies the application runtime and homelab all-green.</li>
+    <li>Only then does the agent move the Issue to In Review, verify the card, and give the PM a change-specific Canary checklist.</li>
+    <li>When the PM reports findings, the agent moves the Issue back to In Progress before remediation. Every change invalidates the earlier candidate and approval.</li>
+    <li>When the PM explicitly requests a pause, the agent moves the Issue to On Hold and verifies that the active slot is released. When the PM requests resumption and the slot is free, the agent moves it to In Progress and verifies assignment and metadata.</li>
+    <li>The exact phrase <code>Approved to merge and deploy production</code> authorizes squash merge and immediate Production promotion for the recorded candidate. The agent proceeds without a second approval or an intermediate handoff.</li>
+    <li>Production reuses the exact Canary digest without rebuilding. After Production and the full cluster are verified green, the agent resolves every active GitOps image reference, purges obsolete unreferenced PointGuide image manifests from Zot, and verifies the retained Production digest remains pullable before closing the Issue, moving it to Done, and verifying that the active slot is empty. Release completion does not wait for Zot's delayed background garbage collection or repeat the full runtime and cluster audit solely because manifest cleanup occurred.</li>
+  </ol>
+
+  <h2>Agent-owned Project movement</h2>
+  <p>The PM never has to drag a card, choose a Status value, or repair Project metadata. Human selection, pause/resume requests, review findings, and approval are decision gates; the agent converts each gate into the required GitHub Project mutation and reads the result back immediately.</p>
+  <table>
+    <tr><th>Pipeline event</th><th>Agent-owned Project action</th><th>Required readback</th></tr>
+    <tr><td>Approved Issue creation</td><td>Set Backlog; leave open and unassigned.</td><td>Status, Priority, Impact, Effort, labels, assignment, and inactivity.</td></tr>
+    <tr><td>PM selects or resumes work</td><td>Set In Progress and assign only <code>brimdor</code>.</td><td>Sole active card, complete metadata, assignment, Issue and PR alignment.</td></tr>
+    <tr><td>PM explicitly pauses work</td><td>Set On Hold and preserve the resumable work record.</td><td>No active slot consumed; branch, PR, and evidence remain aligned.</td></tr>
+    <tr><td>Agent QA and Canary verification succeed</td><td>Set In Review.</td><td>Exact candidate identity, Canary evidence, assignment, and sole active card.</td></tr>
+    <tr><td>PM reports a finding</td><td>Set In Progress before remediation.</td><td>Earlier approval is invalid, active metadata remains aligned, and a new candidate is required.</td></tr>
+    <tr><td>Approved Production release verifies green</td><td>Purge obsolete unreferenced PointGuide image manifests, confirm the retained digest is pullable, then close the Issue and set Done without waiting for delayed blob garbage collection.</td><td>Production evidence, registry-cleanup evidence, retained-digest availability, closed state, Done metadata, and zero active cards.</td></tr>
+  </table>
+
+  <h2>Candidate identity</h2>
+  <p>A candidate is the tuple of Issue, PR URL, exact PR head commit and tree, immutable Zot digest, verified bjw-s app-template version and rendered configuration, and homelab Canary commit. The merge result must have the same Git tree as the approved PR head. Tag or commit identity alone is insufficient.</p>
+
+  <h2>Chart and data safety</h2>
+  <p>Before every release, compare the pinned app-template dependency with the latest stable version published by the official bjw-s chart repository, read its release and upgrade notes, and inspect the rendered difference. A new chart generation enters Canary first and becomes part of the candidate. Production receives that verified generation only after exact approval.</p>
+  <p>Homelab data is critical. Before Production mutation, verify current PVC identities and reclaim policies, database backup freshness and restorability, migration compatibility, current image and configuration, and a precise non-destructive GitOps rollback. Never implicitly rename a namespace, controller, StatefulSet, persistence key, PVC, storage class, database, secret, ingress, or release identity. Destructive schema or data restoration requires PM approval.</p>
+
+  <h2>Deployment ownership</h2>
+  <p>Local testing belongs to the agent, and local browser interaction testing is sufficient to prove application behavior before release. Release images are built on the local development workstation outside the Kubernetes cluster, target the cluster workload platform, and are never built ad hoc on a Kubernetes node. Canary is the PM test environment. An agent may perform authenticated Canary browser checks when supported access already exists, but missing browser access never blocks release and never justifies requesting credentials or weakening authentication. Production verification belongs to the agent and does not require a browser or landing-page login check. Exact image identity, successful migration, healthy containers and probes, zero restarts, Argo CD sync and health, and whole-homelab green are the runtime gates. The homelab repository and Gitea <code>master</code> are deployment authority; Argo CD performs reconciliation. Safe non-destructive GitOps rollback is automatic, while destructive data or schema rollback requires PM authorization.</p>
+
+  <h2>Completion</h2>
+  <p>An Issue is Done only after its PR is merged, Production runs the approved digest and chart generation, migrations and workloads are healthy with zero restarts, internal health and readiness checks pass, Argo CD is Synced and Healthy, the whole homelab is green, obsolete unreferenced PointGuide image manifests have been purged from Zot, and the retained Production digest remains pullable. Zot's delayed background blob garbage collection is asynchronous and does not block closure, and manifest cleanup alone does not require the full health gates to run again. A merge alone never closes an Issue.</p>
+</main>
+</body>
+</html>

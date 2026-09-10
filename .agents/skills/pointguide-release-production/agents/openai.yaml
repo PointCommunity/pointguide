@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pointguide Release Production"
+  short_description: "Promote an explicitly PM-approved PointGuide Canary digest to homelab Production after merge, including first "
+  default_prompt: "Use $pointguide-release-production for this request, following the canonical PointGuide instructions."

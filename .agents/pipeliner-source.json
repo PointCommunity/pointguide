@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "repository": "https://github.com/Zuriel-Labs/pipeliner",
+  "ref": "main",
+  "commit": "1372f00be9756592a1e24a5dbd6bf935432885c7",
+  "appliedAt": "2026-09-10T16:16:21.278603+00:00",
+  "exceptions": [
+    {
+      "path": ".github/pull_request_template.md",
+      "reason": "Explicitly exempt framework maintenance from Issue and application PM Testing sections."
+    },
+    {
+      "path": ".agents/pipeliner-policy.html",
+      "reason": "Explain PointGuide no-Issue maintenance, agent-owned QA, Canary approval and disabled automations before generic lifecycle reference."
+    },
+    {
+      "path": ".agents/skills/pipeliner-adopt/SKILL.md",
+      "reason": "Retain complete adoption workflow with explicit PM-directed no-Issue maintenance exception."
+    },
+    {
+      "path": ".agents/skills/pipeliner-release-candidate/SKILL.md",
+      "reason": "Route the generic application lifecycle to the existing PointGuide specialization, preserving stronger exact Canary, Production, data and Issue gates without duplicate approval flows."
+    },
+    {
+      "path": ".agents/skills/pipeliner-pipeline-health/SKILL.md",
+      "reason": "Route the generic application lifecycle to the existing PointGuide specialization, preserving stronger exact Canary, Production, data and Issue gates without duplicate approval flows."
+    },
+    {
+      "path": ".agents/skills/pipeliner-create-issue/SKILL.md",
+      "reason": "Route the generic application lifecycle to the existing PointGuide specialization, preserving stronger exact Canary, Production, data and Issue gates without duplicate approval flows."
+    },
+    {
+      "path": ".agents/skills/pipeliner-close-issue/SKILL.md",
+      "reason": "Route the generic application lifecycle to the existing PointGuide specialization, preserving stronger exact Canary, Production, data and Issue gates without duplicate approval flows."
+    },
+    {
+      "path": ".agents/skills/pipeliner-review-issue/SKILL.md",
+      "reason": "Route the generic application lifecycle to the existing PointGuide specialization, preserving stronger exact Canary, Production, data and Issue gates without duplicate approval flows."
+    },
+    {
+      "path": ".agents/skills/pipeliner-audit-backlog/SKILL.md",
+      "reason": "Route the generic application lifecycle to the existing PointGuide specialization, preserving stronger exact Canary, Production, data and Issue gates without duplicate approval flows."
+    },
+    {
+      "path": ".agents/skills/pipeliner-release-production/SKILL.md",
+      "reason": "Route the generic application lifecycle to the existing PointGuide specialization, preserving stronger exact Canary, Production, data and Issue gates without duplicate approval flows."
+    },
+    {
+      "path": ".agents/skills/pipeliner-work-issue/SKILL.md",
+      "reason": "Route the generic application lifecycle to the existing PointGuide specialization, preserving stronger exact Canary, Production, data and Issue gates without duplicate approval flows."
+    },
+    {
+      "path": ".agents/skills/pipeliner-work-issue/references/local-qa.md",
+      "reason": "Document confirmed single Mac local QA, tested release PM deferral and concrete disposable database/server cleanup."
+    },
+    {
+      "path": "AGENTS.md",
+      "reason": "Preserve PointGuide evidence, authorization, immutable release and data safety. Integrate no-Issue maintenance, explicit routing, local QA and disabled protection."
+    },
+    {
+      "path": "blueprints/github-labels.json",
+      "reason": "Retain live PointGuide governed taxonomy, including deployment area, without redundant release/tooling labels."
+    },
+    {
+      "path": "schema/pipeliner.schema.json",
+      "reason": "Define optional pmGate enum with default upstream local behavior and explicit release deferral."
+    },
+    {
+      "path": "scripts/audit-project.mjs",
+      "reason": "Use configured PointGuide identity and private Project with disabled automatic transitions; never audit against upstream public repository identity."
+    },
+    {
+      "path": "scripts/lib/qa.mjs",
+      "reason": "Tested optional release PM gate preserves default local approvals and all candidate, suite and cleanup checks; keeps PointGuide In Progress until verified Canary."
+    },
+    {
+      "path": "scripts/lib/validation.mjs",
+      "reason": "Tested adopter-specific Project identity and stricter agent-owned workflow expectations, preserving upstream template validation."
+    }
+  ]
+}

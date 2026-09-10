@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pointguide Audit Issues"
+  short_description: "Audit and correct prioritization and metadata for PointGuide Backlog Issues only. Use when the PM asks to audi"
+  default_prompt: "Use $pointguide-audit-issues for this request, following the canonical PointGuide instructions."
