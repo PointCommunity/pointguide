@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "labels": [
+    {
+      "color": "D73A4A",
+      "description": "A defect or regression in existing behavior.",
+      "name": "type:bug"
+    },
+    {
+      "color": "A2EEEF",
+      "description": "A new user-facing capability or behavior.",
+      "name": "type:feature"
+    },
+    {
+      "color": "1D76DB",
+      "description": "Repository, dependency, refactoring, or operational maintenance.",
+      "name": "type:maintenance"
+    },
+    {
+      "color": "5319E7",
+      "description": "Providers, models, prompts, reviewing, orchestration, or worker behavior.",
+      "name": "area:ai"
+    },
+    {
+      "color": "B60205",
+      "description": "Security or privacy hardening and remediation.",
+      "name": "type:security"
+    },
+    {
+      "color": "006B75",
+      "description": "Database schema, migrations, persistence, backup, or data lifecycle.",
+      "name": "area:data"
+    },
+    {
+      "color": "FBCA04",
+      "description": "Images, Zot, GitOps, Canary, Production, charts, or runtime operations.",
+      "name": "area:deployment"
+    },
+    {
+      "color": "0075CA",
+      "description": "Human-facing or repository documentation.",
+      "name": "area:documentation"
+    },
+    {
+      "color": "0052CC",
+      "description": "Sources, citations, retrieval, source governance, or provenance.",
+      "name": "area:evidence"
+    },
+    {
+      "color": "C5DEF5",
+      "description": "Authentication, authorization, accounts, roles, or credentials.",
+      "name": "area:identity"
+    },
+    {
+      "color": "BFDADC",
+      "description": "Training sessions, feedback, proposals, or learning workflows.",
+      "name": "area:training"
+    },
+    {
+      "color": "0E8A16",
+      "description": "Browser UI, interaction, responsiveness, accessibility, or rendering.",
+      "name": "area:ui"
+    },
+    {
+      "color": "6F42C1",
+      "description": "GitHub Issues, Project metadata, agent skills, or development governance.",
+      "name": "area:workflow"
+    }
+  ]
+}

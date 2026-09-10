@@ -1,0 +1,4 @@
+interface:
+  display_name: "Image To Code"
+  short_description: "Recreate a selected screenshot or mockup as faithful, responsive, interactive frontend code."
+  default_prompt: "Use $image-to-code for this request, following the canonical PointGuide instructions."

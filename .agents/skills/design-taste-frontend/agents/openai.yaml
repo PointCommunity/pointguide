@@ -1,0 +1,4 @@
+interface:
+  display_name: "Design Taste Frontend"
+  short_description: "Choose distinctive frontend aesthetics from a brief while respecting the product's existing design system."
+  default_prompt: "Use $design-taste-frontend for this request, following the canonical PointGuide instructions."

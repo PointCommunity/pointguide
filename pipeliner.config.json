@@ -1,0 +1,179 @@
+{
+  "$schema": "./schema/pipeliner.schema.json",
+  "version": 1,
+  "repository": {
+    "owner": "PointCommunity",
+    "name": "pointguide",
+    "defaultBranch": "main",
+    "projectManager": "brimdor"
+  },
+  "project": {
+    "owner": "PointCommunity",
+    "number": 2,
+    "title": "PointGuide",
+    "statusField": "Status",
+    "statuses": {
+      "backlog": "Backlog",
+      "onHold": "On Hold",
+      "inProgress": "In Progress",
+      "inReview": "In Review",
+      "done": "Done"
+    },
+    "metadataFields": {
+      "priority": {
+        "name": "Priority",
+        "options": [
+          "P0",
+          "P1",
+          "P2",
+          "P3"
+        ]
+      },
+      "impact": {
+        "name": "Impact",
+        "options": [
+          "High",
+          "Medium",
+          "Low"
+        ]
+      },
+      "effort": {
+        "name": "Effort",
+        "options": [
+          "XS",
+          "S",
+          "M",
+          "L",
+          "XL"
+        ]
+      }
+    }
+  },
+  "workflow": {
+    "maxActiveIssues": 1,
+    "branchPattern": "issue/{number}-{slug}",
+    "issueReference": "Refs #{number}",
+    "approvalPhrases": {
+      "issueCreation": "Approved to create this exact GitHub Issue",
+      "production": "Approved to merge and deploy production",
+      "completion": "Approved to merge and deploy production",
+      "nativeCandidate": "Approved to merge and deploy production"
+    },
+    "pmTesting": {
+      "required": true,
+      "terms": [
+        "Project Manager QA",
+        "PM Testing"
+      ],
+      "requiredSections": [
+        "target",
+        "prerequisites",
+        "numbered actions",
+        "expected results",
+        "regression checks"
+      ]
+    },
+    "branchProtection": "disabled"
+  },
+  "quality": {
+    "commands": [
+      "npm run check",
+      "npm run test:e2e",
+      "npm run security:check",
+      "npm audit --omit=dev --audit-level=high",
+      "git diff --check"
+    ],
+    "requiredChecks": [
+      "verify"
+    ]
+  },
+  "release": {
+    "strategy": "immutable-promotion",
+    "candidateIdentity": [
+      "sourceCommit",
+      "gitTree",
+      "artifactDigest",
+      "chartVersion",
+      "renderedConfiguration",
+      "deploymentRevision"
+    ],
+    "environments": [
+      {
+        "name": "Canary",
+        "role": "review",
+        "url": "https://pointguide-canary.eaglepass.io",
+        "buildCommand": "",
+        "deployCommand": "",
+        "verifyCommand": "node .agents/skills/pointguide-release-canary/scripts/verify-live.mjs canary \"$SOURCE_SHA\" \"$IMAGE_DIGEST\" \"$HOMELAB_SHA\"",
+        "approvalPhrase": "Approved to merge and deploy production",
+        "promoteWithoutRebuild": false
+      },
+      {
+        "name": "Production",
+        "role": "production",
+        "url": "https://pointguide.eaglepass.io",
+        "buildCommand": "",
+        "deployCommand": "",
+        "verifyCommand": "node .agents/skills/pointguide-release-canary/scripts/verify-live.mjs production \"$SOURCE_SHA\" \"$IMAGE_DIGEST\" \"$HOMELAB_SHA\"",
+        "approvalPhrase": "Approved to merge and deploy production",
+        "promoteWithoutRebuild": true
+      }
+    ]
+  },
+  "qa": {
+    "applicationType": "web",
+    "runtimePlatforms": [
+      {
+        "os": "linux",
+        "architecture": "x64"
+      }
+    ],
+    "candidateIdentity": [
+      "sourceCommit",
+      "gitTree"
+    ],
+    "developers": [
+      {
+        "id": "brimdor",
+        "environments": [
+          "local-macos-arm64"
+        ]
+      }
+    ],
+    "environments": [
+      {
+        "id": "local-macos-arm64",
+        "os": "darwin",
+        "architecture": "arm64",
+        "prerequisites": [
+          "Node.js 22 or later, npm, Git and authenticated gh",
+          "PostgreSQL 17 disposable local database ending in _test; export matching DATABASE_URL and TEST_DATABASE_URL",
+          "Google Chrome for Playwright; exclusive localhost port 3100; fixture authentication is configured by playwright.config.ts",
+          "Local Podman for application release images targeting linux/amd64; never use Kubernetes nodes or GitHub Actions for builds"
+        ],
+        "setup": [
+          "npm ci",
+          "npm run migrate"
+        ],
+        "suite": [
+          "npm run check",
+          "npm run test:e2e",
+          "npm run security:check",
+          "npm audit --omit=dev --audit-level=high",
+          "git diff --check"
+        ],
+        "teardown": []
+      }
+    ],
+    "turns": [
+      {
+        "id": "local",
+        "developer": "brimdor",
+        "environment": "local-macos-arm64",
+        "pm": "brimdor",
+        "approvalPhrase": "Approved to merge and deploy production",
+        "pmGate": "release"
+      }
+    ]
+  }
+}

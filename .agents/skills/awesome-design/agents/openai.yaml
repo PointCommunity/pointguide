@@ -1,0 +1,4 @@
+interface:
+  display_name: "Awesome Design"
+  short_description: "Select and adapt a local design reference without copying brand identity, protected assets, or trade dress."
+  default_prompt: "Use $awesome-design for this request, following the canonical PointGuide instructions."

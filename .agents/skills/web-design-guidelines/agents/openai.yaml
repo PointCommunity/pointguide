@@ -1,0 +1,4 @@
+interface:
+  display_name: "Web Design Guidelines"
+  short_description: "Audit web interfaces against a pinned accessibility, interaction, content, and performance checklist."
+  default_prompt: "Use $web-design-guidelines for this request, following the canonical PointGuide instructions."

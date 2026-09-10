@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pointguide Review Issue"
+  short_description: "Perform complete agent QA for the active PointGuide Issue, remediate all findings, deploy the exact candidate "
+  default_prompt: "Use $pointguide-review-issue for this request, following the canonical PointGuide instructions."

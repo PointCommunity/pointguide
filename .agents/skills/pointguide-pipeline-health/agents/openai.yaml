@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pointguide Pipeline Health"
+  short_description: "Perform a read-only health audit of the PointGuide Issue pipeline, Project metadata, PR linkage, CI state, can"
+  default_prompt: "Use $pointguide-pipeline-health for this request, following the canonical PointGuide instructions."
