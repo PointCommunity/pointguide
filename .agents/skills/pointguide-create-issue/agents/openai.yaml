@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pointguide Create Issue"
+  short_description: "Discuss, draft, prioritize, and create coherent PointGuide GitHub Issues in the Backlog. Use for new features,"
+  default_prompt: "Use $pointguide-create-issue for this request, following the canonical PointGuide instructions."

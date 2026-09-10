@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><title>PointGuide local QA</title><style>:root{color-scheme: dark;background:#11151b;color:#edf1f5;font:16px/1.7 system-ui}body{max-width:850px;margin:auto;padding:32px 20px}h2{color:#a6ddec}code{color:#ebcb8b;overflow-wrap:anywhere}li{margin:.7rem 0}a{color:#a6ddec}a:focus-visible{outline:3px solid #ebcb8b}</style></head><body><main>
+<h1>PointGuide local QA</h1>
+<p>The agent runs local QA on brimdor's Apple Silicon Mac. PM Testing takes place in Canary for application releases. Framework adoption and updates run agent verification and publish source without application deployment or PM Testing.</p>
+<h2>Prepare an isolated test session</h2><ol>
+<li>Record the exact source commit and Git tree. Create a disposable worktree from that candidate, inventory task-owned resources, and install the pinned dependencies with <code>npm ci</code>. Do not copy credentials or environment files into it.</li>
+<li>Use PostgreSQL 17's local binaries to initialize a fresh temporary data directory with a fixture-only database user. Bind the server only to 127.0.0.1 on a free port. Create <code>pointguide_test</code>. Export matching DATABASE_URL and TEST_DATABASE_URL pointing at that exact disposable database. Never reuse a production or shared database.</li>
+<li>Run <code>npm run migrate</code>, then the complete configured suite: <code>npm run check</code>, <code>npm run test:e2e</code>, <code>npm run security:check</code>, <code>npm audit --omit=dev --audit-level=high</code>, and <code>git diff --check</code>. Google Chrome must be installed and port 3100 must be free. Playwright starts and stops the fixture-authenticated local server.</li>
+<li>Inspect test counts and confirm the database integration tests actually ran. Viewport-specific skips in browser tests are intentional; missing database coverage is not a pass. Capture command exit codes and source/tree identity in the maintenance PR or application Issue.</li>
+</ol>
+<h2>Cleanup on success and failure</h2><ol>
+<li>Stop the disposable PostgreSQL instance using <code>pg_ctl -D</code> with the exact owned data directory. Verify the process has stopped and its localhost port is closed before removing the directory.</li>
+<li>Verify Playwright's port 3100 is closed. If recovery is needed, identify only the recorded test server process and its descendants before stopping them.</li>
+<li>Remove the owned test worktree, dependency installation, build output, browser captures and logs after preserving concise results. Remove only task-owned images and containers by exact identity. Do not run global prune or remove another application's resources.</li>
+</ol>
+<h2>Application release images</h2><p>Application candidates additionally use the local Podman clean-archive AMD64 build in the PointGuide Canary release skill. Inspect architecture, user 1000, SOURCE_REVISION, and the installed GitHub CLI. Publish the exact image once and verify its registry digest; Production promotes that same digest after exact Canary approval. Framework-only maintenance does not build or deploy a release image.</p>
+</main></body></html>

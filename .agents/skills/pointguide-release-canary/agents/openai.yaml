@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pointguide Release Canary"
+  short_description: "Build the exact approved-for-review PointGuide PR head once, upload its immutable image to Zot, deploy Canary "
+  default_prompt: "Use $pointguide-release-canary for this request, following the canonical PointGuide instructions."

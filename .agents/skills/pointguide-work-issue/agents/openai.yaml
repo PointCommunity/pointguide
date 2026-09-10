@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pointguide Work Issue"
+  short_description: "Select or implement one PointGuide GitHub Issue while enforcing the single-active-Issue pipeline. Use for Work"
+  default_prompt: "Use $pointguide-work-issue for this request, following the canonical PointGuide instructions."

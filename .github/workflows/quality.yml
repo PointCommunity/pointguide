@@ -1,23 +1,26 @@
 name: Quality
-on: { pull_request: {}, push: { branches: [main] } }
-permissions: { contents: read }
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env: { POSTGRES_USER: pointguide, POSTGRES_PASSWORD: pointguide, POSTGRES_DB: pointguide_test }
-        ports: ["5432:5432"]
-        options: "--health-cmd pg_isready --health-interval 2s --health-timeout 2s --health-retries 20"
-    env: { TEST_DATABASE_URL: "postgres://pointguide:pointguide@127.0.0.1:5432/pointguide_test", DATABASE_URL: "postgres://pointguide:pointguide@127.0.0.1:5432/pointguide_test" }
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: npm }
-      - run: npm ci
-      - run: npm run migrate
-      - run: npm run check
-      - run: npm run security:check
-      - run: npm audit --omit=dev --audit-level=high
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Validate repository contracts
+        run: node scripts/validate-repository.mjs
+      - name: Validate PointGuide skills
+        run: node .agents/skills/pointguide-maintain-skills/scripts/audit-alignment.mjs
+      - name: Scan source for secrets
+        run: node scripts/security-check.mjs
+      - name: Check dependency advisories without installation
+        run: npm audit --omit=dev --audit-level=high --ignore-scripts
+      - name: Check commit whitespace
+        run: git -c core.hooksPath=/dev/null show --format= --check HEAD

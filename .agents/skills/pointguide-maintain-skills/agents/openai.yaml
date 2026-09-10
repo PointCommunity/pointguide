@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pointguide Maintain Skills"
+  short_description: "Create, update, and validate PointGuide repository skills, shared policy, AGENTS imports, Claude adapters, and"
+  default_prompt: "Use $pointguide-maintain-skills for this request, following the canonical PointGuide instructions."

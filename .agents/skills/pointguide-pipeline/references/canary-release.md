@@ -2,9 +2,9 @@
 
 ## Identity and preflight
 
-The candidate is the tuple of the open PointGuide pull request, its exact head SHA, the immutable Zot digest, and the homelab Canary commit. Read all values live; never reuse a prior run's identifiers.
+The candidate is the tuple of the active Issue, open PointGuide pull request, exact head SHA/tree, immutable Zot digest, verified bjw-s app-template generation/render, and homelab Canary commit. Read all values live; never reuse a prior run's identifiers.
 
-Before mutation, verify the PointGuide branch is clean, GitHub checks are green for its exact head, the homelab canonical checkout and Gitea `origin/master`, current Canary pins, current Argo revision, nodes, pods, applications, and Ceph health. Use an isolated homelab worktree when the canonical checkout contains unrelated changes.
+Before mutation, verify the PointGuide branch is clean, GitHub `verify` and recorded local AMD64 checks are green for its exact head, the homelab canonical checkout and Gitea `origin/master`, current Canary image/chart pins, current Argo revision, PVC/PV identities, nodes, pods, applications, and Ceph health. Use an isolated homelab worktree from current Gitea `origin/master`.
 
 ## Package and registry
 
@@ -14,16 +14,16 @@ Smoke the published artifact with disposable PostgreSQL and the pinned PointAudi
 
 ## GitOps and live verification
 
-Change only `app-template.controllers.main.initContainers.migrate.image` through the shared YAML anchor in `apps/pointguide-canary/values.yaml`: update both tag and digest. Do not modify Production.
+Compare the pinned app-template version to the latest stable official bjw-s chart release and read its upgrade notes. Update only Canary's dependency files when needed, inspect the old/new rendered manifests, and reject any unexplained namespace, controller, StatefulSet, persistence, PVC, storage-class, database, secret, ingress, or release-identity change. Change `app-template.controllers.main.initContainers.migrate.image` through the shared YAML anchor in `apps/pointguide-canary/values.yaml`: update both tag and digest. Do not modify Production.
 
 Run the chart's dependency update, `helm lint`, and `helm template`; inspect the rendered migration, web, and worker images. Commit only the intended Canary values file and push current Gitea `master`.
 
 Refresh and wait for `pointguide-canary`. Verify:
 
 - Argo is Synced and Healthy at the expected homelab revision.
-- Migration succeeded and the PostgreSQL schema includes the expected migrations.
+- Corpus and migration init containers succeeded and PostgreSQL migration names/digests exactly match the running image.
 - Web and worker run the exact registry digest as UID 1000 with zero restarts.
-- Liveness and readiness pass; readiness reports the pinned PointAudio commit and a non-zero chunk count.
+- Liveness and readiness pass; readiness reports the pinned PointAudio commit and a non-zero chunk count; runtime `SOURCE_REVISION` matches the candidate.
 - Logs and recent events show no unexpected errors or warnings.
 - Canary ingress, TLS, DNS, and unauthenticated Cloudflare Access redirect behave correctly.
 - Every node is Ready, every Argo application is Synced and Healthy, unexpected non-running pods are absent, and Ceph is `HEALTH_OK`.
