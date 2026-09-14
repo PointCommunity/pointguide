@@ -85,3 +85,38 @@ databaseTest("persists connected sources and wipes a training session with its c
   await sources.remove(actor.id, linked.id, linked.fullName);
   expect(await sources.list()).toEqual([]);
 });
+
+databaseTest("atomically refreshes large snapshots, rolls back failed inserts, and rejects concurrent writers", async () => {
+  const database = getDatabase(disposableDatabaseUrl(testDatabaseUrl as string));
+  await database.execute(sql`truncate table accounts cascade`);
+  await database.execute(sql`delete from source_repositories`);
+  const actor = await new PostgresAccountStore(database).provisionAccount({ issuer: "https://pointguide.test", subject: "refresh-owner", email: "owner@example.com", displayName: "Owner" });
+  const store = new PostgresSourceRepositoryStore(database);
+  const source = { fullName: "PointCommunity/test", url: "https://github.com/PointCommunity/test", report: { valid: true, complete: true, checkedAt: new Date().toISOString(), commitSha: "a".repeat(40), defaultBranch: "main", errors: [], warnings: [], filesReviewed: 1, filesIndexed: 1, chunksIndexed: 1, requirements: { agentsFile: true, evidenceContent: true, integrityManifest: true } }, chunks: [{ chunkId: "old", sourceId: "test", title: "Old", path: "docs/old.txt", locator: "Old commit", authority: "Repository", capturedAt: new Date().toISOString(), digest: "a".repeat(64), text: "old evidence" }] };
+  const initial = await store.link(actor.id, source);
+  const replacement = { ...source, report: { ...source.report, commitSha: "b".repeat(40), chunksIndexed: 7100 }, chunks: Array.from({ length: 7100 }, (_, i) => ({ ...source.chunks[0], chunkId: `new-${i}`, title: "New", text: "new evidence" })) };
+  // Duplicate keys fail after deletion and the first batch; the whole transaction must roll back.
+  await expect(store.refresh(actor.id, initial, { ...replacement, chunks: [...replacement.chunks, replacement.chunks[0]] })).rejects.toThrow();
+  expect((await store.snapshot()).chunks).toEqual(source.chunks);
+  expect((await store.list())[0].indexedCommit).toBe(source.report.commitSha);
+  const reads: number[] = [];
+  const write = store.refresh(actor.id, initial, replacement);
+  for (let i = 0; i < 5; i++) reads.push((await store.snapshot()).chunks.length);
+  await write;
+  expect(reads.every(size => size === 1 || size === 7100)).toBe(true);
+  expect((await store.snapshot()).chunks).toHaveLength(7100);
+  await expect(store.refresh(actor.id, initial, source)).rejects.toThrow(/changed/i);
+  const current = (await store.list())[0];
+  const races = await Promise.allSettled([store.refresh(actor.id, current, replacement), store.refresh(actor.id, current, replacement)]);
+  expect(races.filter(result => result.status === "fulfilled")).toHaveLength(1);
+  const latest = (await store.list())[0];
+  await store.archive(actor.id, latest.id, latest.fullName);
+  await expect(store.refresh(actor.id, latest, replacement)).rejects.toThrow(/changed/i);
+  await store.refreshFailed(actor.id, latest.id, "SOURCE_CHANGED");
+  expect((await store.snapshot()).chunks).toEqual([]);
+  const audit = await database.execute(sql`select action, outcome from audit_events where target_id = ${latest.id} order by occurred_at`);
+  expect(audit.some(row => row.action === "source_repository.refreshed" && row.outcome === "SUCCEEDED")).toBe(true);
+  expect(audit.some(row => row.action === "source_repository.refresh_failed" && row.outcome === "FAILED")).toBe(true);
+  await store.remove(actor.id, latest.id, latest.fullName);
+  await expect(store.refresh(actor.id, latest, replacement)).rejects.toThrow(/changed/i);
+});

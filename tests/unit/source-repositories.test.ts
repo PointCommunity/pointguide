@@ -5,6 +5,7 @@ import { MemorySourceRepositoryStore } from "@/lib/sources/store";
 function validFetcher() {
   return vi.fn(async (input: string) => {
     if (input === "https://api.github.com/repos/PointCommunity/lighting") return Response.json({ full_name: "PointCommunity/lighting", default_branch: "main", html_url: "https://github.com/PointCommunity/lighting", pushed_at: "2026-09-06T00:00:00Z" });
+    if (input.includes("/commits/")) return Response.json({ sha: "a".repeat(40) });
     if (input.includes("/git/trees/")) return Response.json({ sha: "a".repeat(40), truncated: false, tree: [{ path: "AGENTS.md", type: "blob", size: 50 }, { path: "pointguide-source.yaml", type: "blob", size: 50 }, { path: "docs/setup.md", type: "blob", size: 80 }] });
     if (input.includes("raw.githubusercontent.com")) return new Response("Verified lighting setup instructions.");
     return new Response(null, { status: 404 });
