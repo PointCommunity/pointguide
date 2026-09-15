@@ -9,7 +9,7 @@ import { getRuntimeSourceStore } from "@/lib/sources/runtime";
 import { getRuntimeTrainingStore } from "@/lib/training/runtime";
 import { answerQuestion } from "@/lib/agent/service";
 import { parseEnvironment } from "@/lib/config/env";
-import { getCachedCorpusChunks } from "@/lib/evidence/runtime-corpus";
+import { knowledgeSnapshot } from "@/lib/sources/retrieval";
 
 const schema = z.object({ question: z.string().trim().min(1).max(8_000), targetRepository: z.string().regex(/^PointCommunity\/[A-Za-z0-9._-]+$/u) }).strict();
 const querySchema = z.string().trim().max(200);
@@ -25,8 +25,8 @@ export async function POST(request: Request) {
     const learning = getRuntimeLearningRepository(); const conversation = await learning.createConversation(actor.id, `Training: ${parsed.data.question.slice(0, 90)}`);
     const session = await getRuntimeTrainingStore().create({ trainerAccountId: actor.id, conversationId: conversation.id, targetRepository: source.fullName, originalQuestion: parsed.data.question });
     try {
-      const environment = parseEnvironment(process.env); const fixture = environment.AUTH_MODE === "fixture"; const sourceStore = getRuntimeSourceStore(); const sourceRecords = await sourceStore.list(); const connected = await sourceStore.activeChunks(); const pointAudioActive = sourceRecords.some((item) => item.fullName === "PointCommunity/pointaudio" && item.status === "ACTIVE"); const local = fixture || !pointAudioActive ? [] : await getCachedCorpusChunks(environment.CORPUS_ROOT!, environment.CORPUS_COMMIT!, environment.CORPUS_MANIFEST);
-      const chunks = fixture ? (pointAudioActive && connected.length === 0 ? undefined : connected) : [...local, ...connected];
+      const environment = parseEnvironment(process.env); const fixture = environment.AUTH_MODE === "fixture";
+      const { chunks } = await knowledgeSnapshot(getRuntimeSourceStore(), environment);
       const result = await answerQuestion({ actor, conversationId: conversation.id, question: parsed.data.question, deepResearch: false, providers: getRuntimeProviderDependencies().store, learning, fixture, modelRuntime: fixture ? undefined : getRuntimeModelRuntime(), chunks, maxTurns: 20 });
       return Response.json({ session: await getRuntimeTrainingStore().saveAnswer(session.id, actor.id, result.answer as unknown as Readonly<Record<string, unknown>>) }, { status: 201 });
     } catch (error) { await getRuntimeTrainingStore().wipe(session.id, actor.id); throw error; }

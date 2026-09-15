@@ -12,7 +12,7 @@ interface ManifestEntry {
   path: string;
 }
 
-function parseManifest(contents: string): ManifestEntry[] {
+export function parseManifest(contents: string): ManifestEntry[] {
   const entries: ManifestEntry[] = [];
   const paths = new Set<string>();
   for (const [index, rawLine] of contents.split(/\r?\n/u).entries()) {

@@ -7,7 +7,7 @@ import { getRuntimeLearningRepository } from "@/lib/learning/runtime";
 import { getRuntimeModelRuntime, getRuntimeProviderDependencies } from "@/lib/providers/runtime";
 import { parseEnvironment } from "@/lib/config/env";
 import { answerQuestion } from "@/lib/agent/service";
-import { getCachedCorpusChunks } from "@/lib/evidence/runtime-corpus";
+import { knowledgeSnapshot } from "@/lib/sources/retrieval";
 import { getRuntimeSourceStore } from "@/lib/sources/runtime";
 
 const bodySchema = z.object({ question: z.string().trim().min(1).max(8_000), deepResearch: z.boolean().default(false) }).strict();
@@ -31,12 +31,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         const environment = parseEnvironment(process.env);
         if (parsed.data.deepResearch) controller.enqueue(event("status", { stage: "review", message: "Independent review requested" }));
         const fixture = environment.AUTH_MODE === "fixture";
-        const sourceStore = getRuntimeSourceStore();
-        const configuredSources = await sourceStore.list();
-        const configuredChunks = await sourceStore.activeChunks();
-        const pointAudioActive = configuredSources.some((source) => source.fullName === "PointCommunity/pointaudio" && source.status === "ACTIVE");
-        const localChunks = fixture || !pointAudioActive ? [] : await getCachedCorpusChunks(environment.CORPUS_ROOT!, environment.CORPUS_COMMIT!, environment.CORPUS_MANIFEST);
-        const chunks = fixture ? (pointAudioActive && configuredChunks.length === 0 ? undefined : configuredChunks) : [...localChunks, ...configuredChunks];
+        const { chunks } = await knowledgeSnapshot(getRuntimeSourceStore(), environment);
         const result = await answerQuestion({ actor, conversationId: id, question: parsed.data.question, deepResearch: parsed.data.deepResearch, providers: getRuntimeProviderDependencies().store, learning: getRuntimeLearningRepository(), fixture, chunks, modelRuntime: fixture ? undefined : getRuntimeModelRuntime() });
         controller.enqueue(event("answer", result));
         controller.enqueue(event("done", {}));

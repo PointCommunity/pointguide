@@ -3,12 +3,22 @@ import type { IndexedChunk } from "@/lib/evidence/search";
 import type { SourceRepositoryRecord, SourceRepositoryStore, ValidatedSource } from "./types";
 
 export class SourceStoreError extends Error {
-  constructor(public readonly code: "SOURCE_EXISTS" | "SOURCE_NOT_FOUND" | "CONFIRMATION_REQUIRED" | "ARCHIVE_REQUIRED", message: string) { super(message); }
+  constructor(public readonly code: "SOURCE_EXISTS" | "SOURCE_NOT_FOUND" | "CONFIRMATION_REQUIRED" | "ARCHIVE_REQUIRED" | "SOURCE_CHANGED", message: string) { super(message); }
 }
 
 function copy(record: SourceRepositoryRecord): SourceRepositoryRecord { return { ...record, validationReport: { ...record.validationReport, errors: [...record.validationReport.errors], warnings: [...record.validationReport.warnings], requirements: { ...record.validationReport.requirements } } }; }
 
 export class MemorySourceRepositoryStore implements SourceRepositoryStore {
+  async refreshFailed(_actorId: string, _id: string, _reason: string) { void _actorId; void _id; void _reason; }
+  async snapshot() { return { sources: [...this.records.values()].map(copy), chunks: [...this.records.values()].filter(record => record.status === "ACTIVE").flatMap(record => this.chunks.get(record.id) ?? []).map(item => ({ ...item })) }; }
+  async refresh(_actorId: string, expected: SourceRepositoryRecord, source: ValidatedSource) {
+    const current = this.records.get(expected.id);
+    assertRefresh(current, expected, source);
+    const outcome = snapshotMatches(current!, this.chunks.get(expected.id) ?? [], source) ? "current" : "updated";
+    const updated = { ...current!, indexedCommit: source.report.commitSha, defaultBranch: source.report.defaultBranch, validationReport: source.report, updatedAt: new Date().toISOString(), version: current!.version + 1 };
+    this.records.set(expected.id, updated); this.chunks.set(expected.id, structuredClone(source.chunks));
+    return { source: copy(updated), outcome } as const;
+  }
   private readonly records = new Map<string, SourceRepositoryRecord>();
   private readonly chunks = new Map<string, IndexedChunk[]>();
   constructor(seed = true) {
@@ -39,4 +49,14 @@ export class MemorySourceRepositoryStore implements SourceRepositoryStore {
     this.records.delete(id); this.chunks.delete(id);
   }
   async activeChunks() { return [...this.records.values()].filter((record) => record.status === "ACTIVE").flatMap((record) => this.chunks.get(record.id) ?? []).map((item) => ({ ...item })); }
+}
+
+export function assertRefresh(current: SourceRepositoryRecord | undefined, expected: SourceRepositoryRecord, source: ValidatedSource) {
+  if (!current || current.status !== "ACTIVE" || current.version !== expected.version || current.fullName !== source.fullName) throw new SourceStoreError("SOURCE_CHANGED", "Repository changed during refresh. Pull latest knowledge again.");
+  if (!source.report.valid || !source.report.complete || !source.chunks.length) throw new Error("A complete validated snapshot is required.");
+}
+
+export function snapshotMatches(current: SourceRepositoryRecord, chunks: IndexedChunk[], source: ValidatedSource) {
+  const fingerprint = (items: IndexedChunk[]) => JSON.stringify(items.map(item => [item.chunkId, item.digest, item.text, item.locator, item.sourceId, item.title, item.authority]).sort((a, b) => a[0].localeCompare(b[0])));
+  return current.indexedCommit === source.report.commitSha && current.validationReport.complete === true && fingerprint(chunks) === fingerprint(source.chunks);
 }

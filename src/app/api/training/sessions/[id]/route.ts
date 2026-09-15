@@ -10,7 +10,7 @@ import { generateTrainingReport } from "@/lib/agent/models";
 import { parseEnvironment } from "@/lib/config/env";
 import { getRuntimeLearningRepository } from "@/lib/learning/runtime";
 import { getRuntimeSourceStore } from "@/lib/sources/runtime";
-import { getCachedCorpusChunks } from "@/lib/evidence/runtime-corpus";
+import { knowledgeSnapshot } from "@/lib/sources/retrieval";
 import { answerQuestion } from "@/lib/agent/service";
 import { getRuntimeProposalRepository } from "@/lib/git/runtime";
 
@@ -45,9 +45,9 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       return Response.json({ session: await store.saveReport(id, actor.id, parsed.data.rating, parsed.data.explanation, report) });
     }
     if (parsed.data.action === "INSIGHT") {
-      const environment = parseEnvironment(process.env); const fixture = environment.AUTH_MODE === "fixture"; const sourceStore = getRuntimeSourceStore(); const sourceRecords = await sourceStore.list(); const connected = await sourceStore.activeChunks(); const pointAudioActive = sourceRecords.some((item) => item.fullName === "PointCommunity/pointaudio" && item.status === "ACTIVE"); const local = fixture || !pointAudioActive ? [] : await getCachedCorpusChunks(environment.CORPUS_ROOT!, environment.CORPUS_COMMIT!, environment.CORPUS_MANIFEST);
+      const environment = parseEnvironment(process.env); const fixture = environment.AUTH_MODE === "fixture";
       const question = `Original question: ${session.originalQuestion}\nTrainer's additional guidance: ${parsed.data.insight}\nProvide a revised, evidence-grounded answer to the original question.`;
-      const chunks = fixture ? (pointAudioActive && connected.length === 0 ? undefined : connected) : [...local, ...connected];
+      const { chunks } = await knowledgeSnapshot(getRuntimeSourceStore(), environment);
       const result = await answerQuestion({ actor, conversationId: session.conversationId, question, deepResearch: false, providers: getRuntimeProviderDependencies().store, learning: getRuntimeLearningRepository(), fixture, modelRuntime: fixture ? undefined : getRuntimeModelRuntime(), chunks, maxTurns: 20 });
       return Response.json({ session: await store.saveAnswer(id, actor.id, result.answer as unknown as Readonly<Record<string, unknown>>, parsed.data.insight) });
     }
