@@ -66,6 +66,28 @@ describe("model execution boundary", () => {
     await expect(generateReview(profile("CODEX"), answer as never, evidence, { secretKey: randomBytes(32).toString("base64"), codexClient: client })).resolves.toEqual({ findings: [{ claimId: "c1", verdict: "SUPPORTED", rationaleCode: "ENTAILED" }] });
   });
 
+  it("constrains Codex revision answers and reads the final complete message instead of concatenating interim messages", async () => {
+    let listener: ((method: string, params: unknown) => void) | undefined;
+    let turnParams: Readonly<Record<string, unknown>> | undefined;
+    const client: AppServerClient = {
+      subscribe(next) { listener = next; return () => { listener = undefined; }; },
+      async request(method, params) {
+        if (method === "thread/start") return { thread: { id: "thread-1" } };
+        turnParams = params;
+        queueMicrotask(() => {
+          listener?.("item/agentMessage/delta", { threadId: "thread-1", itemId: "interim", delta: "I will now answer." });
+          listener?.("item/completed", { threadId: "thread-1", item: { type: "agentMessage", id: "interim", text: "I will now answer." } });
+          listener?.("item/agentMessage/delta", { threadId: "thread-1", itemId: "final", delta: JSON.stringify(answer) });
+          listener?.("item/completed", { threadId: "thread-1", item: { type: "agentMessage", id: "final", text: JSON.stringify(answer) } });
+          listener?.("turn/completed", { threadId: "thread-1" });
+        });
+        return {};
+      },
+    };
+    await expect(generateAnswer(profile("CODEX"), "q", evidence, { secretKey: "unused", codexClient: client }, [{ actor: "USER", content: "Trainer feedback: revise this." }])).resolves.toEqual(answer);
+    expect(turnParams?.outputSchema).toMatchObject({ type: "object", required: ["directAnswer", "steps", "safetyAndAssumptions", "confidence", "claims"] });
+  });
+
   it("fails on provider errors and invalid JSON", async () => {
     const key = randomBytes(32).toString("base64");
     await expect(generateAnswer(profile("OLLAMA_CLOUD", encryptSecret("ollama_secret_key_123456", key)), "q", evidence, { secretKey: key, codexClient: { request: vi.fn() }, fetcher: async () => new Response("bad", { status: 500 }) })).rejects.toThrow("500");

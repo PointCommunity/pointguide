@@ -38,46 +38,54 @@ async function ollama(profile: ExecutionProfile, prompt: string, secretKey: stri
   return ollamaResponseSchema.parse(await response.json()).message.content;
 }
 
-async function codex(client: AppServerClient, profile: ExecutionProfile, prompt: string): Promise<string> {
+async function codex(client: AppServerClient, profile: ExecutionProfile, prompt: string, outputSchema?: z.ZodType): Promise<string> {
   if (!client.subscribe) throw new Error("Codex App Server notifications are unavailable.");
   const started = threadResponseSchema.parse(await client.request("thread/start", {
     model: profile.modelId, approvalPolicy: "never", sandbox: "read-only", ephemeral: true,
   }));
   return new Promise<string>((resolve, reject) => {
     let text = "";
+    let itemId: string | undefined;
     const timeout = setTimeout(() => { unsubscribe(); reject(new Error("Codex generation timed out.")); }, 120_000);
     const unsubscribe = client.subscribe!((method, raw) => {
       const params = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
       if (params.threadId !== started.thread.id) return;
-      if (method === "item/agentMessage/delta" && typeof params.delta === "string") text += params.delta;
-      if (method === "item/completed" && !text && params.item && typeof params.item === "object" && "text" in params.item && typeof params.item.text === "string") text = params.item.text;
+      if (method === "item/agentMessage/delta" && typeof params.delta === "string") {
+        if (typeof params.itemId === "string" && params.itemId !== itemId) { itemId = params.itemId; text = ""; }
+        text += params.delta;
+      }
+      if (method === "item/completed" && params.item && typeof params.item === "object" && "text" in params.item && typeof params.item.text === "string") {
+        const item = params.item as { id?: string; type?: string; text: string };
+        if (item.type === "agentMessage") { itemId = item.id; text = item.text; }
+      }
       if (method === "turn/completed") { clearTimeout(timeout); unsubscribe(); resolve(text); }
       if (method === "turn/failed") { clearTimeout(timeout); unsubscribe(); reject(new Error("Codex generation failed.")); }
     });
     void client.request("turn/start", {
       threadId: started.thread.id, model: profile.modelId, effort: profile.reasoningEffort,
       input: [{ type: "text", text: prompt }],
+      ...(outputSchema ? { outputSchema: z.toJSONSchema(outputSchema) } : {}),
     }).catch((error) => { clearTimeout(timeout); unsubscribe(); reject(error); });
   });
 }
 
 export interface ModelRuntime { secretKey: string; codexClient: AppServerClient; fetcher?: ProviderFetch }
 
-async function generate(profile: ExecutionProfile, prompt: string, runtime: ModelRuntime): Promise<string> {
+async function generate(profile: ExecutionProfile, prompt: string, runtime: ModelRuntime, outputSchema?: z.ZodType): Promise<string> {
   return profile.provider === "OLLAMA_CLOUD"
     ? ollama(profile, prompt, runtime.secretKey, runtime.fetcher ?? fetch)
-    : codex(runtime.codexClient, profile, prompt);
+    : codex(runtime.codexClient, profile, prompt, outputSchema);
 }
 
 export async function generateAnswer(profile: ExecutionProfile, question: string, evidence: EvidenceItem[], runtime: ModelRuntime, history: ConversationMessage[] = [], guidance: AcceptedGuidance[] = []): Promise<AnswerDraft> {
-  return parseJson(await generate(profile, evidencePrompt(question, evidence, profile.ownerPrompt, history, guidance), runtime), answerDraftSchema);
+  return parseJson(await generate(profile, evidencePrompt(question, evidence, profile.ownerPrompt, history, guidance), runtime, answerDraftSchema), answerDraftSchema);
 }
 
 export async function generateReview(profile: ExecutionProfile, draft: AnswerDraft, evidence: EvidenceItem[], runtime: ModelRuntime): Promise<ReviewResult> {
-  return parseJson(await generate(profile, reviewPrompt(draft, evidence, profile.ownerPrompt), runtime), reviewResultSchema);
+  return parseJson(await generate(profile, reviewPrompt(draft, evidence, profile.ownerPrompt), runtime, reviewResultSchema), reviewResultSchema);
 }
 
 export async function generateTrainingReport(profile: ExecutionProfile, input: { question: string; answer: Readonly<Record<string, unknown>>; rating: "HELPFUL" | "NOT_HELPFUL"; explanation: string; priorReport?: TrainingReport | null }, runtime: ModelRuntime): Promise<TrainingReport> {
   const prompt = `${profile.ownerPrompt}\n\nTRAINING REVIEW POLICY: Analyze the trainer's feedback as behavioral guidance, not factual evidence. Report what was learned about response usefulness, what response behavior should change, and explicitly preserve the evidence boundary. Do not claim the trainer feedback changes repository facts. Return only JSON: {summary:string,learned:string[],responseChanges:string[],evidenceBoundary:string}.\n\nORIGINAL QUESTION:\n${input.question}\n\nCURRENT ANSWER:\n${JSON.stringify(input.answer)}\n\nRATING:\n${input.rating}\n\nTRAINER EXPLANATION:\n${input.explanation}\n\nPRIOR REPORT:\n${JSON.stringify(input.priorReport ?? null)}`;
-  return parseJson(await generate(profile, prompt, runtime), trainingReportSchema);
+  return parseJson(await generate(profile, prompt, runtime, trainingReportSchema), trainingReportSchema);
 }
