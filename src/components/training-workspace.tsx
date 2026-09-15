@@ -60,7 +60,7 @@ export function TrainingWorkspace({ resumeSessionId }: { resumeSessionId?: strin
       const response = await fetch(`/api/training/sessions/${session.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       const payload = await response.json() as { session?: TrainingSessionRecord; turns?: TrainingTurn[]; error?: { message?: string } };
       if (!response.ok || !payload.session) { setStatus(payload.error?.message ?? "Training action failed. Reload or retry."); return; }
-      setSession(payload.session); if (payload.turns) setTurns(payload.turns); setFeedback(""); setStatus("");
+      setSession(payload.session); if (payload.turns) setTurns(payload.turns); setFeedback(""); setStatus(payload.error?.message ?? "");
     } catch { setStatus("Training action failed. Reload or retry."); }
     finally { setBusy(false); }
   }
@@ -75,19 +75,23 @@ export function TrainingWorkspace({ resumeSessionId }: { resumeSessionId?: strin
   const answer = session?.currentAnswer as TrainingAnswer | null;
   const activeSource = sources.some(source => source.fullName === session?.targetRepository);
   const canCoach = session?.state === "ACTIVE" && Boolean(answer?.id);
+  const needsRetry = session?.state === "REVISING" || (session?.state === "ACTIVE" && !answer);
+  const pendingFeedback = session?.state === "REVISING" ? [...turns].reverse().find(turn => turn.kind === "FEEDBACK") : null;
+  const earlierTurns = turns.filter(turn => turn.kind !== "ANSWER" || (turn.content.answer as TrainingAnswer | undefined)?.id !== answer?.id);
 
   return <>
     <section className="welcome-panel compact-welcome"><p className="eyebrow">Guided improvement</p><h1>Training</h1><p>Ask a question. Give feedback until the answer is ready. Accept that exact answer for the selected repository.</p><Link className="subpage-link" href="/training/sessions">Training Sessions <span aria-hidden="true">→</span></Link></section>
-    {status ? <p className="training-status" role="status">{status}</p> : null}
+    {status && !needsRetry ? <p className="training-status" role="status">{status}</p> : null}
     {!session ? <form className="training-session-card compact-card" onSubmit={start}>
       <h2>Start a training session</h2>
       <label>Question<textarea required maxLength={8000} value={question} onChange={event => setQuestion(event.target.value)} /></label>
       <label>Repository for accepted learning<select required value={targetRepository} onChange={event => setTargetRepository(event.target.value)}>{sources.map(source => <option key={source.id} value={source.fullName}>{source.fullName}</option>)}</select></label>
       <button type="submit" disabled={busy || !targetRepository || !question.trim()}>{busy ? "Preparing answer…" : "Start training"}</button>
     </form> : <section className="training-session" aria-label="Training session">
-      <header className="training-session-header"><div><p className="eyebrow">Original question</p><h2>{session.originalQuestion}</h2><p>Accepted knowledge repository: {session.targetRepository}</p></div><span>{session.state.replaceAll("_", " ")}</span></header>
-      {turns.length > 1 ? <details className="starter-accordion"><summary>Conversation history · {turns.length} turns</summary><ol>{turns.map(turn => <li key={turn.ordinal}>{turn.kind === "FEEDBACK" ? <><strong>Your feedback:</strong> {String(turn.content.feedback ?? "")}</> : turn.kind === "ANSWER" ? <><strong>PointGuide:</strong> {String((turn.content.answer as TrainingAnswer | undefined)?.directAnswer ?? "")}</> : <><strong>{turn.kind}:</strong> Earlier session record</>}</li>)}</ol></details> : null}
-      {answer ? <article className="training-answer compact-card"><header><strong>PointGuide response</strong>{answer.confidence ? <span className="confidence">{answer.confidence}</span> : null}</header>
+      <header className="training-session-header"><div><p className="eyebrow">Original question</p><h2>{session.originalQuestion}</h2><p>Accepted knowledge repository: {session.targetRepository}</p></div><span>{session.state === "REVISING" ? "Revision interrupted" : canCoach ? "Answer ready" : session.state === "ACTIVE" ? "Answer interrupted" : session.state.replaceAll("_", " ")}</span></header>
+      {needsRetry ? <section className="training-status" role="alert"><p>{status || (session.state === "REVISING" ? "The revision did not complete. Your feedback is saved." : "The first answer did not complete. Your question is saved.")}</p>{pendingFeedback ? <p><strong>Feedback waiting for revision:</strong> {String(pendingFeedback.content.feedback ?? "")}</p> : null}<button type="button" disabled={busy} onClick={() => { setStatus(session.state === "REVISING" ? "Retrying revision with your saved feedback…" : "Retrying the first answer…"); void action({ action: "RETRY", expectedVersion: session.version }); }}>{session.state === "REVISING" ? "Retry revision" : "Retry first answer"}</button></section> : null}
+      {earlierTurns.length ? <section className="training-history" aria-label="Conversation so far"><h3>Conversation so far</h3><ol>{earlierTurns.map(turn => <li key={turn.ordinal}>{turn.kind === "FEEDBACK" ? <><strong>Your feedback:</strong> {String(turn.content.feedback ?? "")}</> : turn.kind === "ANSWER" ? <><strong>Earlier PointGuide answer:</strong> {String((turn.content.answer as TrainingAnswer | undefined)?.directAnswer ?? "")}</> : <><strong>{turn.kind}:</strong> Earlier session record</>}</li>)}</ol></section> : null}
+      {answer ? <article className="training-answer compact-card"><header><strong>{session.state === "REVISING" ? "Previous PointGuide response" : "PointGuide response"}</strong>{answer.confidence ? <span className="confidence">{answer.confidence}</span> : null}</header>
         <p className="direct-answer">{answer.directAnswer}</p>
         {answer.safetyAndAssumptions?.length ? <aside className="safety-note"><strong>Before changing anything</strong><ul>{answer.safetyAndAssumptions.map(item => <li key={item}>{item}</li>)}</ul></aside> : null}
         {answer.steps?.length ? <ol>{answer.steps.map(step => <li key={step}>{step}</li>)}</ol> : null}
@@ -100,7 +104,6 @@ export function TrainingWorkspace({ resumeSessionId }: { resumeSessionId?: strin
       {canCoach ? <section className="training-feedback compact-card"><button type="button" disabled={busy || !activeSource} onClick={() => void action({ action: "ACCEPT_ANSWER", answerId: answer?.id, expectedVersion: session.version })}>Accept answer</button>
         <form onSubmit={revise}><label>Feedback for this answer<textarea required minLength={3} maxLength={4000} value={feedback} onChange={event => setFeedback(event.target.value)} /></label><button type="submit" className="secondary-button" disabled={busy || feedback.trim().length < 3}>Revise answer</button></form>
       </section> : null}
-      {(session.state === "REVISING" || (session.state === "ACTIVE" && !answer)) ? <button type="button" disabled={busy} onClick={() => void action({ action: "RETRY", expectedVersion: session.version })}>Retry answer</button> : null}
       {["PUBLISHING", "ACTIVATING", "ACTIVE_KNOWLEDGE", "FAILED"].includes(session.state) ? <div className="training-status" role="status"><p>{session.state === "ACTIVE_KNOWLEDGE" ? `Accepted knowledge is active at ${session.indexedCommit}.` : session.state === "FAILED" ? session.publicationError ?? "Publication or activation failed." : session.state === "ACTIVATING" ? "Published; validating and activating repository knowledge." : "Publishing accepted answer…"}</p>{session.state === "FAILED" ? <button type="button" disabled={busy || !activeSource} onClick={() => void action({ action: "RETRY_PUBLICATION" })}>Retry publication</button> : null}</div> : null}
       {["REPORT_READY", "REPORT_ACCEPTED", "PROPOSED"].includes(session.state) ? <details className="starter-accordion"><summary>Earlier learning-report workflow</summary><p>{session.currentReport?.summary ?? "Historical repository proposal: " + (session.proposalId ?? "none")}</p></details> : null}
     </section>}

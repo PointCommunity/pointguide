@@ -14,6 +14,7 @@ import { knowledgeSnapshot } from "@/lib/sources/retrieval";
 import { answerQuestion } from "@/lib/agent/service";
 import { getRuntimeProposalRepository } from "@/lib/git/runtime";
 import { trainingHistory } from "@/lib/training/context";
+import { answerFailureMessage, answerFailureReason } from "@/lib/training/answer-error";
 
 const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("FEEDBACK"), answerId: z.uuid(), expectedVersion: z.number().int().positive(), feedback: z.string().trim().min(3).max(4_000) }).strict(),
@@ -56,12 +57,19 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     if (parsed.data.action === "FEEDBACK" || parsed.data.action === "RETRY") {
       if (parsed.data.action === "FEEDBACK") await store.saveFeedback(id, actor.id, parsed.data.expectedVersion, parsed.data.answerId, parsed.data.feedback);
       else if (session.version !== parsed.data.expectedVersion || (session.state !== "REVISING" && !(session.state === "ACTIVE" && !session.currentAnswer))) throw new TrainingStateError("INVALID_TRAINING_STATE", "Reload the session before retrying the answer.");
-      const current = await store.get(id, actor.id); const turns = await store.listTurns(id, actor.id);
-      const environment = parseEnvironment(process.env); const fixture = environment.AUTH_MODE === "fixture";
-      const { chunks } = await knowledgeSnapshot(getRuntimeSourceStore(), environment);
-      const result = await answerQuestion({ actor, conversationId: current.conversationId, question: current.originalQuestion, deepResearch: false, providers: getRuntimeProviderDependencies().store, learning: getRuntimeLearningRepository(), fixture, modelRuntime: fixture ? undefined : getRuntimeModelRuntime(), chunks, training: true, trainingHistory: trainingHistory(current, turns), guidance: await store.activeGuidance() });
-      const saved = await store.saveAnswer(id, actor.id, result.answer as unknown as Readonly<Record<string, unknown>>);
-      return Response.json({ session: saved, turns: await store.listTurns(id, actor.id) });
+      try {
+        const current = await store.get(id, actor.id); const turns = await store.listTurns(id, actor.id);
+        const environment = parseEnvironment(process.env); const fixture = environment.AUTH_MODE === "fixture";
+        const { chunks } = await knowledgeSnapshot(getRuntimeSourceStore(), environment);
+        const result = await answerQuestion({ actor, conversationId: current.conversationId, question: current.originalQuestion, deepResearch: false, providers: getRuntimeProviderDependencies().store, learning: getRuntimeLearningRepository(), fixture, modelRuntime: fixture ? undefined : getRuntimeModelRuntime(), chunks, training: true, trainingHistory: trainingHistory(current, turns), guidance: await store.activeGuidance() });
+        const saved = await store.saveAnswer(id, actor.id, result.answer as unknown as Readonly<Record<string, unknown>>);
+        return Response.json({ session: saved, turns: await store.listTurns(id, actor.id) });
+      } catch (error) {
+        const saved = await store.get(id, actor.id);
+        const reason = answerFailureReason(error);
+        console.warn("training-answer-failed", { phase: saved.state === "REVISING" ? "revision" : "first", reason });
+        return Response.json({ session: saved, turns: await store.listTurns(id, actor.id), error: { code: "ANSWER_FAILED", reason, message: answerFailureMessage(reason, saved.state === "REVISING") } }, { status: 202 });
+      }
     }
     if (parsed.data.action === "RATE") {
       if (!session.currentAnswer) throw new TrainingStateError("INVALID_TRAINING_STATE", "An agent answer is required before feedback.");
