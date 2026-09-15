@@ -12,6 +12,7 @@ Build and operate PointGuide, the evidence-grounded support application for Poin
 - A reviewing model adds scrutiny but does not establish truth. Enforce claim-to-evidence integrity in deterministic application code before display.
 - Do not give models a shell, arbitrary filesystem/network access, database credentials, provider secrets, Git credentials, or direct mutation authority.
 - Feedback is evidence of usefulness, not factual truth. Learning occurs through versioned prompts, examples, skills, and reviewed pull-request proposals.
+- Accepted Training knowledge is trainer-authorized guidance, not independent factual evidence. Keep its accepted repository revision visible in Sources; cite other validated evidence for supported factual, actionable, and safety claims. Exclude unpublished, unindexed, archived, and superseded accepted artifacts from active retrieval.
 
 ## Identity and Authorization
 
@@ -23,7 +24,8 @@ Build and operate PointGuide, the evidence-grounded support application for Poin
 
 ## Repository and Live-System Boundaries
 
-- PointGuide creates reviewed, allow-listed branches and pull-request proposals in configured source repositories; it does not merge, force-push, or write directly to protected branches.
+- PointGuide creates reviewed, allow-listed branches and pull-request proposals in configured source repositories; it does not force-push or write directly to protected branches. Unrelated proposals never merge automatically.
+- A Trainer, Admin, or Owner accepting the exact completed Training answer authorizes only that versioned artifact under `research/pointguide-training/<session-id>/<answer-id>.json` in the visible active configured repository. The application worker may create its dedicated branch/PR, verify its sole path, head and content digest, merge normally without administrator bypass, validate the resulting repository revision, and atomically activate its index without another human review. Publication retries must preserve the accepted digest and previous active snapshot. Acceptance does not authorize merging the PointGuide application PR, any unrelated source proposal, or changes to live technology.
 - Source-repository changes do not authorize live technology changes. Any future live-system operation requires explicit approval, captured state, exact target/version, impact, rollback, and post-change verification.
 - Preserve original source files and useful history. Prefer supersession/archival records to silent deletion.
 

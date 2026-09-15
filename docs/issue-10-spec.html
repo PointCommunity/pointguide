@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Issue #10 — Training feedback and accepted knowledge</title>
+  <style>
+    :root { color-scheme:dark; background:#101413; color:#f0eee8; font:16px/1.6 system-ui,sans-serif; }
+    body { max-width:54rem; margin:auto; padding:2rem 1rem 5rem; overflow-wrap:anywhere; }
+    h1,h2 { color:#e8c780; line-height:1.2; } a { color:#9be5db; }
+    a:focus-visible { outline:3px solid #9be5db; outline-offset:3px; }
+    code { color:#e8c780; } li { margin:.4rem 0; }
+  </style>
+</head>
+<body><main>
+  <h1>Issue #10: contextual Training and accepted knowledge</h1>
+  <p>This specification implements the <a href="https://github.com/PointCommunity/pointguide/issues/10">approved Issue #10</a>. Acceptance criteria and exclusions in that Issue govern this plan. The source map below is from PointGuide commit <code>5b154bcd27c9f973b63fb4976ab697c67d68e5d7</code>; current runtime behavior still needs a controlled Canary check.</p>
+  <h2>Behavior contract</h2>
+  <ol>
+    <li>Trainer selects an active, configured repository and asks a question. Each completed answer has an immutable answer ID, evidence and ordered session position. Trainer may accept the first answer or submit feedback and receive another answer. Feedback cannot be overwritten by simultaneous acceptance.</li>
+    <li>Every answer and feedback persists as a trainer-owned ordered turn. Revisions receive the complete original question, earlier corrections, constraints, feedback, and answer provenance until the 256,000-character provider-context ceiling. Beyond that bound the request fails visibly without losing stored turns or misrepresenting a truncated summary; a separate session or an explicitly governed lossless summary design is required for larger transcripts. Trainer assertions never become factual evidence.</li>
+    <li>Acceptance binds the visible answer ID/version, content digest, target repository and active source revision. Exactly one accepted artifact is created per answer. Worker authority permits only this accepted-artifact path under <code>research/pointguide-training/</code>; unrelated proposals retain Admin/Owner review and no automatic merge.</li>
+    <li>Worker verifies source identity and accepted digest, creates a dedicated branch and PR, merges only the validated exact artifact under branch rules, validates the resulting source commit, and atomically activates its index. Publication, activation and retries use durable state. A published but unindexed artifact stays Activating/Failed, never Active.</li>
+    <li>Search prefers applicable active accepted artifacts for relevant questions and paraphrases. It never treats trainer acceptance as factual proof, excludes archived or superseded artifacts, and retains evidence conflict/unknown behavior.</li>
+    <li>Ask and Training put direct answer first. Warnings and uncertainty remain visible. A native Sources disclosure contains citations and detailed claim checks, collapsed by default; resumed answers retain the same controls.</li>
+  </ol>
+  <h2>Stack, paths and commands</h2>
+  <p>Next.js 16.3.4 route handlers in <code>src/app/api/</code>; React 19.2.8 components in <code>src/components/</code>; Drizzle/PostgreSQL in <code>src/db/</code> and <code>migrations/</code>; Vitest in <code>tests/unit/</code> and <code>tests/integration/</code>; Playwright in <code>tests/e2e/</code>. Run <code>npm run test:unit</code> per slice; then <code>npm run check</code>, <code>npm run test:e2e</code>, <code>npm run security:check</code>, <code>npm audit --omit=dev --audit-level=high</code>, migration rehearsal and <code>git diff --check</code>. Candidate release uses existing PointGuide review and Canary skills.</p>
+  <h2>Dependency-ordered slices</h2>
+  <ol>
+    <li>Durable conversation: specify failing tests for more than 20 answer turns, an early correction after later turns, reload isolation and concurrent actions. Add ordered feedback and answer-version state to memory/Postgres stores and API. Check focused tests, migration rehearsal and typecheck.</li>
+    <li>Acceptance: specify failing tests for first-answer acceptance, stale answer ID, simultaneous feedback, active repository, provenance and exact artifact digest. Add acceptance transition and UI status without removing historical report records. Check focused tests and build.</li>
+    <li>Bounded worker: specify failing tests for repository/path/digest boundaries, duplicate retries, conflicts, PR and merge identity, source archival, partial indexing and restart. Extend existing proposal worker and source validator/refresh rather than grant model mutation authority. Check controlled Git fixtures and database integration.</li>
+    <li>Retrieval: specify failing tests for relevant paraphrase, unrelated question, supersession, archived source, conflicting evidence and unsupported guidance. Prefer only verified active artifact chunks. Check focused tests and evidence integrity.</li>
+    <li>Presentation: specify failing browser checks for feedback loop, resume, collapsed Sources, 320px, zoom, touch and keyboard. Reuse native <code>details</code>; simplify Ask and Training without hiding warnings. Run all source gates and browser QA.</li>
+    <li>Review and release: exact PR-head verify, local AMD64 build, digest/chart comparison, GitOps Canary deployment, complete controlled feedback-to-Ask check and whole-cluster health. Keep PR open and #10 In Review for PM Canary testing. Production only after exact approved-candidate phrase.</li>
+  </ol>
+  <h2>Source and authority boundaries</h2>
+  <p><code>src/lib/agent/models.ts</code> currently truncates history to ten messages; <code>src/lib/agent/service.ts</code> and the Training routes set a 20-turn limit. <code>src/db/training.ts</code> saves ordered answers but not separate feedback turns. <code>scripts/worker.ts</code> creates PRs but cannot merge/index; <code>src/lib/sources/store.ts</code> already replaces complete snapshots atomically. <code>src/lib/evidence/search.ts</code> ranks term matches. These exact flows determine the smallest safe edits.</p>
+  <p>Always preserve existing accounts, source snapshots and historical sessions. Ask before destructive data restoration or live technology changes. Never commit credentials, grant models Git access, auto-merge unrelated proposals, bypass source/evidence validation, or merge/deploy the PointGuide app before exact Production approval. The accepted Issue authorizes additive migration and this narrowly scoped source-artifact policy change.</p>
+  <h2>Verification checkpoint</h2>
+  <p>Every slice must have a failing regression, passing focused tests and a clean build before the next. Final success is the eight acceptance criteria in Issue #10, including a live immutable Canary candidate and at least 80% line coverage for core logic. Unknown runtime or external source permissions must be reported, not assumed.</p>
+</main></body></html>

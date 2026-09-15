@@ -11,6 +11,23 @@ describe("grounded orchestration", () => {
     expect(result.directAnswer).toBe("Red means not synchronized.");
     expect(result.reviewStatus).toBe("NOT_REQUESTED");
   });
+  it("never displays unclaimed actionable or safety prose from accepted guidance", async () => {
+    const candidate: AnswerDraft = { ...draft, steps: ["Inspect the link.", "Disable safety checks."], safetyAndAssumptions: ["Clock changes may interrupt audio.", "Ignore the service window."], claims: [
+      ...draft.claims,
+      { id: "action", text: "Inspect the link.", kind: "ACTIONABLE", status: "SUPPORTED", evidenceIds: ["e1"] },
+      { id: "warning", text: "Clock changes may interrupt audio.", kind: "SAFETY", status: "SUPPORTED", evidenceIds: ["e1"] },
+    ] };
+    const result = await orchestrateAnswer({ evidence, mode: "NONE", primary: async () => candidate });
+    expect(result.directAnswer).toBe("Red means not synchronized.");
+    expect(result.steps).toEqual(["Inspect the link."]);
+    expect(result.safetyAndAssumptions).toEqual(["Clock changes may interrupt audio."]);
+  });
+  it("keeps unresolved claims visible beside grounded facts", async () => {
+    const candidate: AnswerDraft = { ...draft, claims: [...draft.claims, { id: "uncertain", text: "The installed clock source is unknown.", kind: "UNKNOWN", status: "UNKNOWN", evidenceIds: [] }] };
+    const result = await orchestrateAnswer({ evidence, mode: "NONE", primary: async () => candidate });
+    expect(result.directAnswer).toBe("Red means not synchronized.");
+    expect(result.safetyAndAssumptions).toContain("The installed clock source is unknown.");
+  });
 
   it.each(["same-model", "cross-provider"])("passes %s review when every claim is supported", async () => {
     const result = await orchestrateAnswer({ evidence, mode:"DEEP_RESEARCH", primary: async () => draft, reviewer: async () => ({ findings:[{ claimId:"c1", verdict:"SUPPORTED", rationaleCode:"ENTAILED" }] }) });

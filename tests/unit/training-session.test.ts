@@ -1,9 +1,33 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryTrainingSessionStore } from "@/lib/training/store";
+import type { SourceRepositoryRecord } from "@/lib/sources/types";
 
 afterEach(() => vi.useRealTimers());
 
 describe("organic training workflow", () => {
+  it("preserves ordered feedback and answers, and binds acceptance to the visible answer", async () => {
+    const store = new MemoryTrainingSessionStore();
+    const source = { id: "00000000-0000-4000-8000-000000000010", fullName: "PointCommunity/pointaudio", status: "ACTIVE", indexedCommit: "a".repeat(40), version: 1 } as SourceRepositoryRecord;
+    const session = await store.create({ trainerAccountId: "trainer", conversationId: "conversation", targetRepository: "PointCommunity/pointaudio", originalQuestion: "How should this be explained?" });
+    const firstId = crypto.randomUUID(); const secondId = crypto.randomUUID();
+    const first = await store.saveAnswer(session.id, "trainer", { id: firstId, directAnswer: "Initial response", evidence: [] });
+    await store.saveFeedback(session.id, "trainer", first.version, firstId, "Use beginner steps.");
+    const revised = await store.saveAnswer(session.id, "trainer", { id: secondId, directAnswer: "Use beginner steps.", evidence: [] });
+    expect((await store.listTurns(session.id, "trainer")).map((turn) => turn.kind)).toEqual(["ANSWER", "FEEDBACK", "ANSWER"]);
+    await expect(store.acceptAnswer(session.id, "trainer", first.version, firstId, source)).rejects.toThrow();
+    const accepted = await store.acceptAnswer(session.id, "trainer", revised.version, secondId, source);
+    expect(accepted.state).toBe("PUBLISHING");
+    expect(accepted.currentAnswer).toMatchObject({ id: secondId, directAnswer: "Use beginner steps." });
+    expect(accepted.acceptedDigest).toMatch(/^[a-f0-9]{64}$/u);
+    expect(JSON.parse(accepted.acceptedContent!)).toMatchObject({ answerId: secondId, answer: { directAnswer: "Use beginner steps." } });
+    await expect(store.saveFeedback(session.id, "trainer", revised.version, secondId, "Too late")).rejects.toThrow();
+    await store.failPublication(session.id, "trainer", "SOURCE_CHANGED");
+    const retry = await store.retryPublication(session.id, "trainer", source);
+    expect(retry).toMatchObject({ state: "PUBLISHING", acceptedDigest: accepted.acceptedDigest, acceptedContent: accepted.acceptedContent });
+    await expect(store.retryPublication(session.id, "trainer", source)).rejects.toThrow();
+    await expect(store.listTurns(session.id, "other-trainer")).rejects.toThrow("not found");
+  });
+
   it("requires response feedback, an accepted report, then an explicit outcome", async () => {
     const store = new MemoryTrainingSessionStore();
     let session = await store.create({ trainerAccountId: "trainer", conversationId: "conversation", targetRepository: "PointCommunity/pointaudio", originalQuestion: "How should this be explained?" });

@@ -13,8 +13,13 @@ import { getRuntimeSourceStore } from "@/lib/sources/runtime";
 import { knowledgeSnapshot } from "@/lib/sources/retrieval";
 import { answerQuestion } from "@/lib/agent/service";
 import { getRuntimeProposalRepository } from "@/lib/git/runtime";
+import { trainingHistory } from "@/lib/training/context";
 
 const actionSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("FEEDBACK"), answerId: z.uuid(), expectedVersion: z.number().int().positive(), feedback: z.string().trim().min(3).max(4_000) }).strict(),
+  z.object({ action: z.literal("RETRY"), expectedVersion: z.number().int().positive() }).strict(),
+  z.object({ action: z.literal("ACCEPT_ANSWER"), answerId: z.uuid(), expectedVersion: z.number().int().positive() }).strict(),
+  z.object({ action: z.literal("RETRY_PUBLICATION") }).strict(),
   z.object({ action: z.literal("RATE"), rating: z.enum(["HELPFUL", "NOT_HELPFUL"]), explanation: z.string().trim().min(3).max(4_000) }).strict(),
   z.object({ action: z.literal("INSIGHT"), insight: z.string().trim().min(3).max(4_000) }).strict(),
   z.object({ action: z.literal("ACCEPT_REPORT") }).strict(),
@@ -28,7 +33,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   try {
     const actor = await trainer(request); const { id } = await context.params;
     if (!z.uuid().safeParse(id).success) return Response.json({ error: { code: "INVALID_TRAINING", message: "Training session ID is invalid." } }, { status: 400 });
-    return Response.json({ session: await getRuntimeTrainingStore().get(id, actor.id) });
+    const store = getRuntimeTrainingStore(); return Response.json({ session: await store.get(id, actor.id), turns: await store.listTurns(id, actor.id) });
   } catch (error) { return failure(error); }
 }
 
@@ -37,6 +42,27 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     assertSameOrigin(request); const actor = await trainer(request); const { id } = await context.params; if (!z.uuid().safeParse(id).success) return Response.json({ error: { code: "INVALID_TRAINING", message: "Training session ID is invalid." } }, { status: 400 });
     const parsed = actionSchema.safeParse(await request.json().catch(() => null)); if (!parsed.success) return Response.json({ error: { code: "INVALID_TRAINING_ACTION", message: "Training action is invalid or incomplete." } }, { status: 400 });
     const store = getRuntimeTrainingStore(); const session = await store.get(id, actor.id);
+    if (parsed.data.action === "RETRY_PUBLICATION") {
+      const source = (await getRuntimeSourceStore().list()).find(candidate => candidate.fullName === session.targetRepository && candidate.status === "ACTIVE");
+      if (!source) return Response.json({ error: { code: "SOURCE_NOT_ACTIVE", message: "The repository must be active before publication can retry." } }, { status: 409 });
+      return Response.json({ session: await store.retryPublication(id, actor.id, source), turns: await store.listTurns(id, actor.id) });
+    }
+    if (parsed.data.action === "ACCEPT_ANSWER") {
+      const source = (await getRuntimeSourceStore().list()).find(candidate => candidate.fullName === session.targetRepository && candidate.status === "ACTIVE");
+      if (!source) return Response.json({ error: { code: "SOURCE_NOT_ACTIVE", message: "The selected repository is no longer active." } }, { status: 409 });
+      const accepted = await store.acceptAnswer(id, actor.id, parsed.data.expectedVersion, parsed.data.answerId, source);
+      return Response.json({ session: accepted, turns: await store.listTurns(id, actor.id) });
+    }
+    if (parsed.data.action === "FEEDBACK" || parsed.data.action === "RETRY") {
+      if (parsed.data.action === "FEEDBACK") await store.saveFeedback(id, actor.id, parsed.data.expectedVersion, parsed.data.answerId, parsed.data.feedback);
+      else if (session.version !== parsed.data.expectedVersion || (session.state !== "REVISING" && !(session.state === "ACTIVE" && !session.currentAnswer))) throw new TrainingStateError("INVALID_TRAINING_STATE", "Reload the session before retrying the answer.");
+      const current = await store.get(id, actor.id); const turns = await store.listTurns(id, actor.id);
+      const environment = parseEnvironment(process.env); const fixture = environment.AUTH_MODE === "fixture";
+      const { chunks } = await knowledgeSnapshot(getRuntimeSourceStore(), environment);
+      const result = await answerQuestion({ actor, conversationId: current.conversationId, question: current.originalQuestion, deepResearch: false, providers: getRuntimeProviderDependencies().store, learning: getRuntimeLearningRepository(), fixture, modelRuntime: fixture ? undefined : getRuntimeModelRuntime(), chunks, training: true, trainingHistory: trainingHistory(current, turns), guidance: await store.activeGuidance() });
+      const saved = await store.saveAnswer(id, actor.id, result.answer as unknown as Readonly<Record<string, unknown>>);
+      return Response.json({ session: saved, turns: await store.listTurns(id, actor.id) });
+    }
     if (parsed.data.action === "RATE") {
       if (!session.currentAnswer) throw new TrainingStateError("INVALID_TRAINING_STATE", "An agent answer is required before feedback.");
       const environment = parseEnvironment(process.env); let report;
@@ -48,7 +74,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       const environment = parseEnvironment(process.env); const fixture = environment.AUTH_MODE === "fixture";
       const question = `Original question: ${session.originalQuestion}\nTrainer's additional guidance: ${parsed.data.insight}\nProvide a revised, evidence-grounded answer to the original question.`;
       const { chunks } = await knowledgeSnapshot(getRuntimeSourceStore(), environment);
-      const result = await answerQuestion({ actor, conversationId: session.conversationId, question, deepResearch: false, providers: getRuntimeProviderDependencies().store, learning: getRuntimeLearningRepository(), fixture, modelRuntime: fixture ? undefined : getRuntimeModelRuntime(), chunks, maxTurns: 20 });
+      const result = await answerQuestion({ actor, conversationId: session.conversationId, question, deepResearch: false, providers: getRuntimeProviderDependencies().store, learning: getRuntimeLearningRepository(), fixture, modelRuntime: fixture ? undefined : getRuntimeModelRuntime(), chunks, training: true, trainingHistory: trainingHistory(session, await store.listTurns(id, actor.id)), guidance: await store.activeGuidance() });
       return Response.json({ session: await store.saveAnswer(id, actor.id, result.answer as unknown as Readonly<Record<string, unknown>>, parsed.data.insight) });
     }
     if (parsed.data.action === "ACCEPT_REPORT") return Response.json({ session: await store.acceptReport(id, actor.id) });

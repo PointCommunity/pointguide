@@ -17,7 +17,7 @@ const stopWords = new Set([
   "a", "an", "and", "are", "be", "do", "for", "how", "i", "in", "is", "it", "of", "on", "or", "the", "to", "what", "why", "with",
 ]);
 
-function terms(value: string): string[] {
+export function terms(value: string): string[] {
   return [...new Set((value.toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).filter((term) => term.length > 1 && !stopWords.has(term)))];
 }
 
@@ -54,6 +54,7 @@ export function searchCorpus(query: string, chunks: IndexedChunk[], limit = 8): 
   if (queryTerms.length === 0 || limit <= 0) return [];
 
   return chunks
+    .filter(chunk => !chunk.path.startsWith("research/pointguide-training/"))
     .map((chunk) => ({ chunk, score: scoreChunk(queryTerms, chunk) }))
     .filter(({ score }) => score > 0)
     .sort((left, right) => right.score - left.score || left.chunk.chunkId.localeCompare(right.chunk.chunkId))

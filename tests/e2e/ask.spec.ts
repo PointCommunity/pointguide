@@ -17,11 +17,11 @@ test("asks a grounded question and traces the answer to PointAudio evidence", as
   await expect(page.getByText("Point Question", { exact: true })).toBeVisible();
   await expect(page.getByRole("status", { name: "PointGuide is working" })).toBeVisible();
   if (testInfo.project.name === "mobile-320") await expect(page.getByText("Searching connected knowledge…")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "What the evidence supports" })).toBeVisible();
   await expect(page.getByText("5 follow-ups remaining in this session")).toBeVisible();
   await expect(page.locator(".direct-answer")).toContainText("On a DL32, a red AES50 SYNC LED");
+  await expect(page.locator(".claim-ledger li").getByText("On a DL32, a red AES50 SYNC LED", { exact: false })).toBeHidden();
+  await page.getByText("Sources", { exact: true }).click();
   await expect(page.locator(".claim-ledger li").getByText("On a DL32, a red AES50 SYNC LED", { exact: false })).toBeVisible();
-  await page.getByText("Evidence", { exact: true }).click();
   await page.getByText("DL32 Quick Start Guide").click();
   await expect(page.getByText("AES50 SYNC LEDs indicate proper clock synchronisation", { exact: false })).toBeVisible();
 
@@ -76,7 +76,7 @@ test("supports keyboard entry and has no automatically detectable WCAG A/AA viol
   await page.keyboard.type("Which projector is installed in the sanctuary?");
   await page.keyboard.press("Tab");
   await page.keyboard.press("Enter");
-  await page.getByText("Evidence", { exact: true }).click();
+  await page.getByText("Sources", { exact: true }).click();
   await expect(page.getByText("No current source establishes this.")).toBeVisible();
 
   const accessibility = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();

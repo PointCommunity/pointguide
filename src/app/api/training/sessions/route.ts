@@ -27,8 +27,8 @@ export async function POST(request: Request) {
     try {
       const environment = parseEnvironment(process.env); const fixture = environment.AUTH_MODE === "fixture";
       const { chunks } = await knowledgeSnapshot(getRuntimeSourceStore(), environment);
-      const result = await answerQuestion({ actor, conversationId: conversation.id, question: parsed.data.question, deepResearch: false, providers: getRuntimeProviderDependencies().store, learning, fixture, modelRuntime: fixture ? undefined : getRuntimeModelRuntime(), chunks, maxTurns: 20 });
+      const result = await answerQuestion({ actor, conversationId: conversation.id, question: parsed.data.question, deepResearch: false, providers: getRuntimeProviderDependencies().store, learning, fixture, modelRuntime: fixture ? undefined : getRuntimeModelRuntime(), chunks, training: true, guidance: await getRuntimeTrainingStore().activeGuidance() });
       return Response.json({ session: await getRuntimeTrainingStore().saveAnswer(session.id, actor.id, result.answer as unknown as Readonly<Record<string, unknown>>) }, { status: 201 });
-    } catch (error) { await getRuntimeTrainingStore().wipe(session.id, actor.id); throw error; }
+    } catch { return Response.json({ session, error: { code: "ANSWER_FAILED", message: "The first answer failed. Open this session and retry; your question is saved." } }, { status: 202 }); }
   } catch (error) { return accountBoundaryErrorResponse(error); }
 }

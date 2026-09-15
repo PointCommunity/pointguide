@@ -14,6 +14,35 @@ function profile(provider: "CODEX" | "OLLAMA_CLOUD", encryptedSecret: string | n
 }
 
 describe("model execution boundary", () => {
+  it("sends early corrections and later constraints after more than 20 training answers", async () => {
+    const key = randomBytes(32).toString("base64");
+    let prompt = "";
+    const fetcher = vi.fn(async (_url: string, init?: RequestInit) => {
+      prompt = JSON.parse(String(init?.body)).messages[0].content;
+      return Response.json({ message: { content: JSON.stringify(answer) } });
+    });
+    const history = Array.from({ length: 50 }, (_, index) => ({ actor: index % 2 ? "ASSISTANT" as const : "USER" as const, content: index === 2 ? "Correction: never change the live clock without approval." : index === 48 ? "Later constraint: first check the cable." : `Turn ${index}` }));
+    await generateAnswer(profile("OLLAMA_CLOUD", encryptSecret("ollama_secret_key_123456", key)), "How do I troubleshoot?", evidence, { secretKey: key, codexClient: { request: vi.fn() }, fetcher }, history);
+    expect(prompt).toContain("never change the live clock without approval");
+    expect(prompt).toContain("first check the cable");
+  });
+  it("never silently truncates an old correction when a long session exceeds context capacity", async () => {
+    const history = Array.from({ length: 110 }, (_, index) => ({ actor: "USER" as const, content: index === 0 ? `Old correction: ${"z".repeat(260)}` : "v".repeat(3000) }));
+    const fetcher = vi.fn();
+    await expect(generateAnswer(profile("OLLAMA_CLOUD"), "question", evidence, { secretKey: "unused", codexClient: { request: vi.fn() }, fetcher }, history)).rejects.toThrow(/context capacity/i);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("passes accepted guidance separately from factual evidence", async () => {
+    const key = randomBytes(32).toString("base64"); let prompt = "";
+    const fetcher = vi.fn(async (_url: string, init?: RequestInit) => { prompt = JSON.parse(String(init?.body)).messages[0].content; return Response.json({ message: { content: JSON.stringify(answer) } }); });
+    const guidance = [{ id: "training:digest", repository: "PointCommunity/pointaudio", path: "research/pointguide-training/a/b.json", digest: "a".repeat(64), sourceCommit: "b".repeat(40), indexedCommit: "c".repeat(40), question: "Why is the DL32 AES50 link red?", directAnswer: "Trainer-approved response approach.", evidenceIds: ["e1"], acceptedAt: "2026-09-15T12:00:00Z" }];
+    await generateAnswer(profile("OLLAMA_CLOUD", encryptSecret("ollama_secret_key_123456", key)), "Why is DL32 AES50 red?", evidence, { secretKey: key, codexClient: { request: vi.fn() }, fetcher }, [], guidance);
+    expect(prompt).toContain("Trainer-approved response approach.");
+    expect(prompt).toContain("not factual evidence");
+    expect(prompt).toContain("Red means not synchronized.");
+  });
+
   it("generates and validates structured Ollama answers without leaking the key", async () => {
     const key = randomBytes(32).toString("base64");
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ message: { content: JSON.stringify(answer) } }), { status: 200 }));

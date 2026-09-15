@@ -11,7 +11,7 @@
       "rationale": "Reviewed pinned checkout v6; read-only contents, no dependency installation, setup hooks, app builds or containers. Quality runs Node built-in-only repository/skill validators, bounded local source scanning, npm advisory metadata audit with ignored scripts, and Git whitespace validation. All local imports and configuration read by these checks are included.",
       "files": {
         ".agents/pipeliner-policy.html": "c5444d27ebba3340f9f9660be29ca3f3cfb10cd95e0750492ad93573d92e1896",
-        ".agents/pointguide-pipeline-policy.html": "76b42b5b2aeb1bd65b615658b55705d8af084af7227edbfb3f840ea01aba0093",
+        ".agents/pointguide-pipeline-policy.html": "71465edf1c8dc3b3b667e31f8b07c96dd3ebbc2a75591acfa98f7e76b3ebe7cd",
         ".agents/skills/awesome-design/SKILL.md": "5b70e2f9e9f162f951c48f54900634f7a53f206b0793422bb4b4ce756b6b1110",
         ".agents/skills/awesome-design/agents/openai.yaml": "42d0c7d4c2bae88d59cf1b8dac22fb15d5ca8beb081daa2bbd2633e90f75f486",
         ".agents/skills/awesome-design/references/PROVENANCE.md": "11cc0cd5fed9b4f75fff41dee55c9f9afc70761c1a9221acf18a12c65c52d0e6",
@@ -204,7 +204,7 @@
         ".claude/skills/pointguide-work-issue/SKILL.md": "7a5788a190e5fc4bc7006b276d91cd87d53f246da80c9298f69f2fb51f3fef91",
         ".claude/skills/web-design-guidelines/SKILL.md": "ac686e20362b1832283483ab7fcf1abefa82cd1d75a5abcff14f22fb60e2c102",
         ".github/workflows/quality.yml": "a1c4e989e0551927ecf38da799e330571d23e1c793a404b641434b7c1be9484d",
-        "AGENTS.md": "eb200f687eac0fd72f21ff7ec13a5780e4e143dc7eab021611f38747e65fea4e",
+        "AGENTS.md": "15c77581010059e4681b8051507d932e8f430630a9c494c9560f05b240e4cc7c",
         "CLAUDE.md": "336cc4fbf19beaada7ccf9986414fa91851a8d7a07dfb3ccbe800a69eed0ab49",
         "GEMINI.md": "42fbbc9d55ee0d149c90e4bf93abe8b7278a5482b232be6f5bfc59cc0465e694",
         "blueprints/github-labels.json": "eed6faa9d3a4e9088c034e521fe4969a4292307ba6d40f74ffe6727fd46b92a2",
