@@ -73,6 +73,7 @@ describe("governed Git worker", () => {
     const result = await openProposalPullRequest({ id: "42", state: "APPROVED", targetRepository: "PointCommunity/pointaudio", baseCommit: "deadbeef", targetPath: "research/test/finding.txt", proposedContent, digest: contentDigest(proposedContent), rationale: "Verified source" }, checkout, runner);
     expect(await readFile(join(checkout, "research/test/finding.txt"), "utf8")).toBe(proposedContent);
     expect(calls.find((call) => call.args[0] === "add")?.args).toEqual(["add", "--", "research/test/finding.txt"]);
+    expect(calls.find((call) => call.args.includes("commit"))?.args).toEqual(["-c", "user.name=PointGuide Agent", "-c", "user.email=pointguide@eaglepass.io", "commit", "-m", "docs: apply PointGuide proposal 42"]);
     expect(result).toEqual({ branch: "pointguide/proposal-42", commit: "abc123", pullRequestUrl: "https://github.com/PointCommunity/pointaudio/pull/1" });
   });
 

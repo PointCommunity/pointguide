@@ -32,7 +32,7 @@ export async function openProposalPullRequest(proposal: ApprovedProposal, checko
   await mkdir(dirname(target), { recursive: true }); await writeFile(target, proposal.proposedContent, { encoding: "utf8", flag: options.exclusiveCreate ? "wx" : "w" });
   await runner("git", ["add", "--", proposal.targetPath], root);
   await runner("git", ["diff", "--cached", "--check"], root);
-  await runner("git", ["commit", "-m", `docs: apply PointGuide proposal ${proposal.id}`], root);
+  await runner("git", ["-c", "user.name=PointGuide Agent", "-c", "user.email=pointguide@eaglepass.io", "commit", "-m", `docs: apply PointGuide proposal ${proposal.id}`], root);
   const commit = (await runner("git", ["rev-parse", "HEAD"], root)).trim();
   await runner("git", ["push", "-u", "origin", branch], root);
   const pullRequestUrl = (await runner("gh", ["pr", "create", "--repo", proposal.targetRepository, "--head", branch, "--title", `PointGuide proposal ${proposal.id}`, "--body", `${proposal.rationale}\n\nContent digest: ${proposal.digest}`], root)).trim();
