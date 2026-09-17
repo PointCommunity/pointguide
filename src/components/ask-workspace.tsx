@@ -161,18 +161,20 @@ export function AskWorkspace({ resumeConversationId }: { resumeConversationId?: 
 
   const starters = useMemo(() => rotatingStarters(conversationId), [conversationId]);
 
-  async function ask(nextQuestion: string) {
+  async function ask(nextQuestion: string, retry?: Pick<DisplayTurn, "key" | "deepResearch">) {
     const value = nextQuestion.trim();
     if (!value || status === "loading" || !conversationId || turnNumber >= 6) return;
-    const key = crypto.randomUUID();
+    const key = retry?.key ?? crypto.randomUUID();
     const startedAt = performance.now();
-    const selectedDeepResearch = deepResearch;
+    const selectedDeepResearch = retry?.deepResearch ?? deepResearch;
     const firstTurn = turnNumber === 0;
     setPhase(0);
     setQuestion("");
     setStatus("loading");
     setError("");
-    setTurns((current) => [{ key, question: value, answer: null, loading: true, error: null, deepResearch: selectedDeepResearch }, ...current]);
+    setTurns((current) => retry
+      ? current.map((turn) => turn.key === key ? { ...turn, loading: true, error: null } : turn)
+      : [{ key, question: value, answer: null, loading: true, error: null, deepResearch: selectedDeepResearch }, ...current]);
     try {
       const response = await fetch(`/api/conversations/${conversationId}/messages`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ question: value, deepResearch: selectedDeepResearch }) });
       if (!response.ok) {
@@ -249,7 +251,7 @@ export function AskWorkspace({ resumeConversationId }: { resumeConversationId?: 
         {turns.map((turn) => <article className="conversation-turn" key={turn.key}>
           <header className="point-question"><p className="eyebrow">Point Question</p><h2>{turn.question}</h2></header>
           {turn.loading ? <WorkingState deepResearch={turn.deepResearch} phase={phase} /> : null}
-          {turn.error ? <div className="turn-error" role="alert"><strong>PointGuide could not complete this answer.</strong><p>{turn.error}</p></div> : null}
+          {turn.error ? <div className="turn-error" role="alert"><strong>PointGuide could not complete this answer.</strong><p>{turn.error}</p><button type="button" onClick={() => void ask(turn.question, turn)}>Retry this question</button></div> : null}
           <AnswerContent turn={turn} feedback={turn.answer ? feedback[turn.answer.id] ?? null : null} onRate={(rating) => void rate(turn, rating)} />
         </article>)}
       </section> : status === "error" ? <section className="error-panel" role="alert"><strong>We could not open PointGuide.</strong><p>{error}</p></section> : (

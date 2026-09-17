@@ -56,6 +56,28 @@ test("explains when the secure session expires before an answer", async ({ page 
   await expect(page.getByRole("alert").filter({ hasText: "secure session expired" })).toBeVisible();
 });
 
+test("retries a failed question without making the user retype it", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-1024", "One recovery pass is sufficient.");
+  let attempts = 0;
+  await page.route("**/api/conversations/*/messages", async (route) => {
+    attempts += 1;
+    if (attempts === 1) return route.fulfill({
+      contentType: "application/x-ndjson",
+      body: `${JSON.stringify({ type: "error", data: { message: "The model could not complete this answer." } })}\n`,
+    });
+    await route.continue();
+  });
+  await page.goto("/");
+  await page.getByLabel("Your question").fill("What does a red AES50 sync light on the DL32 mean?");
+  await page.getByRole("button", { name: /Ask PointGuide/ }).click();
+
+  await expect(page.locator(".turn-error")).toContainText("The model could not complete this answer.");
+  await page.getByRole("button", { name: "Retry this question" }).click();
+
+  await expect(page.locator(".direct-answer")).toContainText("On a DL32, a red AES50 SYNC LED");
+  expect(attempts).toBe(2);
+});
+
 test("keeps the phone layout inside the viewport with touch-sized controls", async ({ page }, testInfo) => {
   test.skip(!testInfo.project.name.startsWith("mobile"), "Mobile geometry assertion");
   await page.goto("/");

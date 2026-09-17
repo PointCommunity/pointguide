@@ -105,6 +105,29 @@ describe("model execution boundary", () => {
     await expect(generateAnswer(profile("CODEX"), "q", evidence, { secretKey: "unused", codexClient: client })).rejects.toThrow("Selected model is unavailable");
   });
 
+  it("retries one transient Codex turn failure before returning the structured answer", async () => {
+    let listener: ((method: string, params: unknown) => void) | undefined;
+    let threadStarts = 0;
+    const client: AppServerClient = {
+      subscribe(next) { listener = next; return () => { listener = undefined; }; },
+      async request(method, params) {
+        if (method === "thread/start") return { thread: { id: `thread-${++threadStarts}` } };
+        const threadId = String(params.threadId);
+        queueMicrotask(() => {
+          if (threadStarts === 1) listener?.("turn/failed", { threadId });
+          else {
+            listener?.("item/agentMessage/delta", { threadId, delta: JSON.stringify(answer) });
+            listener?.("turn/completed", { threadId, turn: { status: "completed" } });
+          }
+        });
+        return {};
+      },
+    };
+
+    await expect(generateAnswer(profile("CODEX"), "q", evidence, { secretKey: "unused", codexClient: client })).resolves.toEqual(answer);
+    expect(threadStarts).toBe(2);
+  });
+
   it("fails on provider errors and invalid JSON", async () => {
     const key = randomBytes(32).toString("base64");
     await expect(generateAnswer(profile("OLLAMA_CLOUD", encryptSecret("ollama_secret_key_123456", key)), "q", evidence, { secretKey: key, codexClient: { request: vi.fn() }, fetcher: async () => new Response("bad", { status: 500 }) })).rejects.toThrow("500");

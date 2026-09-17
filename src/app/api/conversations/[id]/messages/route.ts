@@ -10,7 +10,7 @@ import { answerQuestion } from "@/lib/agent/service";
 import { getRuntimeTrainingStore } from "@/lib/training/runtime";
 import { knowledgeSnapshot } from "@/lib/sources/retrieval";
 import { getRuntimeSourceStore } from "@/lib/sources/runtime";
-import { answerFailureReason } from "@/lib/training/answer-error";
+import { answerFailureDiagnostic } from "@/lib/training/answer-error";
 
 const bodySchema = z.object({ question: z.string().trim().min(1).max(8_000), deepResearch: z.boolean().default(false) }).strict();
 const encoder = new TextEncoder();
@@ -42,8 +42,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         controller.enqueue(event("done", {}));
       } catch (error) {
         const code = error instanceof Error ? error.message : "ANSWER_FAILED";
-        const reason = answerFailureReason(error);
-        console.error(JSON.stringify({ event: "ask.answer_failed", reason }));
+        const diagnostic = answerFailureDiagnostic(error);
+        const { reason } = diagnostic;
+        console.error(JSON.stringify({ event: "ask.answer_failed", ...diagnostic }));
         controller.enqueue(event("error", { code: ["TURN_LIMIT_REACHED", "REVIEW_DISABLED", "CONVERSATION_NOT_FOUND"].includes(code) ? code : "ANSWER_FAILED", reason, message: code === "TURN_LIMIT_REACHED" ? "This support session has reached its limit of five follow-up questions. Start a new session to continue." : code === "REVIEW_DISABLED" ? "Deep research is disabled by the Owner." : code === "CONVERSATION_NOT_FOUND" ? "Conversation was not found." : code.includes("CONFIGURED") ? "The required agent profile is not configured." : "PointGuide could not produce a verified answer." }));
       } finally { controller.close(); }
     },

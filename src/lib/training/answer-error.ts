@@ -9,6 +9,16 @@ export function answerFailureReason(error: unknown) {
   return "GENERATION_FAILED";
 }
 
+export function answerFailureDiagnostic(error: unknown): { reason: ReturnType<typeof answerFailureReason>; detail: string } {
+  const reason = answerFailureReason(error);
+  const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
+  if (/^REVIEW_(?:UNAVAILABLE|INVALID|TIMEOUT|REJECTED)$/u.test(code)) return { reason, detail: code };
+  if (reason !== "GENERATION_FAILED") return { reason, detail: reason };
+  if (error instanceof Error && /unknown evidence|requires evidence|duplicate (?:evidence|claim) identifier/iu.test(error.message)) return { reason, detail: "GROUNDING_INVALID" };
+  if (error instanceof Error && /Codex generation|Ollama generation|returned no answer|model (?:is unavailable|.*not supported)/iu.test(error.message)) return { reason, detail: "PROVIDER_GENERATION_FAILED" };
+  return { reason, detail: "UNCLASSIFIED_ERROR" };
+}
+
 export function answerFailureMessage(reason: ReturnType<typeof answerFailureReason>, revision: boolean) {
   const prefix = reason === "INVALID_PROVIDER_OUTPUT" ? "The provider returned an unusable answer."
     : reason === "PROVIDER_TIMEOUT" ? "The provider timed out."

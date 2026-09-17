@@ -10,7 +10,7 @@ import { getRuntimeTrainingStore } from "@/lib/training/runtime";
 import { answerQuestion } from "@/lib/agent/service";
 import { parseEnvironment } from "@/lib/config/env";
 import { knowledgeSnapshot } from "@/lib/sources/retrieval";
-import { answerFailureMessage, answerFailureReason } from "@/lib/training/answer-error";
+import { answerFailureDiagnostic, answerFailureMessage } from "@/lib/training/answer-error";
 
 const schema = z.object({ question: z.string().trim().min(1).max(8_000), targetRepository: z.string().regex(/^PointCommunity\/[A-Za-z0-9._-]+$/u) }).strict();
 const querySchema = z.string().trim().max(200);
@@ -31,8 +31,9 @@ export async function POST(request: Request) {
       const result = await answerQuestion({ actor, conversationId: conversation.id, question: parsed.data.question, deepResearch: false, providers: getRuntimeProviderDependencies().store, learning, fixture, modelRuntime: fixture ? undefined : getRuntimeModelRuntime(), chunks, training: true, guidance: await getRuntimeTrainingStore().activeGuidance() });
       return Response.json({ session: await getRuntimeTrainingStore().saveAnswer(session.id, actor.id, result.answer as unknown as Readonly<Record<string, unknown>>) }, { status: 201 });
     } catch (error) {
-      const reason = answerFailureReason(error);
-      console.warn("training-answer-failed", { phase: "first", reason });
+      const diagnostic = answerFailureDiagnostic(error);
+      const { reason } = diagnostic;
+      console.warn("training-answer-failed", { phase: "first", ...diagnostic });
       return Response.json({ session, error: { code: "ANSWER_FAILED", reason, message: answerFailureMessage(reason, false) } }, { status: 202 });
     }
   } catch (error) { return accountBoundaryErrorResponse(error); }

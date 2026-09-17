@@ -14,7 +14,7 @@ import { knowledgeSnapshot } from "@/lib/sources/retrieval";
 import { answerQuestion } from "@/lib/agent/service";
 import { getRuntimeProposalRepository } from "@/lib/git/runtime";
 import { trainingHistory } from "@/lib/training/context";
-import { answerFailureMessage, answerFailureReason } from "@/lib/training/answer-error";
+import { answerFailureDiagnostic, answerFailureMessage } from "@/lib/training/answer-error";
 
 const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("FEEDBACK"), answerId: z.uuid(), expectedVersion: z.number().int().positive(), feedback: z.string().trim().min(3).max(4_000) }).strict(),
@@ -66,8 +66,9 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
         return Response.json({ session: saved, turns: await store.listTurns(id, actor.id) });
       } catch (error) {
         const saved = await store.get(id, actor.id);
-        const reason = answerFailureReason(error);
-        console.warn("training-answer-failed", { phase: saved.state === "REVISING" ? "revision" : "first", reason });
+        const diagnostic = answerFailureDiagnostic(error);
+        const { reason } = diagnostic;
+        console.warn("training-answer-failed", { phase: saved.state === "REVISING" ? "revision" : "first", ...diagnostic });
         return Response.json({ session: saved, turns: await store.listTurns(id, actor.id), error: { code: "ANSWER_FAILED", reason, message: answerFailureMessage(reason, saved.state === "REVISING") } }, { status: 202 });
       }
     }

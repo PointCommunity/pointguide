@@ -87,15 +87,24 @@ async function generate(profile: ExecutionProfile, prompt: string, runtime: Mode
     : codex(runtime.codexClient, profile, prompt, outputSchema);
 }
 
+async function generateStructured<T>(profile: ExecutionProfile, prompt: string, runtime: ModelRuntime, schema: z.ZodType<T>): Promise<T> {
+  let failure: unknown;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try { return parseJson(await generate(profile, prompt, runtime, schema), schema); }
+    catch (error) { failure = error; }
+  }
+  throw failure;
+}
+
 export async function generateAnswer(profile: ExecutionProfile, question: string, evidence: EvidenceItem[], runtime: ModelRuntime, history: ConversationMessage[] = [], guidance: AcceptedGuidance[] = []): Promise<AnswerDraft> {
-  return parseJson(await generate(profile, evidencePrompt(question, evidence, profile.ownerPrompt, history, guidance), runtime, answerDraftSchema), answerDraftSchema);
+  return generateStructured(profile, evidencePrompt(question, evidence, profile.ownerPrompt, history, guidance), runtime, answerDraftSchema);
 }
 
 export async function generateReview(profile: ExecutionProfile, draft: AnswerDraft, evidence: EvidenceItem[], runtime: ModelRuntime): Promise<ReviewResult> {
-  return parseJson(await generate(profile, reviewPrompt(draft, evidence, profile.ownerPrompt), runtime, reviewResultSchema), reviewResultSchema);
+  return generateStructured(profile, reviewPrompt(draft, evidence, profile.ownerPrompt), runtime, reviewResultSchema);
 }
 
 export async function generateTrainingReport(profile: ExecutionProfile, input: { question: string; answer: Readonly<Record<string, unknown>>; rating: "HELPFUL" | "NOT_HELPFUL"; explanation: string; priorReport?: TrainingReport | null }, runtime: ModelRuntime): Promise<TrainingReport> {
   const prompt = `${profile.ownerPrompt}\n\nTRAINING REVIEW POLICY: Analyze the trainer's feedback as behavioral guidance, not factual evidence. Report what was learned about response usefulness, what response behavior should change, and explicitly preserve the evidence boundary. Do not claim the trainer feedback changes repository facts. Return only JSON: {summary:string,learned:string[],responseChanges:string[],evidenceBoundary:string}.\n\nORIGINAL QUESTION:\n${input.question}\n\nCURRENT ANSWER:\n${JSON.stringify(input.answer)}\n\nRATING:\n${input.rating}\n\nTRAINER EXPLANATION:\n${input.explanation}\n\nPRIOR REPORT:\n${JSON.stringify(input.priorReport ?? null)}`;
-  return parseJson(await generate(profile, prompt, runtime, trainingReportSchema), trainingReportSchema);
+  return generateStructured(profile, prompt, runtime, trainingReportSchema);
 }
