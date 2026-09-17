@@ -88,6 +88,23 @@ describe("model execution boundary", () => {
     expect(turnParams?.outputSchema).toMatchObject({ type: "object", required: ["directAnswer", "steps", "safetyAndAssumptions", "confidence", "claims"] });
   });
 
+  it("reports a failed Codex turn instead of parsing an empty response", async () => {
+    let listener: ((method: string, params: unknown) => void) | undefined;
+    const client: AppServerClient = {
+      subscribe(next) { listener = next; return () => { listener = undefined; }; },
+      async request(method) {
+        if (method === "thread/start") return { thread: { id: "thread-1" } };
+        queueMicrotask(() => {
+          listener?.("error", { threadId: "thread-1", error: { message: "Selected model is unavailable." } });
+          listener?.("turn/completed", { threadId: "thread-1", turn: { status: "failed", error: { message: "Selected model is unavailable." } } });
+        });
+        return {};
+      },
+    };
+
+    await expect(generateAnswer(profile("CODEX"), "q", evidence, { secretKey: "unused", codexClient: client })).rejects.toThrow("Selected model is unavailable");
+  });
+
   it("fails on provider errors and invalid JSON", async () => {
     const key = randomBytes(32).toString("base64");
     await expect(generateAnswer(profile("OLLAMA_CLOUD", encryptSecret("ollama_secret_key_123456", key)), "q", evidence, { secretKey: key, codexClient: { request: vi.fn() }, fetcher: async () => new Response("bad", { status: 500 }) })).rejects.toThrow("500");

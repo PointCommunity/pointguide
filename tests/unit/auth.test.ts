@@ -51,6 +51,24 @@ describe("Cloudflare Access assertions", () => {
     });
   });
 
+  it("retries one transient JWKS timeout without weakening assertion validation", async () => {
+    let attempts = 0;
+    const transientKey = async () => {
+      attempts += 1;
+      if (attempts === 1) throw Object.assign(new Error("JWKS fetch timed out"), { code: "ERR_JWKS_TIMEOUT" });
+      return publicKey;
+    };
+
+    const identity = await verifyAccessAssertion(await token(), {
+      teamDomain: issuer,
+      audience,
+      key: transientKey,
+    });
+
+    expect(attempts).toBe(2);
+    expect(identity.email).toBe("owner@example.com");
+  });
+
   it.each([
     ["wrong issuer", { iss: "https://other.cloudflareaccess.com" }, "INVALID_ASSERTION"],
     ["wrong audience", { aud: "other-app" }, "INVALID_ASSERTION"],

@@ -42,6 +42,20 @@ test("keeps follow-up context visible with the newest question first", async ({ 
   await expect(page.locator(".conversation-turn").last().getByRole("heading", { name: "red AES50 DL32 first question" })).toBeVisible();
 });
 
+test("explains when the secure session expires before an answer", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-1024", "One interaction pass is sufficient.");
+  await page.route("**/api/conversations/*/messages", (route) => route.fulfill({
+    status: 401,
+    contentType: "application/json",
+    body: JSON.stringify({ error: { code: "AUTH_REQUIRED", message: "A valid Cloudflare Access identity is required." } }),
+  }));
+  await page.goto("/");
+  await page.getByLabel("Your question").fill("Why is the stage box not synchronized?");
+  await page.getByRole("button", { name: /Ask PointGuide/ }).click();
+
+  await expect(page.getByRole("alert").filter({ hasText: "secure session expired" })).toBeVisible();
+});
+
 test("keeps the phone layout inside the viewport with touch-sized controls", async ({ page }, testInfo) => {
   test.skip(!testInfo.project.name.startsWith("mobile"), "Mobile geometry assertion");
   await page.goto("/");

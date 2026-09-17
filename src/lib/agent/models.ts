@@ -58,7 +58,17 @@ async function codex(client: AppServerClient, profile: ExecutionProfile, prompt:
         const item = params.item as { id?: string; type?: string; text: string };
         if (item.type === "agentMessage") { itemId = item.id; text = item.text; }
       }
-      if (method === "turn/completed") { clearTimeout(timeout); unsubscribe(); resolve(text); }
+      if (method === "error") {
+        const detail = params.error && typeof params.error === "object" && "message" in params.error && typeof params.error.message === "string" ? params.error.message.slice(0, 500) : "Codex generation failed.";
+        clearTimeout(timeout); unsubscribe(); reject(new Error(detail));
+      }
+      if (method === "turn/completed") {
+        const turn = params.turn && typeof params.turn === "object" ? params.turn as { status?: string; error?: { message?: string } | null } : null;
+        clearTimeout(timeout); unsubscribe();
+        if (turn?.status === "failed") reject(new Error(turn.error?.message?.slice(0, 500) || "Codex generation failed."));
+        else if (!text.trim()) reject(new Error("Codex generation returned no answer."));
+        else resolve(text);
+      }
       if (method === "turn/failed") { clearTimeout(timeout); unsubscribe(); reject(new Error("Codex generation failed.")); }
     });
     void client.request("turn/start", {

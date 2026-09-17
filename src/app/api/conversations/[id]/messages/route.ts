@@ -10,6 +10,7 @@ import { answerQuestion } from "@/lib/agent/service";
 import { getRuntimeTrainingStore } from "@/lib/training/runtime";
 import { knowledgeSnapshot } from "@/lib/sources/retrieval";
 import { getRuntimeSourceStore } from "@/lib/sources/runtime";
+import { answerFailureReason } from "@/lib/training/answer-error";
 
 const bodySchema = z.object({ question: z.string().trim().min(1).max(8_000), deepResearch: z.boolean().default(false) }).strict();
 const encoder = new TextEncoder();
@@ -19,7 +20,10 @@ function event(type: string, data: unknown): Uint8Array { return encoder.encode(
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }): Promise<Response> {
   let actor;
   try { assertSameOrigin(request); actor = requireApprovedAccount(await authenticateRequest(request, getRuntimeSessionDependencies())); }
-  catch (error) { return accountBoundaryErrorResponse(error); }
+  catch (error) {
+    console.error(JSON.stringify({ event: "ask.authentication_failed", reason: error instanceof Error ? error.name : "UNKNOWN" }));
+    return accountBoundaryErrorResponse(error);
+  }
   const { id } = await context.params;
   if (!z.uuid().safeParse(id).success) return Response.json({ error: { code: "INVALID_CONVERSATION", message: "Conversation ID is invalid." } }, { status: 400 });
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
@@ -38,7 +42,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         controller.enqueue(event("done", {}));
       } catch (error) {
         const code = error instanceof Error ? error.message : "ANSWER_FAILED";
-        controller.enqueue(event("error", { code, message: code === "TURN_LIMIT_REACHED" ? "This support session has reached its limit of five follow-up questions. Start a new session to continue." : code === "REVIEW_DISABLED" ? "Deep research is disabled by the Owner." : code === "CONVERSATION_NOT_FOUND" ? "Conversation was not found." : code.includes("CONFIGURED") ? "The required agent profile is not configured." : "PointGuide could not produce a verified answer." }));
+        const reason = answerFailureReason(error);
+        console.error(JSON.stringify({ event: "ask.answer_failed", reason }));
+        controller.enqueue(event("error", { code: ["TURN_LIMIT_REACHED", "REVIEW_DISABLED", "CONVERSATION_NOT_FOUND"].includes(code) ? code : "ANSWER_FAILED", reason, message: code === "TURN_LIMIT_REACHED" ? "This support session has reached its limit of five follow-up questions. Start a new session to continue." : code === "REVIEW_DISABLED" ? "Deep research is disabled by the Owner." : code === "CONVERSATION_NOT_FOUND" ? "Conversation was not found." : code.includes("CONFIGURED") ? "The required agent profile is not configured." : "PointGuide could not produce a verified answer." }));
       } finally { controller.close(); }
     },
   });

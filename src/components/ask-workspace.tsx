@@ -175,7 +175,12 @@ export function AskWorkspace({ resumeConversationId }: { resumeConversationId?: 
     setTurns((current) => [{ key, question: value, answer: null, loading: true, error: null, deepResearch: selectedDeepResearch }, ...current]);
     try {
       const response = await fetch(`/api/conversations/${conversationId}/messages`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ question: value, deepResearch: selectedDeepResearch }) });
-      if (!response.ok || !response.body) throw new Error("PointGuide could not answer that question.");
+      if (!response.ok) {
+        if (response.status === 401) throw new Error("Your secure session expired. Refresh this page to sign in again, then retry your question.");
+        const payload = await response.json().catch(() => null) as { error?: { message?: string } } | null;
+        throw new Error(payload?.error?.message ?? "PointGuide could not answer that question.");
+      }
+      if (!response.body) throw new Error("PointGuide could not answer that question.");
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
