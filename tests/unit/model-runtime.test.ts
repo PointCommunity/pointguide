@@ -57,13 +57,13 @@ describe("model execution boundary", () => {
       async request(method) {
         if (method === "thread/start") return { thread: { id: "thread-1" } };
         queueMicrotask(() => {
-          listener?.("item/agentMessage/delta", { threadId: "thread-1", delta: JSON.stringify({ findings: [{ claimId: "c1", verdict: "SUPPORTED", rationaleCode: "ENTAILED" }] }) });
+          listener?.("item/agentMessage/delta", { threadId: "thread-1", delta: JSON.stringify({ findings: [{ claimId: "c1", verdict: "SUPPORTED", rationaleCode: "ENTAILED" }], claimOrder: ["c1"] }) });
           listener?.("turn/completed", { threadId: "thread-1" });
         });
         return {};
       },
     };
-    await expect(generateReview(profile("CODEX"), answer as never, evidence, { secretKey: randomBytes(32).toString("base64"), codexClient: client })).resolves.toEqual({ findings: [{ claimId: "c1", verdict: "SUPPORTED", rationaleCode: "ENTAILED" }] });
+    await expect(generateReview(profile("CODEX"), answer as never, evidence, { secretKey: randomBytes(32).toString("base64"), codexClient: client })).resolves.toEqual({ findings: [{ claimId: "c1", verdict: "SUPPORTED", rationaleCode: "ENTAILED" }], claimOrder: ["c1"] });
   });
 
   it("constrains Codex revision answers and reads the final complete message instead of concatenating interim messages", async () => {

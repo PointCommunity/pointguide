@@ -128,8 +128,8 @@ export class MemoryProviderStore implements ProviderConfigurationStore {
       nextProfiles.set(profile.id, profile);
       if (this.review.enabled) {
         const enabledRoles = new Set([...nextProfiles.values()].filter((candidate) => candidate.enabled).map((candidate) => candidate.role));
-        if (!enabledRoles.has("PRIMARY") || !enabledRoles.has("REVIEWER")) {
-          throw new ProviderConfigurationError("INCOMPLETE_REVIEW_CONFIG", "Deep research requires an enabled primary and reviewer profile.");
+        if (!enabledRoles.has("PRIMARY")) {
+          throw new ProviderConfigurationError("INCOMPLETE_REVIEW_CONFIG", "Deep research requires an enabled Primary profile. A separate Reviewer is optional.");
         }
       }
       this.profiles.clear();
@@ -159,8 +159,8 @@ export class MemoryProviderStore implements ProviderConfigurationStore {
     return this.transaction(() => {
       if (enabled) {
         const enabledRoles = new Set([...this.profiles.values()].filter((profile) => profile.enabled).map((profile) => profile.role));
-        if (!enabledRoles.has("PRIMARY") || !enabledRoles.has("REVIEWER")) {
-          throw new ProviderConfigurationError("INCOMPLETE_REVIEW_CONFIG", "Enable a primary and reviewer profile before Deep research.");
+        if (!enabledRoles.has("PRIMARY")) {
+          throw new ProviderConfigurationError("INCOMPLETE_REVIEW_CONFIG", "Enable a Primary profile before Deep research. A separate Reviewer is optional.");
         }
       }
       this.review = { enabled, version: this.review.version + 1 };

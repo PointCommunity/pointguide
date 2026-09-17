@@ -51,6 +51,34 @@ describe("persisted answer service", () => {
     expect(await learning.listMessages(conversation.id, actor.id)).toHaveLength(44);
   });
 
+  it("uses trainer feedback terms when retrieving evidence for a revision", async () => {
+    const learning = new MemoryLearningRepository();
+    const conversation = await learning.createConversation(actor.id, "training retrieval");
+    const result = await answerQuestion({
+      actor,
+      conversationId: conversation.id,
+      question: "How should this answer be safer?",
+      deepResearch: false,
+      providers: new MemoryProviderStore(),
+      learning,
+      fixture: true,
+      training: true,
+      trainingHistory: [{ actor: "USER", content: "Trainer feedback: Check the Crown XTi amplifier thermal protection indicator." }],
+      chunks: [{
+        chunkId: "crown-thermal",
+        sourceId: "pointaudio",
+        title: "Crown XTi thermal protection",
+        path: "docs/crown-xti.md",
+        locator: "Thermal protection indicator",
+        authority: "manufacturer-primary",
+        capturedAt: "2026-09-17T00:00:00.000Z",
+        digest: "a".repeat(64),
+        text: "The Crown XTi amplifier thermal protection indicator identifies an over-temperature condition.",
+      }],
+    });
+    expect(result.answer.evidence.map(item => item.id)).toEqual(["repo:crown-thermal"]);
+  });
+
   it("retains relevant accepted guidance with the answer after resume", async () => {
     const learning = new MemoryLearningRepository(); const conversation = await learning.createConversation(actor.id, "support");
     const guidance = { id: "training:digest", repository: "PointCommunity/pointaudio", path: "research/pointguide-training/a/b.json", digest: "a".repeat(64), sourceCommit: "b".repeat(40), indexedCommit: "c".repeat(40), question: "What does a red AES50 sync light on the DL32 mean?", directAnswer: "Use a short clock safety check.", evidenceIds: [], acceptedAt: "2026-09-15T12:00:00Z" };

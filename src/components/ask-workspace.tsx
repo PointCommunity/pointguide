@@ -78,8 +78,8 @@ function EvidenceCard({ item, claims }: { item: EvidenceItem; claims: AnswerClai
 
 function WorkingState({ deepResearch, phase }: { deepResearch: boolean; phase: number }) {
   const phases = deepResearch
-    ? ["Reading your question", "Searching connected knowledge", "Checking supporting evidence", "Reviewing supported claims", "Preparing a clear response"]
-    : ["Reading your question", "Searching connected knowledge", "Checking supporting evidence", "Preparing a clear response"];
+    ? ["Reading your question", "Searching connected knowledge", "Primary structuring source-backed data", "Reviewer checking supported claims", "Reviewer organizing a clear response"]
+    : ["Reading your question", "Searching connected knowledge", "Primary structuring source-backed data", "Primary organizing a clear response"];
   return (
     <div className="agent-working" role="status" aria-live="polite" aria-label="PointGuide is working">
       <span className="working-orbit" aria-hidden="true"><i /></span>

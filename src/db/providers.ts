@@ -221,8 +221,8 @@ export class PostgresProviderStore implements ProviderConfigurationStore {
         const enabledProfiles = await transaction.select({ role: agentProfiles.role }).from(agentProfiles)
           .where(eq(agentProfiles.enabled, true));
         const enabledRoles = new Set(enabledProfiles.map((profile) => profile.role));
-        if (!enabledRoles.has("PRIMARY") || !enabledRoles.has("REVIEWER")) {
-          throw new ProviderConfigurationError("INCOMPLETE_REVIEW_CONFIG", "Deep research requires an enabled primary and reviewer profile.");
+        if (!enabledRoles.has("PRIMARY")) {
+          throw new ProviderConfigurationError("INCOMPLETE_REVIEW_CONFIG", "Deep research requires an enabled Primary profile. A separate Reviewer is optional.");
         }
       }
 
@@ -301,8 +301,8 @@ export class PostgresProviderStore implements ProviderConfigurationStore {
         const enabledProfiles = await transaction.select({ role: agentProfiles.role }).from(agentProfiles)
           .where(eq(agentProfiles.enabled, true));
         const enabledRoles = new Set(enabledProfiles.map((profile) => profile.role));
-        if (!enabledRoles.has("PRIMARY") || !enabledRoles.has("REVIEWER")) {
-          throw new ProviderConfigurationError("INCOMPLETE_REVIEW_CONFIG", "Enable a primary and reviewer profile before Deep research.");
+        if (!enabledRoles.has("PRIMARY")) {
+          throw new ProviderConfigurationError("INCOMPLETE_REVIEW_CONFIG", "Enable a Primary profile before Deep research. A separate Reviewer is optional.");
         }
       }
       const [current] = await transaction.select().from(applicationSettings).where(eq(applicationSettings.key, "review.enabled")).limit(1);

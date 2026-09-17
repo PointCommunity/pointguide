@@ -25,21 +25,21 @@ export async function answerQuestion(input: { actor: Account; conversationId: st
   const turnNumber = await input.learning.reserveTurn(input.conversationId, input.actor.id, maxTurns);
   try {
   const history = input.trainingHistory ?? await input.learning.listMessages(input.conversationId, input.actor.id);
-  const evidence = searchCorpus(input.question, input.chunks ?? demoChunks);
+  const retrievalQuery = input.training ? [input.question, ...history.filter(message => message.actor === "USER").map(message => message.content)].join("\n") : input.question;
+  const evidence = searchCorpus(retrievalQuery, input.chunks ?? demoChunks);
   const guidance = rankAcceptedGuidance(input.question, input.guidance ?? []);
   const reviewSetting = await input.providers.getReviewSetting();
   if (input.deepResearch && !reviewSetting.enabled) throw new Error("REVIEW_DISABLED");
   const primaryProfile = await input.providers.getExecutionProfile("PRIMARY");
   const reviewerProfile = input.deepResearch ? await input.providers.getExecutionProfile("REVIEWER") : null;
   if (!input.fixture && (!primaryProfile || !input.modelRuntime)) throw new Error("PRIMARY_NOT_CONFIGURED");
-  if (input.deepResearch && !input.fixture && !reviewerProfile) throw new Error("REVIEWER_NOT_CONFIGURED");
   const mode: ReviewMode = input.deepResearch ? "DEEP_RESEARCH" : "NONE";
   const answer = await orchestrateAnswer({
     evidence, mode,
     primary: () => !evidence.length || !primaryProfile || !input.modelRuntime ? Promise.resolve(evidenceDraft(input.question, evidence)) : generateAnswer(primaryProfile, input.question, evidence, input.modelRuntime, history, guidance),
-    reviewer: mode === "DEEP_RESEARCH" ? (draft, items) => reviewerProfile && input.modelRuntime
-      ? generateReview(reviewerProfile, draft, items, input.modelRuntime)
-      : Promise.resolve({ findings: draft.claims.map((claim) => ({ claimId: claim.id, verdict: claim.status === "SUPPORTED" ? "SUPPORTED" as const : "REJECTED" as const, rationaleCode: claim.status === "SUPPORTED" ? "ENTAILED" as const : "INSUFFICIENT" as const })) }) : undefined,
+    reviewer: (draft, items) => items.length && (reviewerProfile ?? primaryProfile) && input.modelRuntime
+      ? generateReview((reviewerProfile ?? primaryProfile)!, draft, items, input.modelRuntime)
+      : Promise.resolve({ findings: draft.claims.map((claim) => ({ claimId: claim.id, verdict: claim.status === "SUPPORTED" ? "SUPPORTED" as const : "REJECTED" as const, rationaleCode: claim.status === "SUPPORTED" ? "ENTAILED" as const : "INSUFFICIENT" as const })), claimOrder: draft.claims.map(claim => claim.id) }),
   });
   const stored = await input.learning.saveAnswer({ conversationId: input.conversationId, question: input.question, answer, evidence, guidance, reviewMode: mode, turnNumber });
   return { answer: { ...stored, evidence, guidance }, reviewEnabled: reviewSetting.enabled, usage: { turnNumber, maxTurns, followUpsRemaining: Math.max(0, maxTurns - turnNumber) } };
