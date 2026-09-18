@@ -1,7 +1,17 @@
 import type { AnswerDraft } from "@/lib/agent/schema";
 
+function withoutInlineEvidenceIds(text: string, evidenceIds: string[]): string {
+  return evidenceIds
+    .reduce((cleaned, evidenceId) => cleaned.replaceAll(`[${evidenceId}]`, ""), text)
+    .replace(/\s+([,.;:!?])/gu, "$1")
+    .replace(/\s{2,}/gu, " ")
+    .trim();
+}
+
 export function renderGroundedAnswer(draft: AnswerDraft): AnswerDraft {
-  const claims = draft.claims.filter((claim) => claim.status !== "REJECTED");
+  const claims = draft.claims
+    .filter((claim) => claim.status !== "REJECTED")
+    .map((claim) => ({ ...claim, text: withoutInlineEvidenceIds(claim.text, claim.evidenceIds) }));
   const supported = claims.filter((claim) => claim.status === "SUPPORTED");
   const unknown = claims.filter((claim) => claim.status === "UNKNOWN");
   const direct = supported.filter(claim => claim.kind === "FACTUAL");

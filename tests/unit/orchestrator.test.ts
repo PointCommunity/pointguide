@@ -12,6 +12,14 @@ describe("grounded orchestration", () => {
     expect(result.directAnswer).toBe("Red means not synchronized.");
     expect(result.reviewStatus).toBe("NOT_REQUESTED");
   });
+  it("keeps structured source IDs out of user-facing answer text", async () => {
+    const evidenceId = "repo:PointCommunity/pointaudio:d4a9491db8147a342d6e4117572b1c143a1fe967:research/midas-m32/corpus/M32_User_Manual_EN.txt:31:5ab2ac9408c7";
+    const sourcedEvidence = [{ ...evidence[0], id: evidenceId }];
+    const citedDraft: AnswerDraft = { ...draft, claims: [{ ...draft.claims[0], text: `Red means not synchronized [${evidenceId}].`, evidenceIds: [evidenceId] }] };
+    const result = await orchestrateAnswer({ evidence: sourcedEvidence, mode: "NONE", primary: async () => citedDraft, reviewer: async () => organized });
+    expect(result.directAnswer).toBe("Red means not synchronized.");
+    expect(result.claims[0]).toMatchObject({ text: "Red means not synchronized.", evidenceIds: [evidenceId] });
+  });
   it("never displays unclaimed actionable or safety prose from accepted guidance", async () => {
     const candidate: AnswerDraft = { ...draft, steps: ["Inspect the link.", "Disable safety checks."], safetyAndAssumptions: ["Clock changes may interrupt audio.", "Ignore the service window."], claims: [
       ...draft.claims,
