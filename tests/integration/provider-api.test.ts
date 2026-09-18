@@ -136,14 +136,20 @@ describe("Owner provider API boundary", () => {
     const updated = await handleReviewSetting(request("owner", { enabled: true }, "PUT"), deps);
     const listing = await handleProviderList(request("owner"), deps);
     const reviewer = (await deps.store.listProfiles()).find((profile) => profile.role === "REVIEWER")!;
-    const invalidated = await handleProfilePut(request("owner", {
+    const reviewerDisabled = await handleProfilePut(request("owner", {
       name: reviewer.name, role: "REVIEWER", provider: "CODEX", modelId: reviewer.modelId,
       reasoningEffort: reviewer.reasoningEffort, enabled: false, ownerPrompt: "Disable reviewer.",
     }, "PUT"), reviewer.id, deps);
+    const primary = (await deps.store.listProfiles()).find((profile) => profile.role === "PRIMARY")!;
+    const primaryDisabled = await handleProfilePut(request("owner", {
+      name: primary.name, role: "PRIMARY", provider: "CODEX", modelId: primary.modelId,
+      reasoningEffort: primary.reasoningEffort, enabled: false, ownerPrompt: "Disable primary.",
+    }, "PUT"), primary.id, deps);
 
     expect(rejected.status).toBe(409);
     expect(await updated.json()).toEqual({ enabled: true, version: 1 });
     expect(await listing.json()).toMatchObject({ review: { enabled: true, version: 1 } });
-    expect(invalidated.status).toBe(409);
+    expect(reviewerDisabled.status).toBe(200);
+    expect(primaryDisabled.status).toBe(409);
   });
 });

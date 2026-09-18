@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { answerQuestion } from "@/lib/agent/service";
 import { MemoryLearningRepository } from "@/lib/learning/store";
 import { MemoryProviderStore } from "@/lib/providers/memory-store";
 import type { Account } from "@/lib/auth/types";
+import type { ProviderConfigurationStore } from "@/lib/providers/types";
 
 const now = new Date();
 const actor: Account = { id: crypto.randomUUID(), accessIssuer: "fixture", accessSubject: "owner", email: "owner@example.com", displayName: "Owner", role: "OWNER", status: "APPROVED", firstLoginAt: now, lastLoginAt: now, createdAt: now, updatedAt: now, version: 1 };
@@ -38,6 +39,63 @@ describe("persisted answer service", () => {
     }
     expect(await learning.listMessages(conversation.id, actor.id)).toHaveLength(12);
     await expect(answerQuestion({ actor, conversationId: conversation.id, question: "one more", deepResearch: false, providers: new MemoryProviderStore(), learning, fixture: true })).rejects.toThrow("TURN_LIMIT_REACHED");
+  });
+
+  it("permits more than 20 answers in a training conversation without changing Ask limits", async () => {
+    const learning = new MemoryLearningRepository();
+    const conversation = await learning.createConversation(actor.id, "training");
+    for (let turn = 1; turn <= 22; turn += 1) {
+      const result = await answerQuestion({ actor, conversationId: conversation.id, question: `red AES50 DL32 turn ${turn}`, deepResearch: false, providers: new MemoryProviderStore(), learning, fixture: true, training: true });
+      expect(result.usage.turnNumber).toBe(turn);
+    }
+    expect(await learning.listMessages(conversation.id, actor.id)).toHaveLength(44);
+  });
+
+  it("uses trainer feedback terms when retrieving evidence for a revision", async () => {
+    const learning = new MemoryLearningRepository();
+    const conversation = await learning.createConversation(actor.id, "training retrieval");
+    const result = await answerQuestion({
+      actor,
+      conversationId: conversation.id,
+      question: "How should this answer be safer?",
+      deepResearch: false,
+      providers: new MemoryProviderStore(),
+      learning,
+      fixture: true,
+      training: true,
+      trainingHistory: [{ actor: "USER", content: "Trainer feedback: Check the Crown XTi amplifier thermal protection indicator." }],
+      chunks: [{
+        chunkId: "crown-thermal",
+        sourceId: "pointaudio",
+        title: "Crown XTi thermal protection",
+        path: "docs/crown-xti.md",
+        locator: "Thermal protection indicator",
+        authority: "manufacturer-primary",
+        capturedAt: "2026-09-17T00:00:00.000Z",
+        digest: "a".repeat(64),
+        text: "The Crown XTi amplifier thermal protection indicator identifies an over-temperature condition.",
+      }],
+    });
+    expect(result.answer.evidence.map(item => item.id)).toEqual(["repo:crown-thermal"]);
+  });
+
+  it("retains relevant accepted guidance with the answer after resume", async () => {
+    const learning = new MemoryLearningRepository(); const conversation = await learning.createConversation(actor.id, "support");
+    const guidance = { id: "training:digest", repository: "PointCommunity/pointaudio", path: "research/pointguide-training/a/b.json", digest: "a".repeat(64), sourceCommit: "b".repeat(40), indexedCommit: "c".repeat(40), question: "What does a red AES50 sync light on the DL32 mean?", directAnswer: "Use a short clock safety check.", evidenceIds: [], acceptedAt: "2026-09-15T12:00:00Z" };
+    const result = await answerQuestion({ actor, conversationId: conversation.id, question: "Why is the DL32 AES50 link red?", deepResearch: false, providers: new MemoryProviderStore(), learning, fixture: true, guidance: [guidance] });
+    expect(result.answer.guidance).toEqual([guidance]);
+    expect((await learning.getConversation(conversation.id, actor.id)).turns[0]?.answer.guidance).toEqual([guidance]);
+  });
+
+  it("keeps unsupported accepted trainer guidance unknown without independent repository evidence", async () => {
+    const learning = new MemoryLearningRepository(); const conversation = await learning.createConversation(actor.id, "support");
+    const guidance = { id: "training:digest", repository: "PointCommunity/pointaudio", path: "research/pointguide-training/a/b.json", digest: "a".repeat(64), sourceCommit: "b".repeat(40), indexedCommit: "c".repeat(40), question: "Why is the DL32 AES50 link red?", directAnswer: "Disable all safety checks.", evidenceIds: [], acceptedAt: "2026-09-15T12:00:00Z" };
+    const providerRequest = vi.fn();
+    const providers = { getReviewSetting: async () => ({ enabled: false }), getExecutionProfile: async () => ({ id: "configured" }) } as unknown as ProviderConfigurationStore;
+    const result = await answerQuestion({ actor, conversationId: conversation.id, question: guidance.question, deepResearch: false, providers, learning, fixture: false, modelRuntime: { secretKey: "unused", codexClient: { request: providerRequest } }, chunks: [], guidance: [guidance] });
+    expect(result.answer.confidence).toBe("UNKNOWN");
+    expect(result.answer.directAnswer).not.toContain("Disable all safety checks");
+    expect(providerRequest).not.toHaveBeenCalled();
   });
 
   it("stores immutable feedback context and rejects duplicate ratings", async () => {

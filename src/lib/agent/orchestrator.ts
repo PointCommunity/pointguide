@@ -37,8 +37,7 @@ async function bounded<T>(operation: Promise<T>, milliseconds: number): Promise<
 
 export async function orchestrateAnswer(input: OrchestrationInput): Promise<OrchestratedAnswer> {
   const primary = validateGroundedAnswer(await input.primary(), input.evidence);
-  if (input.mode === "NONE") return { ...renderGroundedAnswer(primary), reviewStatus: "NOT_REQUESTED" };
-  if (!input.reviewer) throw new OrchestrationError("REVIEW_UNAVAILABLE", "Deep research requires a reviewing agent.");
+  if (!input.reviewer) throw new OrchestrationError("REVIEW_UNAVAILABLE", "A response-organizing model is required.");
 
   let review: ReviewResult;
   try {
@@ -48,16 +47,21 @@ export async function orchestrateAnswer(input: OrchestrationInput): Promise<Orch
     throw new OrchestrationError("REVIEW_INVALID", "The reviewing agent returned an invalid result.");
   }
   const findings = new Map(review.findings.map((finding) => [finding.claimId, finding]));
-  if (findings.size !== primary.claims.length || primary.claims.some((claim) => !findings.has(claim.id))) {
+  if (findings.size !== primary.claims.length || review.findings.length !== primary.claims.length || primary.claims.some((claim) => !findings.has(claim.id))) {
     throw new OrchestrationError("REVIEW_INVALID", "The reviewer did not assess every claim exactly once.");
   }
+  const orderedIds = new Set(review.claimOrder);
+  if (orderedIds.size !== primary.claims.length || review.claimOrder.length !== primary.claims.length || primary.claims.some((claim) => !orderedIds.has(claim.id))) {
+    throw new OrchestrationError("REVIEW_INVALID", "The reviewer did not organize every claim exactly once.");
+  }
+  const claims = new Map(primary.claims.map((claim) => [claim.id, claim]));
   const reviewed: AnswerDraft = {
     ...primary,
-    claims: primary.claims.map((claim) => claim.kind === "UNKNOWN" ? claim : ({ ...claim, status: findings.get(claim.id)?.verdict === "SUPPORTED" ? claim.status : "REJECTED" })),
+    claims: review.claimOrder.map((claimId) => claims.get(claimId)!).map((claim) => claim.kind === "UNKNOWN" ? claim : ({ ...claim, status: findings.get(claim.id)?.verdict === "SUPPORTED" ? claim.status : "REJECTED" })),
   };
   const rendered = renderGroundedAnswer(validateGroundedAnswer(reviewed, input.evidence));
   if (primary.claims.some((claim) => claim.status === "SUPPORTED") && !rendered.claims.some((claim) => claim.status === "SUPPORTED")) {
     throw new OrchestrationError("REVIEW_REJECTED", "The reviewer rejected every supported claim.");
   }
-  return { ...rendered, reviewStatus: "PASSED" };
+  return { ...rendered, reviewStatus: input.mode === "DEEP_RESEARCH" ? "PASSED" : "NOT_REQUESTED" };
 }

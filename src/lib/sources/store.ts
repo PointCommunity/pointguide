@@ -24,7 +24,7 @@ export class MemorySourceRepositoryStore implements SourceRepositoryStore {
   constructor(seed = true) {
     if (seed) {
       const now = new Date().toISOString();
-      const record: SourceRepositoryRecord = { id: "00000000-0000-4000-8000-000000000010", fullName: "PointCommunity/pointaudio", url: "https://github.com/PointCommunity/pointaudio", status: "ACTIVE", defaultBranch: "main", indexedCommit: "fixture", validationReport: { valid: true, checkedAt: now, commitSha: "fixture", defaultBranch: "main", errors: [], warnings: [], filesReviewed: 41, filesIndexed: 20, chunksIndexed: 20, requirements: { agentsFile: true, evidenceContent: true, integrityManifest: true } }, linkedAt: now, updatedAt: now, version: 1 };
+      const record: SourceRepositoryRecord = { id: "00000000-0000-4000-8000-000000000010", fullName: "PointCommunity/pointaudio", url: "https://github.com/PointCommunity/pointaudio", status: "ACTIVE", defaultBranch: "main", indexedCommit: "a".repeat(40), validationReport: { valid: true, checkedAt: now, commitSha: "a".repeat(40), defaultBranch: "main", errors: [], warnings: [], filesReviewed: 41, filesIndexed: 20, chunksIndexed: 20, requirements: { agentsFile: true, evidenceContent: true, integrityManifest: true } }, linkedAt: now, updatedAt: now, version: 1 };
       this.records.set(record.id, record); this.chunks.set(record.id, []);
     }
   }

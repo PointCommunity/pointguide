@@ -5,10 +5,11 @@ import { answerClaims, answers, claimEvidence, conversations, evidenceItems, fee
 import type { OrchestratedAnswer, ReviewMode } from "@/lib/agent/orchestrator";
 import type { AnswerClaim, EvidenceItem } from "@/lib/agent/schema";
 import type { FeedbackInput, FeedbackRecord } from "@/lib/feedback/store";
+import type { AcceptedGuidance } from "@/lib/training/knowledge";
 
 export interface StoredConversation { id: string; ownerAccountId: string; title: string; createdAt: string; updatedAt: string; userTurnCount: number }
 export interface ConversationMessage { actor: "USER" | "ASSISTANT"; content: string }
-export interface StoredAnswer extends OrchestratedAnswer { id: string; evidence: EvidenceItem[] }
+export interface StoredAnswer extends OrchestratedAnswer { id: string; evidence: EvidenceItem[]; guidance?: AcceptedGuidance[] }
 export interface SessionTurn { question: string; createdAt: string; answer: StoredAnswer }
 export interface SessionSummary extends StoredConversation { latestQuestion: string | null; preview: string | null }
 export interface SessionDetail { conversation: StoredConversation; turns: SessionTurn[] }
@@ -29,7 +30,7 @@ export interface LearningRepository {
   listMessages(id: string, ownerAccountId: string): Promise<ConversationMessage[]>;
   listConversations(ownerAccountId: string, query?: string): Promise<SessionSummary[]>;
   getConversation(id: string, ownerAccountId: string): Promise<SessionDetail>;
-  saveAnswer(input: { conversationId: string; question: string; answer: OrchestratedAnswer; evidence: EvidenceItem[]; reviewMode: ReviewMode; turnNumber: number }): Promise<OrchestratedAnswer & { id: string }>;
+  saveAnswer(input: { conversationId: string; question: string; answer: OrchestratedAnswer; evidence: EvidenceItem[]; guidance?: AcceptedGuidance[]; reviewMode: ReviewMode; turnNumber: number }): Promise<OrchestratedAnswer & { id: string }>;
   saveFeedback(input: FeedbackInput): Promise<FeedbackRecord>;
   listFeedback(): Promise<FeedbackRecord[]>;
 }
@@ -92,11 +93,11 @@ export class MemoryLearningRepository implements LearningRepository {
       conversation: { ...conversation },
       turns: (this.turns.get(id) ?? []).slice().reverse().map((turn) => ({
         ...turn,
-        answer: { ...turn.answer, steps: [...turn.answer.steps], safetyAndAssumptions: [...turn.answer.safetyAndAssumptions], claims: turn.answer.claims.map((claim) => ({ ...claim, evidenceIds: [...claim.evidenceIds] })), evidence: turn.answer.evidence.map((item) => ({ ...item })) },
+        answer: { ...turn.answer, steps: [...turn.answer.steps], safetyAndAssumptions: [...turn.answer.safetyAndAssumptions], claims: turn.answer.claims.map((claim) => ({ ...claim, evidenceIds: [...claim.evidenceIds] })), evidence: turn.answer.evidence.map((item) => ({ ...item })), guidance: turn.answer.guidance?.map(item => ({ ...item, evidenceIds: [...item.evidenceIds] })) },
       })),
     };
   }
-  async saveAnswer(input: { conversationId: string; question: string; answer: OrchestratedAnswer; evidence: EvidenceItem[]; turnNumber: number }): Promise<OrchestratedAnswer & { id: string }> {
+  async saveAnswer(input: { conversationId: string; question: string; answer: OrchestratedAnswer; evidence: EvidenceItem[]; guidance?: AcceptedGuidance[]; turnNumber: number }): Promise<OrchestratedAnswer & { id: string }> {
     const value = { ...input.answer, id: randomUUID() };
     this.answers.set(value.id, value);
     const history = this.messages.get(input.conversationId) ?? [];
@@ -109,7 +110,7 @@ export class MemoryLearningRepository implements LearningRepository {
       conversation.updatedAt = createdAt;
     }
     const turns = this.turns.get(input.conversationId) ?? [];
-    turns.push({ question: input.question, createdAt, answer: { ...value, evidence: input.evidence.map((item) => ({ ...item })) } });
+    turns.push({ question: input.question, createdAt, answer: { ...value, evidence: input.evidence.map((item) => ({ ...item })), guidance: input.guidance?.map(item => ({ ...item, evidenceIds: [...item.evidenceIds] })) } });
     this.turns.set(input.conversationId, turns);
     return value;
   }
@@ -197,7 +198,7 @@ export class PostgresLearningRepository implements LearningRepository {
     const answersByMessage = new Map(answerRows.map((row) => {
       const claims: AnswerClaim[] = claimRows.filter((claim) => claim.answerId === row.id).map((claim) => ({ id: claim.id, text: claim.text, kind: claim.kind as AnswerClaim["kind"], status: claim.status as AnswerClaim["status"], evidenceIds: evidenceIdsByClaim.get(claim.id) ?? [] }));
       const evidenceIds = new Set(claims.flatMap((claim) => claim.evidenceIds));
-      const answer: StoredAnswer = { id: row.id, directAnswer: row.directAnswer, steps: row.steps, safetyAndAssumptions: row.safetyAssumptions, confidence: row.confidence as StoredAnswer["confidence"], reviewStatus: row.reviewStatus as StoredAnswer["reviewStatus"], claims, evidence: [...evidenceIds].flatMap((evidenceId) => evidenceById.get(evidenceId) ?? []) };
+      const answer: StoredAnswer = { id: row.id, directAnswer: row.directAnswer, steps: row.steps, safetyAndAssumptions: row.safetyAssumptions, confidence: row.confidence as StoredAnswer["confidence"], reviewStatus: row.reviewStatus as StoredAnswer["reviewStatus"], claims, evidence: [...evidenceIds].flatMap((evidenceId) => evidenceById.get(evidenceId) ?? []), guidance: row.acceptedGuidance as unknown as AcceptedGuidance[] };
       return [row.messageId, answer] as const;
     }));
     const turns: SessionTurn[] = [];
@@ -208,7 +209,7 @@ export class PostgresLearningRepository implements LearningRepository {
     }
     return { conversation: { id: conversationRow.id, ownerAccountId: conversationRow.ownerAccountId, title: conversationRow.title, createdAt: conversationRow.createdAt.toISOString(), updatedAt: conversationRow.updatedAt.toISOString(), userTurnCount: conversationRow.userTurnCount }, turns: turns.reverse() };
   }
-  async saveAnswer(input: { conversationId: string; question: string; answer: OrchestratedAnswer; evidence: EvidenceItem[]; reviewMode: ReviewMode; turnNumber: number }): Promise<OrchestratedAnswer & { id: string }> {
+  async saveAnswer(input: { conversationId: string; question: string; answer: OrchestratedAnswer; evidence: EvidenceItem[]; guidance?: AcceptedGuidance[]; reviewMode: ReviewMode; turnNumber: number }): Promise<OrchestratedAnswer & { id: string }> {
     return this.database.transaction(async (transaction) => {
       const now = new Date();
       await transaction.insert(messages).values({ id: randomUUID(), conversationId: input.conversationId, actor: "USER", content: input.question, status: "COMPLETED", ordinal: input.turnNumber * 2 - 1, createdAt: now });
@@ -222,7 +223,7 @@ export class PostgresLearningRepository implements LearningRepository {
         }).onConflictDoNothing();
       }
       const answerId = randomUUID();
-      await transaction.insert(answers).values({ id: answerId, messageId: assistantMessageId, reviewMode: input.reviewMode, reviewStatus: input.answer.reviewStatus, directAnswer: input.answer.directAnswer, steps: input.answer.steps, safetyAssumptions: input.answer.safetyAndAssumptions, confidence: input.answer.confidence, createdAt: now });
+      await transaction.insert(answers).values({ id: answerId, messageId: assistantMessageId, reviewMode: input.reviewMode, reviewStatus: input.answer.reviewStatus, directAnswer: input.answer.directAnswer, acceptedGuidance: input.guidance as unknown as Readonly<Record<string, unknown>>[] ?? [], steps: input.answer.steps, safetyAssumptions: input.answer.safetyAndAssumptions, confidence: input.answer.confidence, createdAt: now });
       const persistedClaims = [];
       for (const [ordinal, claim] of input.answer.claims.entries()) {
         const claimId = randomUUID();

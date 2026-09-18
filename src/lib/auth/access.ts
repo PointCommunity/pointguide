@@ -79,16 +79,25 @@ export async function verifyAccessAssertion(
   if (!token.trim()) throw new AccessAssertionError("MISSING_ASSERTION", "Cloudflare Access assertion is required.");
   if (!options.audience.trim()) throw new AccessAssertionError("INVALID_ASSERTION", "Cloudflare Access audience is required.");
 
+  const key = options.key ?? getRemoteKey(teamDomain);
+  const verify = () => jwtVerify(token, key, {
+    algorithms: ["RS256"],
+    issuer: teamDomain,
+    audience: options.audience,
+    requiredClaims: ["sub", "email", "exp", "iat", "nbf"],
+  });
   let payload: Awaited<ReturnType<typeof jwtVerify>>["payload"];
   try {
-    ({ payload } = await jwtVerify(token, options.key ?? getRemoteKey(teamDomain), {
-      algorithms: ["RS256"],
-      issuer: teamDomain,
-      audience: options.audience,
-      requiredClaims: ["sub", "email", "exp", "iat", "nbf"],
-    }));
-  } catch {
-    throw new AccessAssertionError("INVALID_ASSERTION", "Cloudflare Access assertion could not be verified.");
+    ({ payload } = await verify());
+  } catch (error) {
+    if (!error || typeof error !== "object" || !("code" in error) || error.code !== "ERR_JWKS_TIMEOUT") {
+      throw new AccessAssertionError("INVALID_ASSERTION", "Cloudflare Access assertion could not be verified.");
+    }
+    try {
+      ({ payload } = await verify());
+    } catch {
+      throw new AccessAssertionError("INVALID_ASSERTION", "Cloudflare Access assertion could not be verified.");
+    }
   }
 
   const identity = identityClaimsSchema.safeParse(payload);

@@ -8,7 +8,7 @@ function upstream(files: Record<string, string>, overrides: { truncated?: boolea
   const all = { "AGENTS.md": "Source instructions are not executable.", ...files };
   return vi.fn(async (url: string) => {
     if (url.endsWith("/repos/PointCommunity/test")) return Response.json({ full_name: "PointCommunity/test", default_branch: "published", html_url: "https://github.com/PointCommunity/test", pushed_at: "2026-09-14T00:00:00Z" });
-    if (url.endsWith("/commits/published")) return Response.json({ sha: commit });
+    if (url.endsWith("/commits/published") || url.endsWith(`/commits/${commit}`)) return Response.json({ sha: commit });
     if (url.includes("/git/trees/")) return Response.json({ sha: "c".repeat(40), truncated: overrides.truncated ?? false, tree: Object.entries(all).map(([path, content]) => ({ path, type: "blob", mode: "100644", size: Buffer.byteLength(content) })) });
     const path = decodeURIComponent(url.split(`/${commit}/`)[1] ?? "");
     return path in all ? new Response(all[path as keyof typeof all]) : new Response(null, { status: 404 });
@@ -25,6 +25,14 @@ describe("knowledge refresh contract", () => {
     expect(result.report).toMatchObject({ commitSha: commit, complete: true });
     expect(fetcher.mock.calls.some(([url]) => url.includes(`/git/trees/${commit}`))).toBe(true);
     expect(result.chunks[0].locator).toContain(commit);
+  });
+  it("validates an immutable proposed head without falling back to the moving default branch", async () => {
+    const fetcher = upstream(files());
+    const result = await validateSourceRepository("https://github.com/PointCommunity/test", { fetcher, ref: commit });
+    expect(result.report.commitSha).toBe(commit);
+    expect(fetcher.mock.calls.some(([url]) => url.endsWith(`/commits/${commit}`))).toBe(true);
+    expect(fetcher.mock.calls.some(([url]) => url.endsWith("/commits/published"))).toBe(false);
+    await expect(validateSourceRepository("https://github.com/PointCommunity/test", { fetcher, ref: "main?redirect=evil" })).rejects.toThrow(/commit/i);
   });
   it("retains large existing references and rejects truncated or corrupt replacement evidence", async () => {
     const result = await validateSourceRepository("https://github.com/PointCommunity/test", { fetcher: upstream(files("M32 evidence. ".repeat(30_000))) });

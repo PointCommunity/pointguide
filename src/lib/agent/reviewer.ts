@@ -6,5 +6,8 @@ export const reviewFindingSchema = z.object({
   rationaleCode: z.enum(["ENTAILED", "CONTRADICTED", "INAPPLICABLE", "INSUFFICIENT", "UNSAFE"]),
 });
 
-export const reviewResultSchema = z.object({ findings: z.array(reviewFindingSchema).max(100) });
+export const reviewResultSchema = z.object({
+  findings: z.array(reviewFindingSchema).max(100),
+  claimOrder: z.array(z.string().min(1)).max(100),
+});
 export type ReviewResult = z.infer<typeof reviewResultSchema>;

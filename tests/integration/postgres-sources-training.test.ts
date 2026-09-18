@@ -86,6 +86,65 @@ databaseTest("persists connected sources and wipes a training session with its c
   expect(await sources.list()).toEqual([]);
 });
 
+databaseTest("serializes feedback and exact-answer acceptance, then activates only indexed committed guidance", async () => {
+  const database = getDatabase(disposableDatabaseUrl(testDatabaseUrl as string));
+  await database.execute(sql`truncate table accounts cascade`);
+  await database.execute(sql`delete from source_repositories`);
+  const actor = await new PostgresAccountStore(database).provisionAccount({ issuer: "https://pointguide.test", subject: "accepted-owner", email: "owner@example.com", displayName: "Owner" });
+  const sourceStore = new PostgresSourceRepositoryStore(database);
+  const source = await sourceStore.link(actor.id, {
+    fullName: "PointCommunity/pointaudio", url: "https://github.com/PointCommunity/pointaudio",
+    report: { valid: true, complete: true, checkedAt: new Date().toISOString(), commitSha: "a".repeat(40), defaultBranch: "main", errors: [], warnings: [], filesReviewed: 3, filesIndexed: 1, chunksIndexed: 1, requirements: { agentsFile: true, evidenceContent: true, integrityManifest: true } },
+    chunks: [{ chunkId: "manual:1", sourceId: "PointCommunity/pointaudio", title: "DL32", path: "docs/dl32.txt", locator: "1-10", authority: "Manual", capturedAt: new Date().toISOString(), digest: "a".repeat(64), text: "Check the AES50 cable." }],
+  });
+  const conversation = await new PostgresLearningRepository(database).createConversation(actor.id, "Training test");
+  const training = new PostgresTrainingSessionStore(database);
+  const started = await training.create({ trainerAccountId: actor.id, conversationId: conversation.id, targetRepository: source.fullName, originalQuestion: "Why is the DL32 AES50 link red?" });
+  const answerId = "00000000-0000-4000-8000-000000000012";
+  const completed = await training.saveAnswer(started.id, actor.id, { id: answerId, directAnswer: "Check the AES50 cable.", evidence: [{ id: "manual:1" }], claims: [{ id: "claim:1", text: "Check the AES50 cable.", status: "SUPPORTED", evidenceIds: ["manual:1"] }] });
+  const actions = await Promise.allSettled([
+    training.saveFeedback(started.id, actor.id, completed.version, answerId, "Check the connection first."),
+    training.acceptAnswer(started.id, actor.id, completed.version, answerId, source),
+  ]);
+  expect(actions.filter(result => result.status === "fulfilled")).toHaveLength(1);
+  const current = await training.get(started.id, actor.id);
+  expect((await training.listTurns(started.id, actor.id)).map(turn => turn.kind)).toEqual(["ANSWER", current.state === "REVISING" ? "FEEDBACK" : "ACCEPT_ANSWER"]);
+  if (current.state === "REVISING") {
+    const revised = await training.saveAnswer(started.id, actor.id, { id: "00000000-0000-4000-8000-000000000013", directAnswer: "Check the connection first.", evidence: [{ id: "manual:1" }] });
+    await training.acceptAnswer(started.id, actor.id, revised.version, String(revised.currentAnswer?.id), source);
+  }
+  const accepted = await training.get(started.id, actor.id);
+  expect(accepted.state).toBe("PUBLISHING");
+  expect(accepted.acceptedPath).toMatch(/^research\/pointguide-training\//u);
+  expect(JSON.parse(String(accepted.acceptedContent))).toMatchObject({ originalQuestion: started.originalQuestion, answerVersion: expect.any(Number), answer: { id: accepted.currentAnswer?.id } });
+  expect(await training.activeGuidance()).toEqual([]);
+  const jobs = await database.execute(sql`select kind from jobs where payload->>'sessionId' = ${started.id}`);
+  expect(jobs).toHaveLength(1);
+  await expect(training.acceptAnswer(started.id, actor.id, completed.version, answerId, source)).rejects.toThrow(/answer changed/i);
+  const first = await database.execute(sql`update training_sessions set state='ACTIVATING',published_commit=${"b".repeat(40)} where id=${started.id}`);
+  expect(first.count).toBe(1);
+  const artifactPath = String(accepted.acceptedPath);
+  const renewed = await sourceStore.refresh(actor.id, source, { fullName: source.fullName, url: source.url,
+    report: { valid: true, complete: true, checkedAt: new Date().toISOString(), commitSha: "b".repeat(40), defaultBranch: "main", errors: [], warnings: [], filesReviewed: 4, filesIndexed: 2, chunksIndexed: 2, requirements: { agentsFile: true, evidenceContent: true, integrityManifest: true } },
+    chunks: [{ chunkId: "manual:1", sourceId: source.fullName, title: "DL32", path: "docs/dl32.txt", locator: "1-10", authority: "Manual", capturedAt: new Date().toISOString(), digest: "a".repeat(64), text: "Check the AES50 cable." }, { chunkId: "training:1", sourceId: source.fullName, title: "Accepted", path: artifactPath, locator: "1-10", authority: "Trainer", capturedAt: new Date().toISOString(), digest: accepted.acceptedDigest!, text: "Trainer guidance." }],
+  });
+  await training.activateKnowledge(started.id, accepted.acceptedDigest!, renewed.source.indexedCommit);
+  expect((await new PostgresTrainingSessionStore(database).activeGuidance()).map(item => item.path)).toEqual([artifactPath]);
+  const secondConversation = await new PostgresLearningRepository(database).createConversation(actor.id, "Training again");
+  const second = await training.create({ trainerAccountId: actor.id, conversationId: secondConversation.id, targetRepository: source.fullName, originalQuestion: started.originalQuestion });
+  const secondAnswerId = "00000000-0000-4000-8000-000000000014";
+  const secondAnswer = await training.saveAnswer(second.id, actor.id, { id: secondAnswerId, directAnswer: "Inspect both AES50 connectors.", evidence: [{ id: "manual:1" }] });
+  const secondAccepted = await training.acceptAnswer(second.id, actor.id, secondAnswer.version, secondAnswerId, renewed.source);
+  await database.execute(sql`update training_sessions set state='ACTIVATING',published_commit=${"b".repeat(40)} where id=${second.id}`);
+  const secondRenewed = await sourceStore.refresh(actor.id, renewed.source, { fullName: source.fullName, url: source.url,
+    report: { valid: true, complete: true, checkedAt: new Date().toISOString(), commitSha: "c".repeat(40), defaultBranch: "main", errors: [], warnings: [], filesReviewed: 5, filesIndexed: 3, chunksIndexed: 3, requirements: { agentsFile: true, evidenceContent: true, integrityManifest: true } },
+    chunks: [{ chunkId: "manual:1", sourceId: source.fullName, title: "DL32", path: "docs/dl32.txt", locator: "1-10", authority: "Manual", capturedAt: new Date().toISOString(), digest: "a".repeat(64), text: "Check the AES50 cable." }, { chunkId: "training:1", sourceId: source.fullName, title: "Accepted", path: artifactPath, locator: "1-10", authority: "Trainer", capturedAt: new Date().toISOString(), digest: accepted.acceptedDigest!, text: "Older guidance." }, { chunkId: "training:2", sourceId: source.fullName, title: "Accepted", path: secondAccepted.acceptedPath!, locator: "1-10", authority: "Trainer", capturedAt: new Date().toISOString(), digest: secondAccepted.acceptedDigest!, text: "Newer guidance." }],
+  });
+  await training.activateKnowledge(second.id, secondAccepted.acceptedDigest!, secondRenewed.source.indexedCommit);
+  expect((await training.get(started.id, actor.id)).state).toBe("SUPERSEDED");
+  expect((await training.activeGuidance()).map(item => item.path)).toEqual([secondAccepted.acceptedPath]);
+});
+
 databaseTest("atomically refreshes large snapshots, rolls back failed inserts, and rejects concurrent writers", async () => {
   const database = getDatabase(disposableDatabaseUrl(testDatabaseUrl as string));
   await database.execute(sql`truncate table accounts cascade`);

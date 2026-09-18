@@ -60,7 +60,7 @@ function ProfileEditor({ role, models, existing, onSaved }: {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          name: role === "PRIMARY" ? "Primary guide" : "Evidence reviewer",
+          name: role === "PRIMARY" ? "Primary data guide" : "Response reviewer",
           role,
           provider,
           modelId: model.id,
@@ -79,7 +79,8 @@ function ProfileEditor({ role, models, existing, onSaved }: {
 
   return (
     <article className="profile-editor">
-      <header><div><p className="eyebrow">{role === "PRIMARY" ? "Answer agent" : "Review agent"}</p><h3>{role === "PRIMARY" ? "Primary profile" : "Reviewer profile"}</h3></div>{existing ? <span>Revision {existing.promptRevision}</span> : null}</header>
+      <header><div><p className="eyebrow">{role === "PRIMARY" ? "Grounded data agent" : "Response organizer"}</p><h3>{role === "PRIMARY" ? "Primary profile" : "Reviewer profile"}</h3></div>{existing ? <span>Revision {existing.promptRevision}</span> : null}</header>
+      <p className="profile-role-description">{role === "PRIMARY" ? "Required. Retrieves and structures source-backed data, then also organizes the response when no separate Reviewer is applied." : "Optional. Checks the Primary's claims and orders supported data into the final response."}</p>
       {availableProviders.length === 0 ? <p className="provider-empty">Connect and refresh a provider before configuring this profile.</p> : (
         <div className="settings-fields">
           <label>Provider
@@ -100,7 +101,7 @@ function ProfileEditor({ role, models, existing, onSaved }: {
           <label className="prompt-field">System Prompt
             <textarea value={prompt} onChange={(event) => { setPrompt(event.target.value); setState("idle"); }} placeholder="Define this agent’s role and evidence boundaries" maxLength={12000} />
           </label>
-          <label className="switch-row"><input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} /><span>Use this {role.toLocaleLowerCase("en-US")} profile</span></label>
+          <label className="switch-row"><input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} /><span>{role === "PRIMARY" ? "Use this required Primary profile" : "Use this separate Reviewer profile"}</span></label>
           <button type="button" onClick={() => void save()} disabled={!model || !prompt.trim() || state === "saving"}>{state === "saving" ? "Saving…" : "Save profile"}</button>
           {state === "saved" ? <p role="status" className="settings-success">Profile saved as a new prompt revision.</p> : null}
           {state === "error" ? <p role="alert" className="settings-error">Profile could not be saved. Check the selected model and effort.</p> : null}
@@ -227,7 +228,7 @@ export function AgentSettingsWorkspace() {
             </div>
           </section>
           <section className="review-setting" aria-labelledby="review-title">
-            <div><p className="eyebrow">Evidence review</p><h2 id="review-title">Deep research</h2><p>When enabled, users may request a second configured agent to review every evidence-linked claim. It stays off for each new question.</p></div>
+            <div><p className="eyebrow">Two-pass response</p><h2 id="review-title">Deep research</h2><p>When requested, the Primary gathers source-backed data and the Reviewer checks and organizes it. If no separate Reviewer is enabled, the Primary performs both passes. A Primary profile is always required.</p></div>
             <label className="switch-row"><input aria-label="Enable Deep research" type="checkbox" checked={settings.review.enabled} disabled={busy !== null} onChange={(event) => void toggleReview(event.target.checked)} /><span>{settings.review.enabled ? "Deep research is available" : "Deep research is hidden"}</span></label>
           </section>
         </>

@@ -17,11 +17,11 @@ test("asks a grounded question and traces the answer to PointAudio evidence", as
   await expect(page.getByText("Point Question", { exact: true })).toBeVisible();
   await expect(page.getByRole("status", { name: "PointGuide is working" })).toBeVisible();
   if (testInfo.project.name === "mobile-320") await expect(page.getByText("Searching connected knowledge…")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "What the evidence supports" })).toBeVisible();
   await expect(page.getByText("5 follow-ups remaining in this session")).toBeVisible();
   await expect(page.locator(".direct-answer")).toContainText("On a DL32, a red AES50 SYNC LED");
+  await expect(page.locator(".claim-ledger li").getByText("On a DL32, a red AES50 SYNC LED", { exact: false })).toBeHidden();
+  await page.getByText("Sources", { exact: true }).click();
   await expect(page.locator(".claim-ledger li").getByText("On a DL32, a red AES50 SYNC LED", { exact: false })).toBeVisible();
-  await page.getByText("Evidence", { exact: true }).click();
   await page.getByText("DL32 Quick Start Guide").click();
   await expect(page.getByText("AES50 SYNC LEDs indicate proper clock synchronisation", { exact: false })).toBeVisible();
 
@@ -40,6 +40,42 @@ test("keeps follow-up context visible with the newest question first", async ({ 
   await expect(page.locator(".conversation-turn")).toHaveCount(2);
   await expect(page.locator(".conversation-turn").first().getByRole("heading", { name: "red AES50 DL32 latest follow-up" })).toBeVisible();
   await expect(page.locator(".conversation-turn").last().getByRole("heading", { name: "red AES50 DL32 first question" })).toBeVisible();
+});
+
+test("explains when the secure session expires before an answer", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-1024", "One interaction pass is sufficient.");
+  await page.route("**/api/conversations/*/messages", (route) => route.fulfill({
+    status: 401,
+    contentType: "application/json",
+    body: JSON.stringify({ error: { code: "AUTH_REQUIRED", message: "A valid Cloudflare Access identity is required." } }),
+  }));
+  await page.goto("/");
+  await page.getByLabel("Your question").fill("Why is the stage box not synchronized?");
+  await page.getByRole("button", { name: /Ask PointGuide/ }).click();
+
+  await expect(page.getByRole("alert").filter({ hasText: "secure session expired" })).toBeVisible();
+});
+
+test("retries a failed question without making the user retype it", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-1024", "One recovery pass is sufficient.");
+  let attempts = 0;
+  await page.route("**/api/conversations/*/messages", async (route) => {
+    attempts += 1;
+    if (attempts === 1) return route.fulfill({
+      contentType: "application/x-ndjson",
+      body: `${JSON.stringify({ type: "error", data: { message: "The model could not complete this answer." } })}\n`,
+    });
+    await route.continue();
+  });
+  await page.goto("/");
+  await page.getByLabel("Your question").fill("What does a red AES50 sync light on the DL32 mean?");
+  await page.getByRole("button", { name: /Ask PointGuide/ }).click();
+
+  await expect(page.locator(".turn-error")).toContainText("The model could not complete this answer.");
+  await page.getByRole("button", { name: "Retry this question" }).click();
+
+  await expect(page.locator(".direct-answer")).toContainText("On a DL32, a red AES50 SYNC LED");
+  expect(attempts).toBe(2);
 });
 
 test("keeps the phone layout inside the viewport with touch-sized controls", async ({ page }, testInfo) => {
@@ -76,7 +112,7 @@ test("supports keyboard entry and has no automatically detectable WCAG A/AA viol
   await page.keyboard.type("Which projector is installed in the sanctuary?");
   await page.keyboard.press("Tab");
   await page.keyboard.press("Enter");
-  await page.getByText("Evidence", { exact: true }).click();
+  await page.getByText("Sources", { exact: true }).click();
   await expect(page.getByText("No current source establishes this.")).toBeVisible();
 
   const accessibility = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();

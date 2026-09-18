@@ -1,66 +1,119 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import type { SourceRepositoryRecord } from "@/lib/sources/types";
-import type { TrainingReport, TrainingSessionRecord } from "@/lib/training/types";
+import type { TrainingSessionRecord, TrainingTurn } from "@/lib/training/types";
+import type { EvidenceItem, AnswerClaim } from "@/lib/agent/schema";
+import type { AcceptedGuidance } from "@/lib/training/knowledge";
+import { trainingRetryLabel, trainingStateLabel, trainingStateSummary } from "@/lib/training/presentation";
 
-interface TrainingAnswer { directAnswer?: string; steps?: string[]; confidence?: string; evidence?: Array<{ id: string; title: string }> }
-interface Proposal { id: string; targetPath: string; targetRepository: string; state: string; digest: string }
+interface TrainingAnswer { id?: string; directAnswer?: string; steps?: string[]; safetyAndAssumptions?: string[]; confidence?: string; evidence?: EvidenceItem[]; claims?: AnswerClaim[]; guidance?: AcceptedGuidance[] }
 
 export function TrainingWorkspace({ resumeSessionId }: { resumeSessionId?: string }) {
+  const router = useRouter();
   const [sources, setSources] = useState<SourceRepositoryRecord[]>([]);
   const [session, setSession] = useState<TrainingSessionRecord | null>(null);
-  const [question, setQuestion] = useState(""); const [targetRepository, setTargetRepository] = useState("");
-  const [rating, setRating] = useState<"HELPFUL" | "NOT_HELPFUL" | null>(null); const [explanation, setExplanation] = useState(""); const [insight, setInsight] = useState("");
-  const [confirmationMode, setConfirmationMode] = useState<"COMMIT" | "WIPE" | null>(null); const [confirmation, setConfirmation] = useState("");
+  const [turns, setTurns] = useState<TrainingTurn[]>([]);
+  const [question, setQuestion] = useState(""); const [targetRepository, setTargetRepository] = useState(""); const [feedback, setFeedback] = useState("");
   const [status, setStatus] = useState("Loading training workspace…"); const [busy, setBusy] = useState(false);
-  const [proposals, setProposals] = useState<Proposal[]>([]); const [role, setRole] = useState("");
 
   useEffect(() => {
     let active = true;
-    const sessionRequest = resumeSessionId ? fetch(`/api/training/sessions/${resumeSessionId}`, { cache: "no-store" }) : null;
-    void Promise.all([fetch("/api/knowledge/sources", { cache: "no-store" }), fetch("/api/training/review", { cache: "no-store" }), sessionRequest]).then(async ([sourcesResponse, reviewResponse, sessionResponse]) => {
-      if (!sourcesResponse.ok || !reviewResponse.ok || (sessionResponse && !sessionResponse.ok)) throw new Error();
-      const [sourcePayload, review, sessionPayload] = await Promise.all([
-        sourcesResponse.json() as Promise<{ sources: SourceRepositoryRecord[] }>,
-        reviewResponse.json() as Promise<{ actor: { role: string }; proposals: Proposal[] }>,
-        sessionResponse ? sessionResponse.json() as Promise<{ session: TrainingSessionRecord }> : Promise.resolve(null),
-      ]);
-      if (active) {
-        const activeSources = sourcePayload.sources.filter((source) => source.status === "ACTIVE");
-        setSources(activeSources); setTargetRepository(activeSources[0]?.fullName ?? ""); setSession(sessionPayload?.session ?? null);
-        setProposals(review.proposals); setRole(review.actor.role); setStatus("");
-      }
-    }).catch(() => { if (active) setStatus(resumeSessionId ? "Training session could not be loaded." : "Training workspace could not be loaded."); });
+    void Promise.all([fetch("/api/knowledge/sources", { cache: "no-store" }), resumeSessionId ? fetch(`/api/training/sessions/${resumeSessionId}`, { cache: "no-store" }) : Promise.resolve(null)])
+      .then(async ([sourcesResponse, sessionResponse]) => {
+        if (!sourcesResponse.ok || (sessionResponse && !sessionResponse.ok)) throw new Error();
+        const sourcePayload = await sourcesResponse.json() as { sources: SourceRepositoryRecord[] };
+        const sessionPayload = sessionResponse ? await sessionResponse.json() as { session: TrainingSessionRecord; turns: TrainingTurn[] } : null;
+        if (!active) return;
+        const activeSources = sourcePayload.sources.filter(source => source.status === "ACTIVE");
+        setSources(activeSources); setTargetRepository(activeSources[0]?.fullName ?? "");
+        setSession(sessionPayload?.session ?? null); setTurns(sessionPayload?.turns ?? []); setStatus("");
+      }).catch(() => { if (active) setStatus(resumeSessionId ? "Training session could not be loaded." : "Training workspace could not be loaded."); });
     return () => { active = false; };
   }, [resumeSessionId]);
 
-  async function refreshQueue() { const response = await fetch("/api/training/review", { cache: "no-store" }); if (!response.ok) return; const payload = await response.json() as { actor: { role: string }; proposals: Proposal[] }; setProposals(payload.proposals); setRole(payload.actor.role); }
+  const pollingSessionId = session?.id; const pollingState = session?.state;
+  useEffect(() => {
+    if (!pollingSessionId || !pollingState || !["PUBLISHING", "ACTIVATING"].includes(pollingState)) return;
+    const timer = window.setInterval(() => {
+      void fetch(`/api/training/sessions/${pollingSessionId}`, { cache: "no-store" }).then(response => response.ok ? response.json() as Promise<{ session: TrainingSessionRecord; turns: TrainingTurn[] }> : null).then(payload => { if (payload) { setSession(payload.session); setTurns(payload.turns); setStatus(""); } else setStatus("Publication status unavailable. Reload to check the accepted answer."); }).catch(() => setStatus("Publication status unavailable. Reload to check the accepted answer."));
+    }, 2_000);
+    return () => window.clearInterval(timer);
+  }, [pollingSessionId, pollingState]);
 
-  async function start(event: FormEvent) { event.preventDefault(); setBusy(true); setStatus("PointGuide is checking the sources and preparing its first answer…"); const response = await fetch("/api/training/sessions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ question, targetRepository }) }); const payload = await response.json() as { session?: TrainingSessionRecord; error?: { message?: string } }; setBusy(false); if (!response.ok || !payload.session) { setStatus(payload.error?.message ?? "Training session could not be started."); return; } setSession(payload.session); setStatus(""); setQuestion(""); }
-  async function action(body: Readonly<Record<string, unknown>>) { if (!session) return null; setBusy(true); const response = await fetch(`/api/training/sessions/${session.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }); if (response.status === 204) { setSession(null); setBusy(false); return null; } const payload = await response.json() as { session?: TrainingSessionRecord; error?: { message?: string }; proposal?: { id: string } }; setBusy(false); if (!response.ok || !payload.session) { setStatus(payload.error?.message ?? "Training action could not be completed."); return null; } setSession(payload.session); setStatus(""); return payload; }
-  async function submitFeedback(event: FormEvent) { event.preventDefault(); if (!rating) return; setStatus("PointGuide is analyzing your feedback…"); const result = await action({ action: "RATE", rating, explanation }); if (result) { setRating(null); setExplanation(""); } }
-  async function sendInsight(event: FormEvent) { event.preventDefault(); setStatus("PointGuide is revising the answer with your guidance and the source evidence…"); const result = await action({ action: "INSIGHT", insight }); if (result) setInsight(""); }
-  async function finish() { if (!session || !confirmationMode) return; const result = await action(confirmationMode === "WIPE" ? { action: "WIPE", confirmation } : { action: "COMMIT" }); if (confirmationMode === "WIPE" && result === null) setStatus("Training session wiped. No training artifact was retained."); if (confirmationMode === "COMMIT" && result) { setStatus("Accepted learning was submitted for Admin or Owner repository review. It becomes source material only after approval, merge, and reindexing."); await refreshQueue(); } setConfirmationMode(null); setConfirmation(""); }
-  async function approveProposal(id: string) { setBusy(true); const response = await fetch(`/api/change-proposals/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ state: "APPROVED" }) }); setBusy(false); setStatus(response.ok ? "Exact proposal approved and queued for the repository worker." : "Proposal approval was not allowed."); await refreshQueue(); }
+  async function start(event: FormEvent) {
+    event.preventDefault(); setBusy(true); setStatus("PointGuide is checking sources and preparing the first answer…");
+    try {
+      const response = await fetch("/api/training/sessions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ question, targetRepository }) });
+      const payload = await response.json() as { session?: TrainingSessionRecord; error?: { message?: string } };
+      if (!response.ok || !payload.session) { setStatus(payload.error?.message ?? "Training session could not be started."); return; }
+      router.replace(`/training/sessions/${payload.session.id}`);
+    } catch { setStatus("Training session could not be started. Try again."); }
+    finally { setBusy(false); }
+  }
+
+  async function action(body: Readonly<Record<string, unknown>>) {
+    if (!session) return;
+    setBusy(true);
+    try {
+      const response = await fetch(`/api/training/sessions/${session.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const payload = await response.json() as { session?: TrainingSessionRecord; turns?: TrainingTurn[]; error?: { message?: string } };
+      if (!response.ok || !payload.session) { setStatus(payload.error?.message ?? "Training action failed. Reload or retry."); return; }
+      setSession(payload.session); if (payload.turns) setTurns(payload.turns); setFeedback(""); setStatus(payload.error?.message ?? "");
+    } catch { setStatus("Training action failed. Reload or retry."); }
+    finally { setBusy(false); }
+  }
+
+  async function revise(event: FormEvent) {
+    event.preventDefault(); const answer = session?.currentAnswer as TrainingAnswer | null;
+    if (!session || !answer?.id) return;
+    setStatus("Revising answer with your feedback and session history…");
+    await action({ action: "FEEDBACK", answerId: answer.id, expectedVersion: session.version, feedback });
+  }
 
   const answer = session?.currentAnswer as TrainingAnswer | null;
-  const report = session?.currentReport as TrainingReport | null;
-  const expectedConfirmation = session && confirmationMode === "WIPE" ? `WIPE ${session.id}` : "";
+  const activeSource = sources.some(source => source.fullName === session?.targetRepository);
+  const canCoach = session?.state === "ACTIVE" && Boolean(answer?.id);
+  const needsRetry = session?.state === "REVISING" || (session?.state === "ACTIVE" && !answer);
+  const pendingFeedback = session?.state === "REVISING" ? [...turns].reverse().find(turn => turn.kind === "FEEDBACK") : null;
+  const earlierTurns = turns.filter(turn => turn.kind !== "ANSWER" || (turn.content.answer as TrainingAnswer | undefined)?.id !== answer?.id);
 
   return <>
-    <section className="welcome-panel compact-welcome"><p className="eyebrow">Guided improvement</p><h1>Training</h1><p>Work through a real question with PointGuide, rate each response, and review exactly what it learned before anything is proposed to a source repository.</p><Link className="subpage-link" href="/training/sessions">Training Sessions <span aria-hidden="true">→</span></Link></section>
-    {status ? <p className="training-status" role="status">{status}</p> : null}
-    {!session ? <form className="training-session-card compact-card" onSubmit={start}><div><h2>Start a training session</h2><p>Use a real support question. The agent keeps this session in context while you coach the response.</p></div><label>Question<textarea required maxLength={8000} value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="What should PointGuide help someone solve?" /></label><label>Repository for accepted learning<select required value={targetRepository} onChange={(event) => setTargetRepository(event.target.value)}>{sources.map((source) => <option key={source.id} value={source.fullName}>{source.fullName}</option>)}</select></label><button type="submit" disabled={busy || !targetRepository || !question.trim()}>{busy ? "Preparing answer…" : "Start training"}</button></form> : <section className="training-session" aria-label="Active training session">
-      <header className="training-session-header"><div><p className="eyebrow">Original question</p><h2>{session.originalQuestion}</h2></div><span>{session.state.replaceAll("_", " ")}</span></header>
-      {answer ? <article className="training-answer compact-card"><header><strong>PointGuide response</strong>{answer.confidence ? <span className="confidence">{answer.confidence}</span> : null}</header><p>{answer.directAnswer}</p>{answer.steps?.length ? <ol>{answer.steps.map((step) => <li key={step}>{step}</li>)}</ol> : null}<small>{answer.evidence?.length ?? 0} evidence item{answer.evidence?.length === 1 ? "" : "s"} used</small></article> : null}
-      {session.state === "ACTIVE" ? <form className="training-feedback compact-card" onSubmit={submitFeedback}><h3>Rate this response</h3><div className="rating-buttons" role="group" aria-label="Response rating"><button type="button" className={rating === "HELPFUL" ? "selected" : undefined} aria-pressed={rating === "HELPFUL"} onClick={() => setRating("HELPFUL")}>👍 Helpful</button><button type="button" className={rating === "NOT_HELPFUL" ? "selected" : undefined} aria-pressed={rating === "NOT_HELPFUL"} onClick={() => setRating("NOT_HELPFUL")}>👎 Not helpful</button></div><label>Explain what worked or what should change<textarea required minLength={3} maxLength={4000} value={explanation} onChange={(event) => setExplanation(event.target.value)} /></label><button type="submit" disabled={busy || !rating || explanation.trim().length < 3}>{busy ? "Analyzing…" : "Analyze feedback"}</button></form> : null}
-      {session.state === "REPORT_READY" && report ? <article className="learning-report compact-card"><p className="eyebrow">What PointGuide learned</p><h3>{report.summary}</h3><div><strong>Learning</strong><ul>{report.learned.map((item) => <li key={item}>{item}</li>)}</ul></div><div><strong>Response changes</strong><ul>{report.responseChanges.map((item) => <li key={item}>{item}</li>)}</ul></div><p className="evidence-boundary">{report.evidenceBoundary}</p><div className="report-actions"><button type="button" onClick={() => void action({ action: "ACCEPT_REPORT" })} disabled={busy}>Accept learning report</button></div><form onSubmit={sendInsight}><label>Add insight and ask for another response<textarea required minLength={3} maxLength={4000} value={insight} onChange={(event) => setInsight(event.target.value)} /></label><button type="submit" className="secondary-button" disabled={busy || insight.trim().length < 3}>Revise response</button></form></article> : null}
-      {session.state === "REPORT_ACCEPTED" ? <article className="training-finalize compact-card"><p className="eyebrow">Report accepted</p><h3>Finish this training session</h3><p>Wipe discards the session. Commit creates an auditable repository proposal; the guidance is not source truth until that proposal is reviewed, merged, and reindexed.</p><div><button type="button" onClick={() => { setConfirmationMode("WIPE"); setConfirmation(""); }}>Wipe session</button><button type="button" onClick={() => { setConfirmationMode("COMMIT"); setConfirmation(""); }}>Commit learning</button></div></article> : null}
-      {session.state === "PROPOSED" ? <article className="training-finalize compact-card"><p className="eyebrow">Repository proposal created</p><h3>Training captured for review</h3><p>Proposal {session.proposalId} preserves the accepted learning. It will become available to PointGuide after the repository change is reviewed, merged, and reindexed.</p><button type="button" onClick={() => setSession(null)}>Start another session</button></article> : null}
+    <section className="welcome-panel compact-welcome"><p className="eyebrow">Guided improvement</p><h1>Training</h1><p>Ask a question. Give feedback until the answer is ready. Accept that exact answer for the selected repository.</p><Link className="subpage-link" href="/training/sessions">Training Sessions <span aria-hidden="true">→</span></Link></section>
+    {status && !session ? <p className="training-status" role="status">{status}</p> : null}
+    {!session ? <form className="training-session-card compact-card" onSubmit={start}>
+      <h2>Start a training session</h2>
+      <label>Question<textarea required maxLength={8000} value={question} onChange={event => setQuestion(event.target.value)} placeholder="Ask the question you want PointGuide to answer" /></label>
+      <label>Where accepted guidance is saved<select required value={targetRepository} onChange={event => setTargetRepository(event.target.value)}>{sources.map(source => <option key={source.id} value={source.fullName}>{source.fullName}</option>)}</select><span className="field-hint">Accepting an answer publishes it to this repository and makes it available to future answers.</span></label>
+      <button type="submit" disabled={busy || !targetRepository || !question.trim()}>{busy ? "Preparing answer…" : "Start training"}</button>
+    </form> : <section className="training-session" aria-label="Training session">
+      <header className="training-session-header"><div><p className="eyebrow">Original question</p><h2>{session.originalQuestion}</h2><p>Guidance destination: {session.targetRepository}</p></div><span>{trainingStateLabel(session)}</span></header>
+      {earlierTurns.length ? <section className="training-history" aria-label="Conversation so far"><h3>Conversation so far</h3><ol>{earlierTurns.map(turn => {
+        if (turn.kind === "FEEDBACK") return <li key={turn.ordinal}><strong>Your feedback:</strong> {String(turn.content.feedback ?? "")}</li>;
+        if (turn.kind !== "ANSWER") return <li key={turn.ordinal}><strong>{turn.kind}:</strong> Earlier session record</li>;
+        const earlier = turn.content.answer as TrainingAnswer | undefined;
+        return <li className="training-history-answer" key={turn.ordinal}><details><summary>Earlier PointGuide answer</summary><div><p>{earlier?.directAnswer}</p>{earlier?.safetyAndAssumptions?.length ? <><small>Safety and assumptions</small><ul>{earlier.safetyAndAssumptions.map(item => <li key={item}>{item}</li>)}</ul></> : null}{earlier?.steps?.length ? <><small>Steps</small><ol>{earlier.steps.map(item => <li key={item}>{item}</li>)}</ol></> : null}</div></details></li>;
+      })}</ol></section> : null}
+      {answer ? <article className="training-answer compact-card"><header><strong>{session.state === "REVISING" ? "Previous PointGuide response" : "PointGuide response"}</strong>{answer.confidence ? <span className="confidence">{answer.confidence}</span> : null}</header>
+        <p className="direct-answer">{answer.directAnswer}</p>
+        {answer.safetyAndAssumptions?.length ? <aside className="safety-note"><strong>Before changing anything</strong><ul>{answer.safetyAndAssumptions.map(item => <li key={item}>{item}</li>)}</ul></aside> : null}
+        {answer.steps?.length ? <ol>{answer.steps.map(step => <li key={step}>{step}</li>)}</ol> : null}
+        <details className="evidence-section evidence-accordion"><summary><strong>Sources</strong><span>{(answer.evidence?.length ?? 0) + (answer.guidance?.length ?? 0)} sources</span></summary><div className="evidence-list">
+          {answer.evidence?.map(item => <div key={item.id}><strong>{item.title}</strong><p>{item.excerpt}</p><small>{item.locator ?? item.path ?? item.url} · {item.authority}</small></div>)}
+          {answer.guidance?.map(item => <article key={item.id}><strong>Accepted training guidance</strong><p>{item.directAnswer}</p><p>Trainer acceptance guides the answer; supporting source evidence remains separate.</p><a href={`https://github.com/${item.repository}/blob/${item.indexedCommit}/${item.path}`} target="_blank" rel="noopener noreferrer">Repository artifact and revision</a></article>)}
+          {answer.claims?.length ? <section aria-label="Claim check"><h3>Claim check</h3><ul>{answer.claims.map(claim => <li key={claim.id}>{claim.status}: {claim.text} ({claim.evidenceIds.join(", ") || "no supporting source"})</li>)}</ul></section> : null}
+        </div></details>
+      </article> : null}
+      {needsRetry ? <section className="training-status" role="alert"><p>{status || (session.state === "REVISING" ? "The revision did not complete. Your feedback is saved." : "The first answer did not complete. Your question is saved.")}</p>{pendingFeedback ? <p><strong>Feedback waiting for revision:</strong> {String(pendingFeedback.content.feedback ?? "")}</p> : null}<button type="button" disabled={busy} onClick={() => { setStatus(session.state === "REVISING" ? "Retrying revision with your saved feedback…" : "Retrying the first answer…"); void action({ action: "RETRY", expectedVersion: session.version }); }}>{session.state === "REVISING" ? "Retry revision" : "Retry first answer"}</button></section> : null}
+      {canCoach ? <section className="training-feedback compact-card"><div><h3>Help PointGuide improve this answer</h3><p className="training-guidance">Describe what should change. PointGuide will use this entire session, including earlier corrections and constraints.</p></div>
+        <form onSubmit={revise}><label>Feedback for this answer<textarea required minLength={3} maxLength={4000} value={feedback} onChange={event => setFeedback(event.target.value)} placeholder="Example: Use three short numbered checks and explain what I should see after each one." /></label><button type="submit" className="secondary-button" disabled={busy || feedback.trim().length < 3}>Revise with feedback</button></form>
+        <div className="training-accept"><p><strong>Ready to teach PointGuide?</strong> Publishing makes this exact answer available to future answers from {session.targetRepository}.</p><button type="button" disabled={busy || !activeSource} onClick={() => { setStatus("Accepting this exact answer and preparing it for publishing…"); void action({ action: "ACCEPT_ANSWER", answerId: answer?.id, expectedVersion: session.version }); }}>Accept and publish</button></div>
+        {status ? <p className="training-inline-status" role="status">{status}</p> : null}
+      </section> : null}
+      {["PUBLISHING", "ACTIVATING", "ACTIVE_KNOWLEDGE", "FAILED"].includes(session.state) ? <div className="training-status" role={session.state === "FAILED" ? "alert" : "status"}><p><strong>{trainingStateLabel(session)}.</strong> {trainingStateSummary(session)}</p>{session.state === "PUBLISHING" || session.state === "ACTIVATING" ? <p>Progress is saved; you can safely leave this page and return from Training Sessions.</p> : null}{session.state === "FAILED" && session.publicationError ? <p>{session.publicationError}</p> : null}{status ? <p>{status}</p> : null}{session.state === "ACTIVE_KNOWLEDGE" && session.indexedCommit && session.acceptedPath ? <p><a href={`https://github.com/${session.targetRepository}/blob/${session.indexedCommit}/${session.acceptedPath}`} target="_blank" rel="noopener noreferrer">Open active repository artifact</a><br /><small>Indexed revision: {session.indexedCommit}</small></p> : null}{session.state === "FAILED" ? <button type="button" disabled={busy || !activeSource} onClick={() => { setStatus(session.publishedCommit ? "Retrying activation without republishing…" : "Retrying publication of the saved answer…"); void action({ action: "RETRY_PUBLICATION" }); }}>{trainingRetryLabel(session)}</button> : null}</div> : null}
+      {["REPORT_READY", "REPORT_ACCEPTED", "PROPOSED"].includes(session.state) ? <details className="starter-accordion"><summary>Earlier learning-report workflow</summary><p>{session.currentReport?.summary ?? "Historical repository proposal: " + (session.proposalId ?? "none")}</p></details> : null}
     </section>}
-    <details className="proposal-queue starter-accordion"><summary><span><span className="eyebrow">Repository governance</span><strong>Proposal review queue</strong></span><span>{proposals.length} ▾</span></summary><div>{proposals.length ? proposals.map((proposal) => <article key={proposal.id}><div><strong>{proposal.targetRepository}</strong><span>{proposal.targetPath}</span><small>{proposal.state} · {proposal.digest.slice(0, 12)}</small></div>{proposal.state === "IN_REVIEW" && ["ADMIN", "OWNER"].includes(role) ? <button type="button" disabled={busy} onClick={() => void approveProposal(proposal.id)}>Approve exact proposal</button> : null}</article>) : <p>No repository proposals are waiting.</p>}</div></details>
-    {session && confirmationMode ? <div className="confirmation-backdrop" role="presentation"><section className="confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="training-confirm-title"><p className="eyebrow">Confirmation required</p><h2 id="training-confirm-title">{confirmationMode === "WIPE" ? "Wipe this session?" : "Commit accepted learning?"}</h2>{confirmationMode === "WIPE" ? <><p>Type the exact confirmation below. This permanently removes the training draft.</p><label><strong>{expectedConfirmation}</strong><input autoFocus value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></label></> : <p>This creates an auditable proposal for {session.targetRepository}. The learning is not source truth until the proposal is reviewed, merged, and reindexed.</p>}<div><button type="button" onClick={() => setConfirmationMode(null)}>Cancel</button><button autoFocus={confirmationMode === "COMMIT"} type="button" className={confirmationMode === "WIPE" ? "danger-button" : undefined} disabled={(confirmationMode === "WIPE" && confirmation !== expectedConfirmation) || busy} onClick={() => void finish()}>{confirmationMode === "WIPE" ? "Wipe session" : "Commit accepted learning"}</button></div></section></div> : null}
   </>;
 }

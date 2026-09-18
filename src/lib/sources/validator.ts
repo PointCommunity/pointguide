@@ -23,7 +23,8 @@ function parseRepositoryUrl(value: string, allowedOwners: readonly string[]): { 
   return { owner: parts[0], name: parts[1], url: `https://github.com/${parts[0]}/${parts[1]}` };
 }
 
-export async function validateSourceRepository(value: string, options: { fetcher?: SourceFetch; token?: string; allowedOwners?: readonly string[]; signal?: AbortSignal } = {}): Promise<ValidatedSource> {
+export async function validateSourceRepository(value: string, options: { fetcher?: SourceFetch; token?: string; allowedOwners?: readonly string[]; signal?: AbortSignal; ref?: string } = {}): Promise<ValidatedSource> {
+  if (options.ref && !/^[a-f0-9]{40}$/u.test(options.ref)) throw new SourceValidationError("SOURCE_INVALID", "An immutable commit SHA is required for proposed-head validation.");
   const fetcher = options.fetcher ?? fetch;
   const parsed = parseRepositoryUrl(value, options.allowedOwners ?? ["PointCommunity"]);
   const fullName = `${parsed.owner}/${parsed.name}`;
@@ -40,7 +41,8 @@ export async function validateSourceRepository(value: string, options: { fetcher
   try {
     const repo = repoSchema.parse(await api(""));
     if (repo.full_name.toLowerCase() !== fullName.toLowerCase()) throw new Error("Repository identity changed. Relink the approved repository.");
-    const { sha: commit } = z.object({ sha: z.string().regex(/^[a-f0-9]{40}$/u) }).parse(await api(`/commits/${encodeURIComponent(repo.default_branch)}`));
+    const { sha: commit } = z.object({ sha: z.string().regex(/^[a-f0-9]{40}$/u) }).parse(await api(`/commits/${encodeURIComponent(options.ref ?? repo.default_branch)}`));
+    if (options.ref && commit !== options.ref) throw new Error("The proposed commit identity changed.");
     const tree = treeSchema.parse(await api(`/git/trees/${commit}?recursive=1`));
     if (tree.truncated) throw new Error("GitHub truncated the repository tree; refresh cannot publish incomplete knowledge.");
     const blobs = tree.tree.filter(item => item.type === "blob");

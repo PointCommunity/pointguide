@@ -50,7 +50,7 @@ describe("PostgreSQL provider governance", () => {
       credentialLocation: "codex-home",
       models: [model],
     });
-    for (const role of ["PRIMARY", "REVIEWER"] as const) {
+    for (const role of ["PRIMARY"] as const) {
       const id = crypto.randomUUID();
       await store.saveProfile(owner.id, {
         id,
@@ -76,7 +76,7 @@ describe("PostgreSQL provider governance", () => {
     }
 
     expect(await store.listModels("CODEX")).toEqual([model]);
-    expect(await store.listProfiles()).toHaveLength(2);
+    expect(await store.listProfiles()).toHaveLength(1);
     await expect(store.setReviewSetting(owner.id, true)).resolves.toEqual({ enabled: true, version: 1 });
     expect(JSON.stringify(await database.select().from(auditEvents))).not.toContain("evidence instructions");
   });

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import type { TrainingSessionRecord } from "@/lib/training/types";
+import { trainingStateLabel, trainingStateSummary } from "@/lib/training/presentation";
 
 export function TrainingSessionsWorkspace() {
   const [query, setQuery] = useState("");
@@ -41,9 +42,9 @@ export function TrainingSessionsWorkspace() {
       {status === "error" ? <div className="error-panel" role="alert"><strong>Training sessions are unavailable.</strong><p>Try the search again in a moment.</p></div> : null}
       {status === "ready" && !sessions.length ? <div className="empty-state"><strong>No training sessions found.</strong><p>{query.trim() ? "Try a keyword from the original question, response, report, or repository." : "Your coaching sessions will appear here after you start training."}</p><Link href="/training">Start new training</Link></div> : null}
       {status === "ready" && sessions.length ? <div className="session-list">{sessions.map((session) => <article className="session-card training-session-summary" key={session.id}>
-        <div className="session-card-meta"><span>{session.state.replaceAll("_", " ")}</span><time dateTime={session.updatedAt}>{new Date(session.updatedAt).toLocaleDateString("en-US", { dateStyle: "medium" })}</time></div>
+        <div className="session-card-meta"><span>{trainingStateLabel(session)}</span><time dateTime={session.updatedAt}>{new Date(session.updatedAt).toLocaleDateString("en-US", { dateStyle: "medium" })}</time></div>
         <h3>{session.originalQuestion}</h3>
-        <p>{session.currentReport?.summary ?? (session.currentAnswer ? "PointGuide response ready for trainer feedback." : "Waiting for the first response.")}</p>
+        <p>{trainingStateSummary(session)}</p>
         <div><span>{session.targetRepository}</span><Link href={`/training/sessions/${session.id}`}>{session.state === "PROPOSED" ? "View session" : "Open and continue"}<span aria-hidden="true"> →</span></Link></div>
       </article>)}</div> : null}
     </section>

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
 import type { AnswerClaim, EvidenceItem } from "@/lib/agent/schema";
 import type { SessionTurn } from "@/lib/learning/store";
+import type { AcceptedGuidance } from "@/lib/training/knowledge";
 
 interface PointGuideAnswer {
   id: string;
@@ -13,6 +14,7 @@ interface PointGuideAnswer {
   confidence: "CONFIRMED" | "SUPPORTED" | "TENTATIVE" | "UNKNOWN";
   claims: AnswerClaim[];
   evidence: EvidenceItem[];
+  guidance?: AcceptedGuidance[];
   reviewStatus: "NOT_REQUESTED" | "PASSED";
 }
 
@@ -76,8 +78,8 @@ function EvidenceCard({ item, claims }: { item: EvidenceItem; claims: AnswerClai
 
 function WorkingState({ deepResearch, phase }: { deepResearch: boolean; phase: number }) {
   const phases = deepResearch
-    ? ["Reading your question", "Searching connected knowledge", "Checking supporting evidence", "Reviewing supported claims", "Preparing a clear response"]
-    : ["Reading your question", "Searching connected knowledge", "Checking supporting evidence", "Preparing a clear response"];
+    ? ["Reading your question", "Searching connected knowledge", "Primary structuring source-backed data", "Reviewer checking supported claims", "Reviewer organizing a clear response"]
+    : ["Reading your question", "Searching connected knowledge", "Primary structuring source-backed data", "Primary organizing a clear response"];
   return (
     <div className="agent-working" role="status" aria-live="polite" aria-label="PointGuide is working">
       <span className="working-orbit" aria-hidden="true"><i /></span>
@@ -92,19 +94,18 @@ function AnswerContent({ turn, feedback, onRate }: { turn: DisplayTurn; feedback
   return (
     <div className="turn-answer">
       <header>
-        <div><p className="eyebrow">PointGuide answer</p><h3>What the evidence supports</h3></div>
+        <div><p className="eyebrow">PointGuide answer</p></div>
         <div className="answer-badges"><span className={`confidence ${answer.confidence.toLowerCase()}`}>{answer.confidence.toLocaleLowerCase()}</span>{answer.reviewStatus === "PASSED" ? <span className="confidence">reviewed</span> : null}</div>
       </header>
       <p className="direct-answer">{answer.directAnswer}</p>
       {answer.safetyAndAssumptions.length ? <aside className="safety-note"><strong>Before you change anything</strong><ul>{answer.safetyAndAssumptions.map((item) => <li key={item}>{item}</li>)}</ul></aside> : null}
       {answer.steps.length ? <section><h4>Next checks</h4><ol className="answer-steps">{answer.steps.map((step) => <li key={step}>{step}</li>)}</ol></section> : null}
-      <section className="claim-ledger" aria-label="Claim check">
-        <h4>Claim check</h4>
-        <ul>{answer.claims.map((claim) => <li key={claim.id}><span aria-hidden="true">{claim.status === "SUPPORTED" ? "✓" : "?"}</span><span><strong>{claim.status === "SUPPORTED" ? "Supported" : "Unknown"}</strong>{claim.text}</span></li>)}</ul>
-      </section>
       <details className="evidence-section evidence-accordion">
-        <summary><span><span className="eyebrow">Trace the answer</span><strong>Evidence</strong></span><span>{answer.evidence.length} source{answer.evidence.length === 1 ? "" : "s"} <i aria-hidden="true">⌄</i></span></summary>
-        <div className="evidence-list">{answer.evidence.length ? answer.evidence.map((item) => <EvidenceCard key={item.id} item={item} claims={answer.claims} />) : <p className="empty-evidence">No current source establishes this. The answer is intentionally marked Unknown.</p>}</div>
+        <summary><span><strong>Sources</strong></span><span>{answer.evidence.length + (answer.guidance?.length ?? 0)} source{answer.evidence.length + (answer.guidance?.length ?? 0) === 1 ? "" : "s"} <i aria-hidden="true">⌄</i></span></summary>
+        <div className="evidence-list">{answer.evidence.length ? answer.evidence.map((item) => <EvidenceCard key={item.id} item={item} claims={answer.claims} />) : <p className="empty-evidence">No current source establishes this. The answer is intentionally marked Unknown.</p>}
+          {answer.guidance?.map(item => <article className="evidence-card" key={item.id}><strong>Accepted training guidance</strong><p>{item.directAnswer}</p><p>Trainer acceptance guides the response; it does not prove factual claims.</p><a href={`https://github.com/${item.repository}/blob/${item.indexedCommit}/${item.path}`} target="_blank" rel="noopener noreferrer">Repository artifact and revision</a><small> · {item.digest.slice(0, 12)}</small></article>)}
+          <section className="claim-ledger" aria-label="Claim check"><h4>Claim check</h4><ul>{answer.claims.map((claim) => <li key={claim.id}><span aria-hidden="true">{claim.status === "SUPPORTED" ? "✓" : "?"}</span><span><strong>{claim.status === "SUPPORTED" ? "Supported" : "Unknown"}</strong>{claim.text}</span></li>)}</ul></section>
+        </div>
       </details>
       <footer className="feedback-bar">
         <div><strong>Was this useful?</strong><small>Your rating improves retrieval; it does not rewrite facts.</small></div>
@@ -160,21 +161,28 @@ export function AskWorkspace({ resumeConversationId }: { resumeConversationId?: 
 
   const starters = useMemo(() => rotatingStarters(conversationId), [conversationId]);
 
-  async function ask(nextQuestion: string) {
+  async function ask(nextQuestion: string, retry?: Pick<DisplayTurn, "key" | "deepResearch">) {
     const value = nextQuestion.trim();
     if (!value || status === "loading" || !conversationId || turnNumber >= 6) return;
-    const key = crypto.randomUUID();
+    const key = retry?.key ?? crypto.randomUUID();
     const startedAt = performance.now();
-    const selectedDeepResearch = deepResearch;
+    const selectedDeepResearch = retry?.deepResearch ?? deepResearch;
     const firstTurn = turnNumber === 0;
     setPhase(0);
     setQuestion("");
     setStatus("loading");
     setError("");
-    setTurns((current) => [{ key, question: value, answer: null, loading: true, error: null, deepResearch: selectedDeepResearch }, ...current]);
+    setTurns((current) => retry
+      ? current.map((turn) => turn.key === key ? { ...turn, loading: true, error: null } : turn)
+      : [{ key, question: value, answer: null, loading: true, error: null, deepResearch: selectedDeepResearch }, ...current]);
     try {
       const response = await fetch(`/api/conversations/${conversationId}/messages`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ question: value, deepResearch: selectedDeepResearch }) });
-      if (!response.ok || !response.body) throw new Error("PointGuide could not answer that question.");
+      if (!response.ok) {
+        if (response.status === 401) throw new Error("Your secure session expired. Refresh this page to sign in again, then retry your question.");
+        const payload = await response.json().catch(() => null) as { error?: { message?: string } } | null;
+        throw new Error(payload?.error?.message ?? "PointGuide could not answer that question.");
+      }
+      if (!response.body) throw new Error("PointGuide could not answer that question.");
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
@@ -243,7 +251,7 @@ export function AskWorkspace({ resumeConversationId }: { resumeConversationId?: 
         {turns.map((turn) => <article className="conversation-turn" key={turn.key}>
           <header className="point-question"><p className="eyebrow">Point Question</p><h2>{turn.question}</h2></header>
           {turn.loading ? <WorkingState deepResearch={turn.deepResearch} phase={phase} /> : null}
-          {turn.error ? <div className="turn-error" role="alert"><strong>PointGuide could not complete this answer.</strong><p>{turn.error}</p></div> : null}
+          {turn.error ? <div className="turn-error" role="alert"><strong>PointGuide could not complete this answer.</strong><p>{turn.error}</p><button type="button" onClick={() => void ask(turn.question, turn)}>Retry this question</button></div> : null}
           <AnswerContent turn={turn} feedback={turn.answer ? feedback[turn.answer.id] ?? null : null} onRate={(rating) => void rate(turn, rating)} />
         </article>)}
       </section> : status === "error" ? <section className="error-panel" role="alert"><strong>We could not open PointGuide.</strong><p>{error}</p></section> : (

@@ -1,0 +1,77 @@
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { MemoryAccountStore } from "@/lib/auth/memory-store";
+import { MemoryTrainingSessionStore } from "@/lib/training/store";
+import { PATCH } from "@/app/api/training/sessions/[id]/route";
+import { getRuntimeSessionDependencies } from "@/lib/auth/runtime";
+import { getRuntimeTrainingStore } from "@/lib/training/runtime";
+import { getRuntimeProviderDependencies } from "@/lib/providers/runtime";
+import { getRuntimeLearningRepository } from "@/lib/learning/runtime";
+import { getRuntimeSourceStore } from "@/lib/sources/runtime";
+import { knowledgeSnapshot } from "@/lib/sources/retrieval";
+import { answerQuestion } from "@/lib/agent/service";
+
+vi.mock("@/lib/auth/runtime", () => ({ getRuntimeSessionDependencies: vi.fn() }));
+vi.mock("@/lib/training/runtime", () => ({ getRuntimeTrainingStore: vi.fn() }));
+vi.mock("@/lib/providers/runtime", () => ({ getRuntimeProviderDependencies: vi.fn(), getRuntimeModelRuntime: vi.fn() }));
+vi.mock("@/lib/learning/runtime", () => ({ getRuntimeLearningRepository: vi.fn() }));
+vi.mock("@/lib/sources/runtime", () => ({ getRuntimeSourceStore: vi.fn() }));
+vi.mock("@/lib/sources/retrieval", () => ({ knowledgeSnapshot: vi.fn() }));
+vi.mock("@/lib/agent/service", () => ({ answerQuestion: vi.fn() }));
+
+let store: MemoryTrainingSessionStore;
+let actorId: string;
+const answerId = "00000000-0000-4000-8000-000000000081";
+const revisedId = "00000000-0000-4000-8000-000000000082";
+const headers = { "content-type": "application/json", "x-pointguide-fixture-subject": "owner", "x-pointguide-fixture-email": "owner@example.com" };
+async function action(id: string, body: Record<string, unknown>) {
+  return PATCH(new Request(`http://localhost/api/training/sessions/${id}`, { method: "PATCH", headers, body: JSON.stringify(body) }), { params: Promise.resolve({ id }) });
+}
+
+beforeEach(async () => {
+  vi.stubEnv("AUTH_MODE", "fixture");
+  const accounts = new MemoryAccountStore();
+  actorId = (await accounts.provisionAccount({ issuer: "https://fixture.pointguide.invalid", subject: "owner", email: "owner@example.com", displayName: "Owner" })).id;
+  vi.mocked(getRuntimeSessionDependencies).mockReturnValue({ store: accounts, config: { mode: "fixture", nodeEnv: "test", teamDomain: undefined, audience: undefined, fallbackFixtureIdentity: undefined } });
+  store = new MemoryTrainingSessionStore();
+  vi.mocked(getRuntimeTrainingStore).mockReturnValue(store);
+  vi.mocked(getRuntimeProviderDependencies).mockReturnValue({ store: {} } as ReturnType<typeof getRuntimeProviderDependencies>);
+  vi.mocked(getRuntimeLearningRepository).mockReturnValue({} as ReturnType<typeof getRuntimeLearningRepository>);
+  vi.mocked(getRuntimeSourceStore).mockReturnValue({} as ReturnType<typeof getRuntimeSourceStore>);
+  vi.mocked(knowledgeSnapshot).mockResolvedValue({ chunks: [], sources: [] });
+});
+afterEach(() => { vi.clearAllMocks(); vi.unstubAllEnvs(); });
+
+it("keeps the previous answer and feedback after revision failure, then retries the same history", async () => {
+  const session = await store.create({ trainerAccountId: actorId, conversationId: crypto.randomUUID(), targetRepository: "PointCommunity/pointaudio", originalQuestion: "How do I check sync?" });
+  const first = await store.saveAnswer(session.id, actorId, { id: answerId, directAnswer: "Check the documented sync indicator." });
+  vi.mocked(answerQuestion).mockRejectedValueOnce(new Error("private provider failure"))
+    .mockResolvedValueOnce({ answer: { id: revisedId, directAnswer: "Check the documented sync indicator before changing clock." } } as Awaited<ReturnType<typeof answerQuestion>>);
+  const failed = await action(session.id, { action: "FEEDBACK", answerId, expectedVersion: first.version, feedback: "Do not change clock before checking sync." });
+  expect(failed.status).toBe(202);
+  const pending = await failed.json();
+  expect(pending.error).toMatchObject({ code: "ANSWER_FAILED", message: "The revision failed. Your feedback is saved. Retry this revision." });
+  expect(JSON.stringify(pending)).not.toContain("private provider failure");
+  expect(pending.session).toMatchObject({ state: "REVISING", currentAnswer: { id: answerId } });
+  expect(pending.turns.map((turn: { kind: string }) => turn.kind)).toEqual(["ANSWER", "FEEDBACK"]);
+  const retried = await action(session.id, { action: "RETRY", expectedVersion: pending.session.version });
+  expect(retried.status).toBe(200);
+  expect((await retried.json()).session).toMatchObject({ state: "ACTIVE", currentAnswer: { id: revisedId } });
+  expect(vi.mocked(answerQuestion).mock.calls[1]?.[0]?.trainingHistory).toEqual(expect.arrayContaining([{ actor: "USER", content: "Trainer feedback, turn 2: Do not change clock before checking sync." }]));
+});
+
+it("returns a saved-question retry when the first answer fails", async () => {
+  const session = await store.create({ trainerAccountId: actorId, conversationId: crypto.randomUUID(), targetRepository: "PointCommunity/pointaudio", originalQuestion: "How do I check sync?" });
+  vi.mocked(answerQuestion).mockRejectedValueOnce(new Error("private provider failure"));
+  const failed = await action(session.id, { action: "RETRY", expectedVersion: session.version });
+  expect(failed.status).toBe(202);
+  expect(await failed.json()).toMatchObject({ session: { state: "ACTIVE", currentAnswer: null }, error: { code: "ANSWER_FAILED", message: "The first answer failed. Your question is saved. Retry the first answer." } });
+});
+
+it("reports invalid provider output without exposing its contents", async () => {
+  const session = await store.create({ trainerAccountId: actorId, conversationId: crypto.randomUUID(), targetRepository: "PointCommunity/pointaudio", originalQuestion: "How do I check sync?" });
+  vi.mocked(answerQuestion).mockRejectedValueOnce(new SyntaxError("private output content"));
+  const failed = await action(session.id, { action: "RETRY", expectedVersion: session.version });
+  const payload = await failed.json();
+  expect(payload.error).toMatchObject({ code: "ANSWER_FAILED", reason: "INVALID_PROVIDER_OUTPUT", message: "The provider returned an unusable answer. Your question is saved. Retry the first answer." });
+  expect(JSON.stringify(payload)).not.toContain("private output content");
+});
