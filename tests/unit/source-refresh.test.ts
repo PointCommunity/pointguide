@@ -78,13 +78,16 @@ it("publishes per-repository results, keeps failed knowledge, and skips archives
 it("repairs same-commit missing chunks and never mixes refreshed PointAudio with bootstrap evidence", async () => {
   const { knowledgeSnapshot } = await import("@/lib/sources/retrieval");
   const { parseEnvironment } = await import("@/lib/config/env");
-  const source = await validateSourceRepository("https://github.com/PointCommunity/test", { fetcher: upstream(files()) });
-  const store = new MemorySourceRepositoryStore(false);
-  const initial = await store.link("owner", { ...source, fullName: "PointCommunity/pointaudio", chunks: [], report: { ...source.report, complete: false } });
+  const audio = files();
+  audio["pointguide-source.yaml"] = audio["pointguide-source.yaml"].replace("PointCommunity/test", "PointCommunity/pointaudio");
+  audio["source-inventory.json"] = audio["source-inventory.json"].replace("PointCommunity/test", "PointCommunity/pointaudio");
+  const source = await validateSourceRepository("https://github.com/PointCommunity/pointaudio", { fetcher: sourceUpstream(seal(audio), "PointCommunity/pointaudio", "published") });
+  const store = new MemorySourceRepositoryStore();
+  const initial = (await store.list())[0];
   const builtin = vi.fn().mockResolvedValue([{ text: "stale M32" }]);
   const environment = parseEnvironment({ AUTH_MODE: "cloudflare" });
   expect((await knowledgeSnapshot(store, environment, builtin)).chunks).toHaveLength(1);
-  const result = await store.refresh("owner", initial, { ...source, fullName: initial.fullName });
+  const result = await store.refresh("owner", initial, source);
   expect(result.outcome).toBe("updated");
   builtin.mockClear();
   const snapshot = await knowledgeSnapshot(store, environment, builtin);
@@ -165,4 +168,17 @@ it("does not treat captured-source catalogs as text-to-page inventories", async 
     ["research/capture/source-inventory.json", JSON.stringify({ sources: [{ url: "https://example.org/manual", authority: "primary", purpose: "Provenance only" }] })],
   ]);
   expect(indexContents("PointCommunity/test", commit, new Date().toISOString(), contents, ["docs/support.txt"])).toHaveLength(1);
+});
+
+it("keeps a structured article's procedure, prerequisites and warnings in one bounded evidence block", async () => {
+  const { indexContents } = await import("@/lib/sources/content");
+  const path = "data/knowledge/services-01.json";
+  const contents = new Map([[path, JSON.stringify({ records: [{ articleId: "pc-42", title: "Respond to a schedule", canonicalUrl: "https://help.planningcenter.com/example", applicability: ["services"], sourceExcerpt: "Respond to a request", synthesis: { prerequisites: ["Confirm the right church"], procedure: ["Accept the request"], warnings: ["Do not change someone else's schedule"], recovery: ["Contact the scheduler"] } }] })]]);
+  const chunks = indexContents("PointCommunity/pointplanning", commit, new Date().toISOString(), contents, [path]);
+  expect(chunks).toHaveLength(2);
+  expect(chunks[0]).toMatchObject({ title: "Respond to a schedule", locator: expect.stringContaining("pc-42") });
+  expect(chunks[0].text).toContain("Confirm the right church");
+  expect(chunks[0].text).toContain("Accept the request");
+  expect(chunks[0].text).toContain("Do not change someone else's schedule");
+  expect(chunks[1].text).toContain("Contact the scheduler");
 });

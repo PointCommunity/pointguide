@@ -34,7 +34,7 @@ async function acceptedTraining(sessionId: string) {
     const validationOptions = { token: process.env.GITHUB_TOKEN, allowedOwners: (process.env.POINTGUIDE_SOURCE_OWNERS ?? "PointCommunity").split(",").map(value => value.trim()).filter(Boolean) };
     const validateHead = async (head: string) => {
       const proposed = await validateSourceRepository(source.url, { ...validationOptions, ref: head });
-      if (!proposed.report.complete || proposed.report.commitSha !== head || !proposed.report.files?.includes(session.accepted_path) || !proposed.chunks.some(chunk => chunk.path === session.accepted_path)) throw new Error("ACCEPTED_PROPOSED_SOURCE_INVALID");
+      if (!proposed.report.complete || proposed.report.commitSha !== head || !proposed.report.acceptedArtifacts?.some(item => item.path === session.accepted_path && item.digest === session.accepted_digest)) throw new Error("ACCEPTED_PROPOSED_SOURCE_INVALID");
     };
     let publishedCommit = session.published_commit as string | null;
     if (!publishedCommit) {
@@ -45,7 +45,14 @@ async function acceptedTraining(sessionId: string) {
       } else {
         const branch = `pointguide/accepted-${session.id}`;
         const open = JSON.parse(await runCommand("gh", ["pr", "list", "--repo", source.full_name, "--state", "open", "--head", branch, "--json", "url"], checkout)) as Array<{ url: string }>;
-        publishedCommit = open.length ? await mergeAcceptedArtifact(artifact, open[0].url, checkout, validateHead) : (await publishAcceptedArtifact(artifact, checkout, validateHead)).publishedCommit;
+        if (open.length > 1) throw new Error("ACCEPTED_PUBLICATION_PR_CONFLICT");
+        if (open.length) {
+          const existingHead = JSON.parse(await runCommand("gh", ["pr", "view", open[0].url, "--repo", source.full_name, "--json", "headRefOid"], checkout)) as { headRefOid: string };
+          if (!/^[a-f0-9]{40}$/u.test(existingHead.headRefOid)) throw new Error("ACCEPTED_PUBLICATION_HEAD_UNKNOWN");
+          await runCommand("git", ["fetch", "origin", "--prune"], checkout);
+          const proposedBase = (await runCommand("git", ["rev-parse", `${existingHead.headRefOid}^`], checkout)).trim();
+          publishedCommit = await mergeAcceptedArtifact({ ...artifact, baseCommit: proposedBase }, open[0].url, checkout, validateHead, runCommand, existingHead.headRefOid);
+        } else publishedCommit = (await publishAcceptedArtifact(artifact, checkout, validateHead)).publishedCommit;
       }
       await sql`UPDATE training_sessions SET state='ACTIVATING',published_commit=${publishedCommit},publication_error=NULL,updated_at=now(),version=version+1 WHERE id=${session.id} AND state IN ('PUBLISHING','FAILED')`;
     }
@@ -56,11 +63,11 @@ async function acceptedTraining(sessionId: string) {
     const currentSource = (await new PostgresSourceRepositoryStore(getDatabase(databaseUrl!)).list()).find(item => item.id === source.id && item.status === "ACTIVE");
     if (!currentSource) throw new Error("ACCEPTED_SOURCE_ARCHIVED");
     const validated = await validateSourceRepository(currentSource.url, validationOptions);
-    if (!validated.report.complete || !validated.report.files?.includes(session.accepted_path) || !validated.chunks.some(chunk => chunk.path === session.accepted_path)) throw new Error("ACCEPTED_ARTIFACT_NOT_INDEXED");
+    if (!validated.report.complete || !validated.report.acceptedArtifacts?.some(item => item.path === session.accepted_path && item.digest === session.accepted_digest)) throw new Error("ACCEPTED_ARTIFACT_NOT_INDEXED");
     const store = new PostgresSourceRepositoryStore(getDatabase(databaseUrl!));
     const indexed = await store.refresh(session.trainer_account_id, currentSource, validated);
     const readback = await store.snapshot();
-    if (readback.sources.find(item => item.id === source.id)?.indexedCommit !== indexed.source.indexedCommit || !readback.chunks.some(chunk => chunk.path === session.accepted_path)) throw new Error("ACCEPTED_ACTIVATION_READBACK_FAILED");
+    if (readback.sources.find(item => item.id === source.id)?.indexedCommit !== indexed.source.indexedCommit || !readback.sources.find(item => item.id === source.id)?.validationReport.acceptedArtifacts?.some(item => item.path === session.accepted_path && item.digest === session.accepted_digest)) throw new Error("ACCEPTED_ACTIVATION_READBACK_FAILED");
     await new PostgresTrainingSessionStore(getDatabase(databaseUrl!)).activateKnowledge(session.id, session.accepted_digest, indexed.source.indexedCommit);
   } finally { await rm(temporaryRoot, { recursive: true }); }
 }

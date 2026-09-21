@@ -31,6 +31,7 @@ export class MemorySourceRepositoryStore implements SourceRepositoryStore {
   async list() { return [...this.records.values()].sort((a, b) => a.fullName.localeCompare(b.fullName)).map(copy); }
   async link(_actorId: string, source: ValidatedSource) {
     if ([...this.records.values()].some((item) => item.fullName.toLocaleLowerCase() === source.fullName.toLocaleLowerCase())) throw new SourceStoreError("SOURCE_EXISTS", "That repository is already linked.");
+    assertAdmission(source);
     const now = new Date().toISOString();
     const record: SourceRepositoryRecord = { id: randomUUID(), fullName: source.fullName, url: source.url, status: "ACTIVE", defaultBranch: source.report.defaultBranch, indexedCommit: source.report.commitSha, validationReport: source.report, linkedAt: now, updatedAt: now, version: 1 };
     this.records.set(record.id, record); this.chunks.set(record.id, source.chunks.map((item) => ({ ...item })));
@@ -53,7 +54,11 @@ export class MemorySourceRepositoryStore implements SourceRepositoryStore {
 
 export function assertRefresh(current: SourceRepositoryRecord | undefined, expected: SourceRepositoryRecord, source: ValidatedSource) {
   if (!current || current.status !== "ACTIVE" || current.version !== expected.version || current.fullName !== source.fullName) throw new SourceStoreError("SOURCE_CHANGED", "Repository changed during refresh. Pull latest knowledge again.");
-  if (!source.report.valid || !source.report.complete || !source.chunks.length) throw new Error("A complete validated snapshot is required.");
+  assertAdmission(source);
+}
+
+export function assertAdmission(source: ValidatedSource) {
+  if (!source.report.valid || !source.report.complete || !source.chunks.length || source.report.errors.length || !source.report.inventoryItems?.length || !source.report.navigation || source.report.files?.length !== source.report.filesIndexed || !source.report.commitSha.match(/^[a-f0-9]{40}$/u)) throw new Error("A complete validated source contract snapshot is required.");
 }
 
 export function snapshotMatches(current: SourceRepositoryRecord, chunks: IndexedChunk[], source: ValidatedSource) {

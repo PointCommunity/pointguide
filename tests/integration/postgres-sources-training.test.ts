@@ -7,6 +7,9 @@ import { PostgresSourceRepositoryStore } from "@/db/sources";
 import { PostgresTrainingSessionStore } from "@/db/training";
 import { answerQuestion } from "@/lib/agent/service";
 import { MemoryProviderStore } from "@/lib/providers/memory-store";
+import { validateSourceRepository } from "@/lib/sources/validator";
+import { sourceFiles, upstream } from "../fixtures/source-contract";
+import { searchCorpus } from "@/lib/evidence/search";
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 const databaseTest = testDatabaseUrl ? it : it.skip;
@@ -32,33 +35,8 @@ databaseTest("persists connected sources and wipes a training session with its c
   });
 
   const sources = new PostgresSourceRepositoryStore(database);
-  const linked = await sources.link(actor.id, {
-    fullName: "PointCommunity/lighting",
-    url: "https://github.com/PointCommunity/lighting",
-    report: {
-      valid: true,
-      checkedAt: "2026-09-06T00:00:00.000Z",
-      commitSha: "a".repeat(40),
-      defaultBranch: "main",
-      errors: [],
-      warnings: [],
-      filesReviewed: 3,
-      filesIndexed: 1,
-      chunksIndexed: 1,
-      requirements: { agentsFile: true, evidenceContent: true, integrityManifest: true },
-    },
-    chunks: [{
-      chunkId: "lighting:setup:0",
-      sourceId: "PointCommunity/lighting",
-      title: "Setup",
-      path: "docs/setup.md",
-      locator: "Characters 1-20",
-      authority: "Linked repository",
-      capturedAt: "2026-09-06T00:00:00.000Z",
-      digest: "b".repeat(64),
-      text: "Verified setup steps.",
-    }],
-  });
+  const validated = await validateSourceRepository("https://github.com/PointCommunity/lighting", { fetcher: upstream(sourceFiles("PointCommunity/lighting", "Verified setup steps."), "PointCommunity/lighting") });
+  const linked = await sources.link(actor.id, validated);
   expect(await sources.activeChunks()).toHaveLength(1);
 
   const learning = new PostgresLearningRepository(database);
@@ -86,17 +64,30 @@ databaseTest("persists connected sources and wipes a training session with its c
   expect(await sources.list()).toEqual([]);
 });
 
+databaseTest("round-trips source applicability, purpose navigation and provenance through PostgreSQL", async () => {
+  const database = getDatabase(disposableDatabaseUrl(testDatabaseUrl as string));
+  await database.execute(sql`truncate table accounts cascade`);
+  await database.execute(sql`delete from source_repositories`);
+  const actor = await new PostgresAccountStore(database).provisionAccount({ issuer: "https://pointguide.test", subject: "metadata-owner", email: "owner@example.com", displayName: "Owner" });
+  const files = sourceFiles();
+  const validated = await validateSourceRepository("https://github.com/PointCommunity/test", { fetcher: upstream(files) });
+  const store = new PostgresSourceRepositoryStore(database);
+  await store.link(actor.id, validated);
+  const restarted = new PostgresSourceRepositoryStore(database);
+  const snapshot = await restarted.snapshot();
+  expect(snapshot.sources[0].validationReport.navigation?.docs).toMatchObject({ purpose: expect.stringContaining("support guides") });
+  expect(snapshot.chunks[0].metadata).toMatchObject({ id: "M32R-LOCAL-INPUTS", questions: [expect.stringContaining("M32R")], product: "M32R", capturedAt: "2026-09-18", verifiedAt: "2026-09-18" });
+  expect(searchCorpus("M32R local sockets", snapshot.chunks)[0]).toMatchObject({ sourceId: "M32R-LOCAL-INPUTS", product: "M32R", verifiedAt: "2026-09-18" });
+});
+
 databaseTest("serializes feedback and exact-answer acceptance, then activates only indexed committed guidance", async () => {
   const database = getDatabase(disposableDatabaseUrl(testDatabaseUrl as string));
   await database.execute(sql`truncate table accounts cascade`);
   await database.execute(sql`delete from source_repositories`);
   const actor = await new PostgresAccountStore(database).provisionAccount({ issuer: "https://pointguide.test", subject: "accepted-owner", email: "owner@example.com", displayName: "Owner" });
   const sourceStore = new PostgresSourceRepositoryStore(database);
-  const source = await sourceStore.link(actor.id, {
-    fullName: "PointCommunity/pointaudio", url: "https://github.com/PointCommunity/pointaudio",
-    report: { valid: true, complete: true, checkedAt: new Date().toISOString(), commitSha: "a".repeat(40), defaultBranch: "main", errors: [], warnings: [], filesReviewed: 3, filesIndexed: 1, chunksIndexed: 1, requirements: { agentsFile: true, evidenceContent: true, integrityManifest: true } },
-    chunks: [{ chunkId: "manual:1", sourceId: "PointCommunity/pointaudio", title: "DL32", path: "docs/dl32.txt", locator: "1-10", authority: "Manual", capturedAt: new Date().toISOString(), digest: "a".repeat(64), text: "Check the AES50 cable." }],
-  });
+  const validated = await validateSourceRepository("https://github.com/PointCommunity/pointaudio", { fetcher: upstream(sourceFiles("PointCommunity/pointaudio", "Check the AES50 cable."), "PointCommunity/pointaudio") });
+  const source = await sourceStore.link(actor.id, validated);
   const conversation = await new PostgresLearningRepository(database).createConversation(actor.id, "Training test");
   const training = new PostgresTrainingSessionStore(database);
   const started = await training.create({ trainerAccountId: actor.id, conversationId: conversation.id, targetRepository: source.fullName, originalQuestion: "Why is the DL32 AES50 link red?" });
@@ -125,24 +116,31 @@ databaseTest("serializes feedback and exact-answer acceptance, then activates on
   expect(first.count).toBe(1);
   const artifactPath = String(accepted.acceptedPath);
   const renewed = await sourceStore.refresh(actor.id, source, { fullName: source.fullName, url: source.url,
-    report: { valid: true, complete: true, checkedAt: new Date().toISOString(), commitSha: "b".repeat(40), defaultBranch: "main", errors: [], warnings: [], filesReviewed: 4, filesIndexed: 2, chunksIndexed: 2, requirements: { agentsFile: true, evidenceContent: true, integrityManifest: true } },
-    chunks: [{ chunkId: "manual:1", sourceId: source.fullName, title: "DL32", path: "docs/dl32.txt", locator: "1-10", authority: "Manual", capturedAt: new Date().toISOString(), digest: "a".repeat(64), text: "Check the AES50 cable." }, { chunkId: "training:1", sourceId: source.fullName, title: "Accepted", path: artifactPath, locator: "1-10", authority: "Trainer", capturedAt: new Date().toISOString(), digest: accepted.acceptedDigest!, text: "Trainer guidance." }],
+    report: { ...source.validationReport, checkedAt: new Date().toISOString(), commitSha: "b".repeat(40), acceptedArtifacts: [{ path: artifactPath, digest: accepted.acceptedDigest! }] },
+    chunks: [{ chunkId: "manual:1", sourceId: source.fullName, title: "DL32", path: "docs/dl32.txt", locator: "1-10", authority: "Manual", capturedAt: new Date().toISOString(), digest: "a".repeat(64), text: "Check the AES50 cable." }],
   });
   await training.activateKnowledge(started.id, accepted.acceptedDigest!, renewed.source.indexedCommit);
   expect((await new PostgresTrainingSessionStore(database).activeGuidance()).map(item => item.path)).toEqual([artifactPath]);
+  const unrelated = await sourceStore.refresh(actor.id, renewed.source, { fullName: source.fullName, url: source.url,
+    report: { ...renewed.source.validationReport, checkedAt: new Date().toISOString(), commitSha: "d".repeat(40) },
+    chunks: [{ chunkId: "manual:1", sourceId: source.fullName, title: "DL32", path: "docs/dl32.txt", locator: "1-10", authority: "Manual", capturedAt: new Date().toISOString(), digest: "a".repeat(64), text: "Check the AES50 cable." }],
+  });
+  expect((await training.activeGuidance()).map(item => item.indexedCommit)).toEqual([unrelated.source.indexedCommit]);
   const secondConversation = await new PostgresLearningRepository(database).createConversation(actor.id, "Training again");
   const second = await training.create({ trainerAccountId: actor.id, conversationId: secondConversation.id, targetRepository: source.fullName, originalQuestion: started.originalQuestion });
   const secondAnswerId = "00000000-0000-4000-8000-000000000014";
   const secondAnswer = await training.saveAnswer(second.id, actor.id, { id: secondAnswerId, directAnswer: "Inspect both AES50 connectors.", evidence: [{ id: "manual:1" }] });
-  const secondAccepted = await training.acceptAnswer(second.id, actor.id, secondAnswer.version, secondAnswerId, renewed.source);
+  const secondAccepted = await training.acceptAnswer(second.id, actor.id, secondAnswer.version, secondAnswerId, unrelated.source);
   await database.execute(sql`update training_sessions set state='ACTIVATING',published_commit=${"b".repeat(40)} where id=${second.id}`);
-  const secondRenewed = await sourceStore.refresh(actor.id, renewed.source, { fullName: source.fullName, url: source.url,
-    report: { valid: true, complete: true, checkedAt: new Date().toISOString(), commitSha: "c".repeat(40), defaultBranch: "main", errors: [], warnings: [], filesReviewed: 5, filesIndexed: 3, chunksIndexed: 3, requirements: { agentsFile: true, evidenceContent: true, integrityManifest: true } },
-    chunks: [{ chunkId: "manual:1", sourceId: source.fullName, title: "DL32", path: "docs/dl32.txt", locator: "1-10", authority: "Manual", capturedAt: new Date().toISOString(), digest: "a".repeat(64), text: "Check the AES50 cable." }, { chunkId: "training:1", sourceId: source.fullName, title: "Accepted", path: artifactPath, locator: "1-10", authority: "Trainer", capturedAt: new Date().toISOString(), digest: accepted.acceptedDigest!, text: "Older guidance." }, { chunkId: "training:2", sourceId: source.fullName, title: "Accepted", path: secondAccepted.acceptedPath!, locator: "1-10", authority: "Trainer", capturedAt: new Date().toISOString(), digest: secondAccepted.acceptedDigest!, text: "Newer guidance." }],
+  const secondRenewed = await sourceStore.refresh(actor.id, unrelated.source, { fullName: source.fullName, url: source.url,
+    report: { ...unrelated.source.validationReport, checkedAt: new Date().toISOString(), commitSha: "c".repeat(40), acceptedArtifacts: [{ path: artifactPath, digest: accepted.acceptedDigest! }, { path: secondAccepted.acceptedPath!, digest: secondAccepted.acceptedDigest! }] },
+    chunks: [{ chunkId: "manual:1", sourceId: source.fullName, title: "DL32", path: "docs/dl32.txt", locator: "1-10", authority: "Manual", capturedAt: new Date().toISOString(), digest: "a".repeat(64), text: "Check the AES50 cable." }],
   });
   await training.activateKnowledge(second.id, secondAccepted.acceptedDigest!, secondRenewed.source.indexedCommit);
   expect((await training.get(started.id, actor.id)).state).toBe("SUPERSEDED");
   expect((await training.activeGuidance()).map(item => item.path)).toEqual([secondAccepted.acceptedPath]);
+  await sourceStore.refresh(actor.id, secondRenewed.source, { fullName: source.fullName, url: source.url, report: { ...secondRenewed.source.validationReport, commitSha: "e".repeat(40), acceptedArtifacts: [] }, chunks: [{ chunkId: "manual:1", sourceId: source.fullName, title: "DL32", path: "docs/dl32.txt", locator: "1-10", authority: "Manual", capturedAt: new Date().toISOString(), digest: "a".repeat(64), text: "Check the AES50 cable." }] });
+  expect(await training.activeGuidance()).toEqual([]);
 });
 
 databaseTest("atomically refreshes large snapshots, rolls back failed inserts, and rejects concurrent writers", async () => {
@@ -151,7 +149,7 @@ databaseTest("atomically refreshes large snapshots, rolls back failed inserts, a
   await database.execute(sql`delete from source_repositories`);
   const actor = await new PostgresAccountStore(database).provisionAccount({ issuer: "https://pointguide.test", subject: "refresh-owner", email: "owner@example.com", displayName: "Owner" });
   const store = new PostgresSourceRepositoryStore(database);
-  const source = { fullName: "PointCommunity/test", url: "https://github.com/PointCommunity/test", report: { valid: true, complete: true, checkedAt: new Date().toISOString(), commitSha: "a".repeat(40), defaultBranch: "main", errors: [], warnings: [], filesReviewed: 1, filesIndexed: 1, chunksIndexed: 1, requirements: { agentsFile: true, evidenceContent: true, integrityManifest: true } }, chunks: [{ chunkId: "old", sourceId: "test", title: "Old", path: "docs/old.txt", locator: "Old commit", authority: "Repository", capturedAt: new Date().toISOString(), digest: "a".repeat(64), text: "old evidence" }] };
+  const source = await validateSourceRepository("https://github.com/PointCommunity/test", { fetcher: upstream(sourceFiles("PointCommunity/test", "old evidence")) });
   const initial = await store.link(actor.id, source);
   const replacement = { ...source, report: { ...source.report, commitSha: "b".repeat(40), chunksIndexed: 7100 }, chunks: Array.from({ length: 7100 }, (_, i) => ({ ...source.chunks[0], chunkId: `new-${i}`, title: "New", text: "new evidence" })) };
   // Duplicate keys fail after deletion and the first batch; the whole transaction must roll back.

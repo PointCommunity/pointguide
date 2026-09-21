@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { MemoryAccountStore } from "@/lib/auth/memory-store";
 import { MemoryTrainingSessionStore } from "@/lib/training/store";
 import { PATCH } from "@/app/api/training/sessions/[id]/route";
+import { POST } from "@/app/api/training/sessions/route";
 import { getRuntimeSessionDependencies } from "@/lib/auth/runtime";
 import { getRuntimeTrainingStore } from "@/lib/training/runtime";
 import { getRuntimeProviderDependencies } from "@/lib/providers/runtime";
@@ -37,7 +38,7 @@ beforeEach(async () => {
   vi.mocked(getRuntimeProviderDependencies).mockReturnValue({ store: {} } as ReturnType<typeof getRuntimeProviderDependencies>);
   vi.mocked(getRuntimeLearningRepository).mockReturnValue({} as ReturnType<typeof getRuntimeLearningRepository>);
   vi.mocked(getRuntimeSourceStore).mockReturnValue({} as ReturnType<typeof getRuntimeSourceStore>);
-  vi.mocked(knowledgeSnapshot).mockResolvedValue({ chunks: [], sources: [] });
+  vi.mocked(knowledgeSnapshot).mockResolvedValue({ chunks: [], sources: [], navigation: {} });
 });
 afterEach(() => { vi.clearAllMocks(); vi.unstubAllEnvs(); });
 
@@ -67,6 +68,18 @@ it("returns a saved-question retry when the first answer fails", async () => {
   expect(await failed.json()).toMatchObject({ session: { state: "ACTIVE", currentAnswer: null }, error: { code: "ANSWER_FAILED", message: "The first answer failed. Your question is saved. Retry the first answer." } });
 });
 
+it("keeps an essential clarifying question separate, revises from the response, and blocks stale acceptance", async () => {
+  const session = await store.create({ trainerAccountId: actorId, conversationId: crypto.randomUUID(), targetRepository: "PointCommunity/pointaudio", originalQuestion: "Which inputs?" });
+  const pending = await store.saveAnswer(session.id, actorId, { id: answerId, directAnswer: "The model determines physical sockets.", clarifyingQuestion: "Is it an M32R?" });
+  vi.mocked(answerQuestion).mockResolvedValueOnce({ answer: { id: revisedId, directAnswer: "The M32R has 16 local mic sockets.", clarifyingQuestion: null } } as Awaited<ReturnType<typeof answerQuestion>>);
+  const response = await action(session.id, { action: "CLARIFY", answerId, expectedVersion: pending.version, response: "Yes, M32R" });
+  expect(response.status).toBe(200);
+  expect((await response.json()).session).toMatchObject({ state: "ACTIVE", currentAnswer: { id: revisedId, clarifyingQuestion: null } });
+  expect(vi.mocked(answerQuestion).mock.calls[0]?.[0]?.trainingHistory).toEqual(expect.arrayContaining([{ actor: "USER", content: "Clarification for Is it an M32R?, turn 2: Yes, M32R" }]));
+  const stale = await action(session.id, { action: "CLARIFY", answerId, expectedVersion: pending.version, response: "No" });
+  expect(stale.status).toBe(409);
+});
+
 it("reports invalid provider output without exposing its contents", async () => {
   const session = await store.create({ trainerAccountId: actorId, conversationId: crypto.randomUUID(), targetRepository: "PointCommunity/pointaudio", originalQuestion: "How do I check sync?" });
   vi.mocked(answerQuestion).mockRejectedValueOnce(new SyntaxError("private output content"));
@@ -74,4 +87,18 @@ it("reports invalid provider output without exposing its contents", async () => 
   const payload = await failed.json();
   expect(payload.error).toMatchObject({ code: "ANSWER_FAILED", reason: "INVALID_PROVIDER_OUTPUT", message: "The provider returned an unusable answer. Your question is saved. Retry the first answer." });
   expect(JSON.stringify(payload)).not.toContain("private output content");
+});
+
+it("routes a named model automatically but requires a subject-area answer for ambiguity", async () => {
+  const sources = [{ id: "audio", fullName: "PointCommunity/pointaudio", status: "ACTIVE" }, { id: "planning", fullName: "PointCommunity/pointplanning", status: "ACTIVE" }];
+  vi.mocked(getRuntimeSourceStore).mockReturnValue({ snapshot: async () => ({ sources, chunks: [{ chunkId: "PointCommunity/pointaudio:one", metadata: { product: "Midas M32R", applicability: { model: "M32R" } } }] }) } as unknown as ReturnType<typeof getRuntimeSourceStore>);
+  vi.mocked(getRuntimeLearningRepository).mockReturnValue({ createConversation: async () => ({ id: crypto.randomUUID() }) } as unknown as ReturnType<typeof getRuntimeLearningRepository>);
+  const request = (question: string) => new Request("http://localhost/api/training/sessions", { method: "POST", headers, body: JSON.stringify({ question }) });
+  const ambiguous = await POST(request("How do we get started?"));
+  expect(ambiguous.status).toBe(409);
+  expect(await ambiguous.json()).toMatchObject({ error: { code: "SOURCE_AREA_REQUIRED" } });
+  vi.mocked(answerQuestion).mockResolvedValue({ answer: { id: crypto.randomUUID(), directAnswer: "The M32R has 16 local microphone sockets." } } as Awaited<ReturnType<typeof answerQuestion>>);
+  const routed = await POST(request("How many local M32R sockets?"));
+  expect(routed.status).toBe(201);
+  expect(await routed.json()).toMatchObject({ session: { targetRepository: "PointCommunity/pointaudio" } });
 });

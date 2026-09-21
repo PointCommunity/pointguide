@@ -84,10 +84,11 @@ export async function validateSourceRepository(value: string, options: { fetcher
       checksumsVerified++;
     }
     signal.throwIfAborted();
-    const activePaths = validateSourceContract(fullName, repo.default_branch, paths, contents);
-    const chunks = indexContents(fullName, commit, report.checkedAt, contents, activePaths);
+    const contract = validateSourceContract(fullName, repo.default_branch, paths, contents);
+    const chunks = indexContents(fullName, commit, report.checkedAt, contents, contract.activePaths, contract.items);
     if (!chunks.length) throw new Error("Repository contains no searchable evidence.");
-    return { fullName, url: parsed.url, chunks, report: { ...report, complete: true, bytesIndexed: totalBytes, checksumsVerified, filesIndexed: activePaths.length, files: activePaths, chunksIndexed: chunks.length, warnings: excluded ? [`${excluded} non-text manifest entries retained upstream; not indexed or downloaded.`] : [] } };
+    const acceptedArtifacts = parseManifest(contents.get("checksums.sha256")!).filter(entry => /^research\/pointguide-training\/[a-f0-9-]{36}\/[a-f0-9-]{36}\.json$/u.test(entry.path)).map(({ path, digest }) => ({ path, digest }));
+    return { fullName, url: parsed.url, chunks, report: { ...report, complete: true, bytesIndexed: totalBytes, checksumsVerified, filesIndexed: contract.activePaths.length, files: contract.activePaths, inventoryItems: contract.items, navigation: contract.navigation, acceptedArtifacts, chunksIndexed: chunks.length, warnings: excluded ? [`${excluded} non-text manifest entries retained upstream; not indexed or downloaded.`] : [] } };
   } catch (error) {
     controller.abort();
     if (error instanceof SourceValidationError) throw error;

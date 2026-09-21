@@ -2,11 +2,11 @@ import type { TrainingSessionRecord } from "./types";
 
 export function trainingStateLabel(session: TrainingSessionRecord): string {
   switch (session.state) {
-    case "ACTIVE": return session.currentAnswer ? "Answer ready" : "Answer needs retry";
-    case "REVISING": return "Revision needs retry";
+    case "ACTIVE": return session.currentAnswer ? "Saved" : "Needs attention";
+    case "REVISING": return "Needs attention";
     case "PUBLISHING": return "Publishing";
     case "ACTIVATING": return "Activating";
-    case "ACTIVE_KNOWLEDGE": return "Active guidance";
+    case "ACTIVE_KNOWLEDGE": return "Ready to use";
     case "FAILED": return "Needs attention";
     case "SUPERSEDED": return "Replaced by newer guidance";
     case "REPORT_READY": return "Earlier report ready";

@@ -14,6 +14,7 @@ export interface TrainingSessionStore {
   get(id: string, trainerAccountId: string): Promise<TrainingSessionRecord>;
   listTurns(id: string, trainerAccountId: string): Promise<TrainingTurn[]>;
   saveFeedback(id: string, trainerAccountId: string, expectedVersion: number, answerId: string, feedback: string): Promise<TrainingSessionRecord>;
+  saveClarification(id: string, trainerAccountId: string, expectedVersion: number, answerId: string, response: string): Promise<TrainingSessionRecord>;
   acceptAnswer(id: string, trainerAccountId: string, expectedVersion: number, answerId: string, source: import("@/lib/sources/types").SourceRepositoryRecord): Promise<TrainingSessionRecord>;
   retryPublication(id: string, trainerAccountId: string, source: import("@/lib/sources/types").SourceRepositoryRecord): Promise<TrainingSessionRecord>;
   activeGuidance(): Promise<import("./knowledge").AcceptedGuidance[]>;

@@ -27,3 +27,15 @@ it("reconstructs original question, every feedback and answer evidence after mor
   expect(history.find(turn => turn.content.includes("Answer 0"))?.content).toContain('"claims":[{"id":"claim-0"');
   expect(history).toHaveLength(42);
 });
+
+it("keeps a pending clarifying question and its response across leave and resume", async () => {
+  const store = new MemoryTrainingSessionStore();
+  const session = await store.create({ trainerAccountId: "trainer", conversationId: "conversation", targetRepository: "PointCommunity/pointaudio", originalQuestion: "Which input?" });
+  const answerId = crypto.randomUUID();
+  const answered = await store.saveAnswer(session.id, "trainer", { id: answerId, directAnswer: "Identify the console first.", clarifyingQuestion: "Is it an M32R?" });
+  await store.saveClarification(session.id, "trainer", answered.version, answerId, "Yes, M32R");
+  const loaded = await store.get(session.id, "trainer");
+  const history = trainingHistory(loaded, await store.listTurns(session.id, "trainer"));
+  expect(history.map(item => item.content).join(" ")).toContain("Is it an M32R?");
+  expect(history.map(item => item.content).join(" ")).toContain("Yes, M32R");
+});

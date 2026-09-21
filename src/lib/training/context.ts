@@ -5,6 +5,7 @@ export function trainingHistory(session: TrainingSessionRecord, turns: TrainingT
   const history: ConversationMessage[] = [{ actor: "USER", content: `Original question: ${session.originalQuestion}` }];
   for (const turn of turns) {
     if (turn.kind === "FEEDBACK") history.push({ actor: "USER", content: `Trainer feedback, turn ${turn.ordinal}: ${String(turn.content.feedback ?? "")}` });
+    else if (turn.kind === "CLARIFICATION") history.push({ actor: "USER", content: `Clarification for ${String(turn.content.question ?? "")}, turn ${turn.ordinal}: ${String(turn.content.response ?? "")}` });
     else if (turn.kind === "ANSWER") {
       const answer = turn.content.answer as Readonly<Record<string, unknown>> | undefined;
       if (!answer) continue;
@@ -16,6 +17,7 @@ export function trainingHistory(session: TrainingSessionRecord, turns: TrainingT
         steps: Array.isArray(answer.steps) ? answer.steps : [],
         safetyAndAssumptions: Array.isArray(answer.safetyAndAssumptions) ? answer.safetyAndAssumptions : [],
         confidence: answer.confidence ?? null,
+        clarifyingQuestion: answer.clarifyingQuestion ?? null,
         claims: Array.isArray(answer.claims) ? answer.claims : [],
         evidenceIds: evidence,
         guidanceIds: guidance,

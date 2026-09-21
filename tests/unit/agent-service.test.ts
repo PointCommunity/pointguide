@@ -79,12 +79,12 @@ describe("persisted answer service", () => {
     expect(result.answer.evidence.map(item => item.id)).toEqual(["repo:crown-thermal"]);
   });
 
-  it("retains relevant accepted guidance with the answer after resume", async () => {
+  it("does not treat an incomplete legacy guidance record as active training", async () => {
     const learning = new MemoryLearningRepository(); const conversation = await learning.createConversation(actor.id, "support");
     const guidance = { id: "training:digest", repository: "PointCommunity/pointaudio", path: "research/pointguide-training/a/b.json", digest: "a".repeat(64), sourceCommit: "b".repeat(40), indexedCommit: "c".repeat(40), question: "What does a red AES50 sync light on the DL32 mean?", directAnswer: "Use a short clock safety check.", evidenceIds: [], acceptedAt: "2026-09-15T12:00:00Z" };
     const result = await answerQuestion({ actor, conversationId: conversation.id, question: "Why is the DL32 AES50 link red?", deepResearch: false, providers: new MemoryProviderStore(), learning, fixture: true, guidance: [guidance] });
-    expect(result.answer.guidance).toEqual([guidance]);
-    expect((await learning.getConversation(conversation.id, actor.id)).turns[0]?.answer.guidance).toEqual([guidance]);
+    expect(result.answer.guidance).toEqual([]);
+    expect((await learning.getConversation(conversation.id, actor.id)).turns[0]?.answer.guidance).toEqual([]);
   });
 
   it("keeps unsupported accepted trainer guidance unknown without independent repository evidence", async () => {

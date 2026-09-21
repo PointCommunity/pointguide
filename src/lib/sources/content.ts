@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import { posix } from "node:path";
 import { z } from "zod";
 import type { IndexedChunk } from "@/lib/evidence/search";
+import type { SourceInventoryItem } from "./contract";
 
 interface HtmlNode { textContent: string; getAttribute(name: string): string | undefined; querySelectorAll(selector: string): HtmlNode[]; querySelector(selector: string): HtmlNode | null; remove(): void }
 // Next already ships this inert parser. Never evaluate scripts or load HTML resources.
@@ -15,14 +16,15 @@ export function safePath(path: string) {
   return path;
 }
 
-export function indexContents(fullName: string, commit: string, capturedAt: string, files: Map<string, string>, candidates: string[]): IndexedChunk[] {
+export function indexContents(fullName: string, commit: string, capturedAt: string, files: Map<string, string>, candidates: string[], items: SourceInventoryItem[] = []): IndexedChunk[] {
   const metadata = new Map<string, z.infer<typeof inventorySchema>["sources"][number]>();
+  const rootMetadata = new Map(items.map(item => [item.path, item]));
   for (const [path, text] of files) {
     if (!path.endsWith("/source-inventory.json")) continue;
     const parsed: unknown = JSON.parse(text);
     if (!parsed || typeof parsed !== "object" || !("sources" in parsed) || !Array.isArray(parsed.sources)) throw new Error(`Invalid source inventory: ${path}`);
     // Captured-source catalogs document upstream provenance; only text/page maps bind indexed files.
-    if (!parsed.pageMap && !parsed.sources.some((source: unknown) => source && typeof source === "object" && ("textPath" in source || "textPaths" in source))) continue;
+    if (!("pageMap" in parsed && parsed.pageMap) && !parsed.sources.some((source: unknown) => source && typeof source === "object" && ("textPath" in source || "textPaths" in source))) continue;
     const inventory = inventorySchema.parse(parsed);
     const directory = posix.dirname(path);
     for (const source of inventory.sources) for (const relative of source.textPaths ?? (source.textPath ? [source.textPath] : [])) {
@@ -58,21 +60,46 @@ export function indexContents(fullName: string, commit: string, capturedAt: stri
   for (const path of candidates) {
     const raw = files.get(path)!;
     const source = metadata.get(path);
-    let blocks: { text: string; locator: string }[];
+    const item = rootMetadata.get(path);
+    let blocks: { text: string; locator: string; title?: string }[];
     if (/\.html$/iu.test(path)) {
       const document = parse(raw);
       document.querySelectorAll("head,script,style,nav,noscript").forEach(node => node.remove());
       const pages = document.querySelectorAll("section[id]").filter(node => node.querySelector("pre.source-text"));
-      blocks = pages.length ? pages.map(node => ({ text: node.querySelector("pre.source-text")!.textContent, locator: node.getAttribute("id")! })) : [{ text: document.textContent, locator: "Document" }];
+      if (pages.length) blocks = pages.map(node => ({ text: node.querySelector("pre.source-text")!.textContent, locator: node.getAttribute("id")! }));
+      else {
+        const sections = document.querySelectorAll("section[id]");
+        blocks = sections.flatMap(section => {
+          const id = section.getAttribute("id")!;
+          if (id === "topics" && section.textContent.length > 8_000 && section.querySelectorAll("li").length > 20) return []; // Source maps navigate to articles; they are not answer content.
+          const children = section.textContent.length > 4_000 ? section.querySelectorAll("article,details") : [];
+          if (!children.length) return [{ text: section.textContent, locator: id }];
+          const intro = `${section.querySelector("h2")?.textContent ?? ""}. ${section.querySelector("p")?.textContent ?? ""}`.slice(0, 500);
+          return children.map((child, index) => ({ text: `${intro} ${child.textContent}`, locator: `${id}; entry ${index + 1}` }));
+        });
+        sections.forEach(section => section.remove());
+        blocks.unshift({ text: document.textContent, locator: "Document introduction" });
+      }
+    } else if (/\.json$/iu.test(path) && Array.isArray(JSON.parse(raw).records)) {
+      const records = JSON.parse(raw).records as { articleId: string; title: string; canonicalUrl?: string; applicability?: string[]; sourceExcerpt?: string; synthesis: Record<string, unknown> }[];
+      blocks = records.flatMap(record => {
+        if (!record.articleId || !record.title || !record.synthesis || typeof record.synthesis !== "object") throw new Error(`Malformed structured record: ${path}`);
+        const common = { articleId: record.articleId, title: record.title, canonicalUrl: record.canonicalUrl, applicability: record.applicability };
+        const action = JSON.stringify({ ...common, sourceExcerpt: record.sourceExcerpt, purpose: record.synthesis.purpose, prerequisites: record.synthesis.prerequisites, permissions: record.synthesis.permissions, procedure: record.synthesis.procedure, warnings: record.synthesis.warnings });
+        const recovery = JSON.stringify({ ...common, warnings: record.synthesis.warnings, recovery: record.synthesis.recovery, crossProductEffects: record.synthesis.crossProductEffects, supportEscalation: record.synthesis.supportEscalation });
+        if (action.length > 4_000 || recovery.length > 4_000) throw new Error(`Structured record exceeds the 4,000-character context budget: ${path}#${record.articleId}`);
+        return [{ text: action, locator: `${record.articleId}; procedure`, title: record.title }, { text: recovery, locator: `${record.articleId}; recovery`, title: record.title }];
+      });
     } else {
       const parts = raw.split(/={3,}\s*PDF PAGE (\d+)\s*={3,}/u);
       blocks = parts.length > 1 ? [{ text: parts[0], locator: "Front matter" }, ...Array.from({ length: (parts.length - 1) / 2 }, (_, i) => ({ text: parts[i * 2 + 2], locator: `PDF page ${parts[i * 2 + 1]}` }))] : [{ text: raw, locator: "Document" }];
     }
     let ordinal = 0;
-    for (const block of blocks) for (let start = 0; start < block.text.length; start += 1400) {
-      const text = block.text.slice(start, start + 1600).trim(); if (!text) continue;
+    for (const block of blocks) for (let start = 0; start < block.text.length; start += block.text.length <= 4_000 ? 4_000 : 1400) {
+      const end = block.text.length <= 4_000 ? block.text.length : Math.min(start + 1600, block.text.length);
+      const text = block.text.slice(start, end).trim(); if (!text) continue;
       const digest = sha256(text);
-      chunks.push({ chunkId: `${fullName}:${commit}:${path}:${ordinal++}:${digest.slice(0, 12)}`, sourceId: source?.id ?? fullName, title: source?.title ?? path.split("/").pop()!, path, locator: `${fullName}@${commit}; ${block.locator}; characters ${start + 1}-${Math.min(start + 1600, block.text.length)}${source?.versionOrDate ? `; ${source.versionOrDate}` : ""}`, authority: source ? `${source.authority}${source.publisher ? `; ${source.publisher}` : ""}` : "Linked repository guidance", versionOrDate: source?.versionOrDate, capturedAt: source?.capturedAt ? new Date(source.capturedAt).toISOString() : capturedAt, digest, text });
+      chunks.push({ chunkId: `${fullName}:${commit}:${path}:${ordinal++}:${digest.slice(0, 12)}`, sourceId: source?.id ?? item?.id ?? fullName, title: block.title ?? source?.title ?? item?.title ?? path.split("/").pop()!, path, locator: `${fullName}@${commit}; ${block.locator}; characters ${start + 1}-${end}${source?.versionOrDate ? `; ${source.versionOrDate}` : ""}`, authority: source ? `${source.authority}${source.publisher ? `; ${source.publisher}` : ""}` : item?.authority ?? "Linked repository guidance", versionOrDate: source?.versionOrDate, capturedAt: source?.capturedAt ? new Date(source.capturedAt).toISOString() : item?.capturedAt ? new Date(item.capturedAt).toISOString() : capturedAt, digest, text, metadata: item });
     }
   }
   return chunks;

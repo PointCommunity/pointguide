@@ -14,7 +14,7 @@ it("prefers accepted guidance for a relevant paraphrase, not an unrelated questi
   expect(rankAcceptedGuidance("How do I set projector brightness?", [guidance])).toEqual([]);
 });
 
-it("never presents accepted artifacts as factual repository evidence", () => {
+it("never presents unvalidated training chunks as repository evidence", () => {
   const chunk = { chunkId: "training:chunk", sourceId: "PointCommunity/pointaudio", title: "Accepted guidance", path: guidance.path, locator: "Verified accepted artifact", authority: "Trainer accepted", capturedAt: guidance.acceptedAt, digest: guidance.digest, text: guidance.directAnswer };
   expect(searchCorpus("DL32 AES50", [chunk])).toEqual([]);
 });
@@ -23,10 +23,12 @@ it("excludes inactive, archived, and superseded accepted sessions", () => {
   const session = { id: crypto.randomUUID(), trainerAccountId: "trainer", conversationId: "conversation", targetRepository: "PointCommunity/pointaudio", originalQuestion: guidance.question, state: "ACTIVE_KNOWLEDGE", currentAnswer: { id: crypto.randomUUID(), directAnswer: guidance.directAnswer, evidence: [{ id: "repo:dl32" }] }, currentReport: null, proposalId: null, createdAt: guidance.acceptedAt, updatedAt: guidance.acceptedAt, version: 2 } satisfies TrainingSessionRecord;
   const artifact = acceptedTrainingArtifact(session, "trainer", "a".repeat(40), guidance.acceptedAt);
   const active = { ...session, acceptedContent: artifact.content, acceptedDigest: artifact.digest, acceptedPath: artifact.path, indexedCommit: "b".repeat(40) } satisfies TrainingSessionRecord;
-  const source = { fullName: session.targetRepository, status: "ACTIVE", indexedCommit: "b".repeat(40) } as SourceRepositoryRecord;
-  expect(acceptedGuidanceFromSession(active, source)?.path).toBe(artifact.path);
+  const source = { fullName: session.targetRepository, status: "ACTIVE", indexedCommit: "b".repeat(40), validationReport: { valid: true, complete: true, commitSha: "b".repeat(40), acceptedArtifacts: [{ path: artifact.path, digest: artifact.digest }] } } as SourceRepositoryRecord;
+  expect(acceptedGuidanceFromSession(active, source)).toMatchObject({ path: artifact.path, answer: { directAnswer: guidance.directAnswer, evidence: [{ id: "repo:dl32" }] } });
   expect(acceptedGuidanceFromSession({ ...active, state: "FAILED" }, source)).toBeNull();
   expect(acceptedGuidanceFromSession({ ...active, state: "SUPERSEDED" }, source)).toBeNull();
   expect(acceptedGuidanceFromSession(active, { ...source, status: "ARCHIVED" })).toBeNull();
-  expect(acceptedGuidanceFromSession(active, { ...source, indexedCommit: "c".repeat(40) })).toBeNull();
+  expect(acceptedGuidanceFromSession(active, { ...source, indexedCommit: "c".repeat(40), validationReport: { ...source.validationReport, commitSha: "c".repeat(40) } })?.indexedCommit).toBe("c".repeat(40));
+  expect(acceptedGuidanceFromSession(active, { ...source, validationReport: { ...source.validationReport, acceptedArtifacts: [] } })).toBeNull();
+  expect(acceptedGuidanceFromSession(active, { ...source, validationReport: { ...source.validationReport, acceptedArtifacts: [{ path: artifact.path, digest: "0".repeat(64) }] } })).toBeNull();
 });

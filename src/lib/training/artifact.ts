@@ -11,6 +11,7 @@ const answerSchema = z.object({
 
 export function acceptedTrainingArtifact(session: TrainingSessionRecord, actorId: string, sourceCommit: string, acceptedAt: string) {
   if (!/^PointCommunity\/[A-Za-z0-9._-]+$/u.test(session.targetRepository) || !/^[a-f0-9]{40}$/u.test(sourceCommit)) throw new Error("Accepted training requires a configured repository and immutable source commit.");
+  if (hasEssentialClarification(session.currentAnswer)) throw new Error("Answer the essential clarifying question before accepting this answer.");
   const answer = answerSchema.parse(session.currentAnswer);
   const path = `research/pointguide-training/${session.id}/${answer.id}.json`;
   const content = JSON.stringify({
@@ -18,7 +19,9 @@ export function acceptedTrainingArtifact(session: TrainingSessionRecord, actorId
     answerId: answer.id, answerVersion: session.version, targetRepository: session.targetRepository,
     sourceCommit, acceptedBy: actorId, acceptedAt, originalQuestion: session.originalQuestion,
     applicability: { question: session.originalQuestion }, answer,
-    evidenceBoundary: "Trainer acceptance approves guidance, not unsupported facts. Claims still require independent source evidence.",
+    evidenceBoundary: "Trainer acceptance authorizes citable primary knowledge in this exact published artifact, not independent manufacturer verification or unsupported extrapolation.",
   }, null, 2) + "\n";
   return { path, content, digest: contentDigest(content) };
 }
+
+export function hasEssentialClarification(answer: Readonly<Record<string, unknown>> | null): boolean { return typeof answer?.clarifyingQuestion === "string" && answer.clarifyingQuestion.trim().length > 0; }

@@ -10,5 +10,5 @@ it("explains training state and recovery in trainer language", () => {
   expect(trainingRetryLabel(session)).toBe("Retry publishing");
   expect(trainingStateSummary({ ...session, publishedCommit: "a".repeat(40) })).toContain("activation needs retry");
   expect(trainingRetryLabel({ ...session, publishedCommit: "a".repeat(40) })).toBe("Retry activation");
-  expect(trainingStateLabel({ ...session, state: "ACTIVE_KNOWLEDGE" })).toBe("Active guidance");
+  expect(trainingStateLabel({ ...session, state: "ACTIVE_KNOWLEDGE" })).toBe("Ready to use");
 });

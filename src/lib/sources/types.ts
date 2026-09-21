@@ -1,4 +1,5 @@
 import type { IndexedChunk } from "@/lib/evidence/search";
+import type { SourceInventoryItem, SourceNavigation } from "./contract";
 
 export type SourceStatus = "ACTIVE" | "ARCHIVED";
 export interface SourceValidationReport {
@@ -16,6 +17,9 @@ export interface SourceValidationReport {
   filesIndexed: number;
   chunksIndexed: number;
   requirements: { agentsFile: boolean; evidenceContent: boolean; integrityManifest: boolean };
+  inventoryItems?: SourceInventoryItem[];
+  navigation?: SourceNavigation;
+  acceptedArtifacts?: { path: string; digest: string }[];
 }
 export interface SourceRepositoryRecord {
   id: string; fullName: string; url: string; status: SourceStatus; defaultBranch: string; indexedCommit: string;

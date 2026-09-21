@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { TrainingReport, TrainingSessionRecord, TrainingSessionStore, TrainingState, TrainingTurn } from "./types";
 import type { SourceRepositoryRecord } from "@/lib/sources/types";
-import { acceptedTrainingArtifact } from "./artifact";
+import { acceptedTrainingArtifact, hasEssentialClarification } from "./artifact";
 import { contentDigest } from "@/lib/git/proposals";
 import { acceptedGuidanceFromSession } from "./knowledge";
 
@@ -26,10 +26,16 @@ export class MemoryTrainingSessionStore implements TrainingSessionStore {
   private update(id: string, trainerAccountId: string, expected: TrainingState[], patch: Partial<TrainingSessionRecord>, kind?: string, content?: Readonly<Record<string, unknown>>, expectedVersion?: number, answerId?: string) { const current = this.values.get(id); if (!current || current.trainerAccountId !== trainerAccountId) throw new TrainingStateError("TRAINING_NOT_FOUND", "Training session was not found."); if (!expected.includes(current.state) || (expectedVersion !== undefined && (current.version !== expectedVersion || current.currentAnswer?.id !== answerId))) throw new TrainingStateError("INVALID_TRAINING_STATE", "That action is not available in the current training state or the answer changed."); const value = { ...current, ...patch, updatedAt: new Date().toISOString(), version: current.version + 1 }; this.values.set(id, value); if (kind && content) { const turns = this.turns.get(id) ?? []; turns.push({ ordinal: turns.length + 1, kind, content: structuredClone(content), createdAt: value.updatedAt }); this.turns.set(id, turns); } return copy(value); }
   async saveAnswer(id: string, trainerAccountId: string, answer: Readonly<Record<string, unknown>>) { return this.update(id, trainerAccountId, ["ACTIVE", "REVISING", "REPORT_READY"], { currentAnswer: answer, currentReport: null, state: "ACTIVE" }, "ANSWER", { answer }); }
   async saveFeedback(id: string, trainerAccountId: string, expectedVersion: number, answerId: string, feedback: string) { return this.update(id, trainerAccountId, ["ACTIVE"], { state: "REVISING" }, "FEEDBACK", { answerId, feedback }, expectedVersion, answerId); }
+  async saveClarification(id: string, trainerAccountId: string, expectedVersion: number, answerId: string, response: string) {
+    const current = await this.get(id, trainerAccountId);
+    if (current.state !== "ACTIVE" || !hasEssentialClarification(current.currentAnswer)) throw new TrainingStateError("INVALID_TRAINING_STATE", "No essential clarifying question is pending.");
+    return this.update(id, trainerAccountId, ["ACTIVE"], { state: "REVISING" }, "CLARIFICATION", { answerId, question: current.currentAnswer!.clarifyingQuestion, response }, expectedVersion, answerId);
+  }
   async acceptAnswer(id: string, trainerAccountId: string, expectedVersion: number, answerId: string, source: SourceRepositoryRecord) {
     const session = await this.get(id, trainerAccountId);
     if (source.status !== "ACTIVE" || source.fullName !== session.targetRepository) throw new TrainingStateError("INVALID_TRAINING_STATE", "The selected repository is no longer active.");
     if (session.version !== expectedVersion || session.currentAnswer?.id !== answerId || session.state !== "ACTIVE") throw new TrainingStateError("INVALID_TRAINING_STATE", "That answer changed. Reload before acceptance.");
+    if (hasEssentialClarification(session.currentAnswer)) throw new TrainingStateError("INVALID_TRAINING_STATE", "Answer the essential clarifying question before accepting this answer.");
     const artifact = acceptedTrainingArtifact(session, trainerAccountId, source.indexedCommit, new Date().toISOString());
     return this.update(id, trainerAccountId, ["ACTIVE"], { state: "PUBLISHING", acceptedContent: artifact.content, acceptedDigest: artifact.digest, acceptedPath: artifact.path, acceptedSourceVersion: source.version }, "ACCEPT_ANSWER", { answerId, digest: artifact.digest }, expectedVersion, answerId);
   }

@@ -3,13 +3,31 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { contentDigest } from "@/lib/git/proposals";
-import { mergeAcceptedArtifact, openProposalPullRequest, publishAcceptedArtifact, type CommandRunner } from "@/lib/git/worker";
+import { acceptedPublicationCompanions, mergeAcceptedArtifact, openProposalPullRequest, publishAcceptedArtifact, type CommandRunner } from "@/lib/git/worker";
+import { sourceFiles, upstream } from "../fixtures/source-contract";
+import { validateSourceRepository } from "@/lib/sources/validator";
 
 describe("governed Git worker", () => {
+  it("creates only the session purpose and inventory/checksum companions that validate as a source", async () => {
+    const files = sourceFiles();
+    const sessionId = crypto.randomUUID(), answerId = crypto.randomUUID();
+    const path = `research/pointguide-training/${sessionId}/${answerId}.json`;
+    const content = JSON.stringify({ schemaVersion: 2, kind: "pointguide-accepted-training", sessionId, answerId, targetRepository: "PointCommunity/test", answer: { directAnswer: "Check cable." } }) + "\n";
+    const companions = acceptedPublicationCompanions({ id: sessionId, targetRepository: "PointCommunity/test", baseCommit: "b".repeat(40), targetPath: path, proposedContent: content, digest: contentDigest(content) }, files["source-inventory.json"], files["checksums.sha256"]);
+    expect(Object.keys(companions).sort()).toEqual(["checksums.sha256", `research/pointguide-training/${sessionId}/README.md`, "source-inventory.json"].sort());
+    Object.assign(files, companions, { [path]: content });
+    const result = await validateSourceRepository("https://github.com/PointCommunity/test", { fetcher: upstream(files) });
+    expect(result.report.acceptedArtifacts).toEqual([{ path, digest: contentDigest(content) }]);
+    expect(result.chunks.map(chunk => chunk.path)).toEqual(["docs/setup.txt"]);
+    expect(() => acceptedPublicationCompanions({ id: sessionId, targetRepository: "PointCommunity/test", baseCommit: "b".repeat(40), targetPath: path, proposedContent: content, digest: contentDigest(content) }, files["source-inventory.json"], files["checksums.sha256"])).toThrow(/already|conflict/i);
+  });
   it("merges only the exact accepted training artifact after path and head verification", async () => {
     const checkout = await mkdtemp(join(tmpdir(), "pointguide-accepted-"));
     const content = JSON.stringify({ schemaVersion: 2, kind: "pointguide-accepted-training", sessionId: "00000000-0000-4000-8000-000000000011", answerId: "00000000-0000-4000-8000-000000000012", targetRepository: "PointCommunity/pointaudio", answer: { directAnswer: "Check cable." } }) + "\n";
     const path = "research/pointguide-training/00000000-0000-4000-8000-000000000011/00000000-0000-4000-8000-000000000012.json";
+    const base = sourceFiles("PointCommunity/pointaudio");
+    const input = { id: "00000000-0000-4000-8000-000000000011", targetRepository: "PointCommunity/pointaudio", baseCommit: "b".repeat(40), targetPath: path, proposedContent: content, digest: contentDigest(content) };
+    const companions = acceptedPublicationCompanions(input, base["source-inventory.json"], base["checksums.sha256"]);
     const calls: string[] = [];
     const validateHead = async (head: string) => { calls.push(`validate source ${head}`); expect(head).toBe("a".repeat(40)); };
     let merged = false;
@@ -18,14 +36,14 @@ describe("governed Git worker", () => {
       if (args[0] === "remote") return "https://github.com/PointCommunity/pointaudio.git";
       if (args[0] === "rev-parse") return "a".repeat(40);
       if (command === "gh" && args[0] === "pr" && args[1] === "create") return "https://github.com/PointCommunity/pointaudio/pull/10";
-      if (command === "gh" && args[0] === "pr" && args[1] === "diff") return path;
+      if (command === "gh" && args[0] === "pr" && args[1] === "diff") return [path, ...Object.keys(companions)].join("\n");
       if (command === "gh" && args[0] === "pr" && args[1] === "view") return merged ? JSON.stringify({ state: "MERGED", mergeCommit: { oid: "c".repeat(40) } }) : JSON.stringify({ state: "OPEN", headRefOid: "a".repeat(40) });
       if (command === "gh" && args[0] === "pr" && args[1] === "merge") { merged = true; return ""; }
-      if (args[0] === "show") return content;
+      if (args[0] === "show") { const file = args[1].split(":").slice(1).join(":"); return args[1].startsWith("b".repeat(40)) ? base[file] : file === path ? content : companions[file]; }
       return "";
     };
     try {
-      const result = await publishAcceptedArtifact({ id: "00000000-0000-4000-8000-000000000011", targetRepository: "PointCommunity/pointaudio", baseCommit: "b".repeat(40), targetPath: path, proposedContent: content, digest: contentDigest(content) }, checkout, validateHead, runner);
+      const result = await publishAcceptedArtifact(input, checkout, validateHead, runner);
       expect(result).toMatchObject({ commit: "a".repeat(40), publishedCommit: "c".repeat(40), digest: contentDigest(content) });
       const merge = calls.findIndex(call => call.includes("gh pr merge"));
       expect(merge).toBeGreaterThan(calls.findIndex(call => call.includes("gh pr diff")));
@@ -46,17 +64,39 @@ describe("governed Git worker", () => {
     const path = `research/pointguide-training/${sessionId}/${answerId}.json`;
     const content = JSON.stringify({ schemaVersion: 2, kind: "pointguide-accepted-training", sessionId, answerId, targetRepository: "PointCommunity/pointaudio", answer: { directAnswer: "Check cable." } });
     const input = { id: sessionId, targetRepository: "PointCommunity/pointaudio", baseCommit: "b".repeat(40), targetPath: path, proposedContent: content, digest: contentDigest(content) };
+    const base = sourceFiles("PointCommunity/pointaudio");
+    const companions = acceptedPublicationCompanions(input, base["source-inventory.json"], base["checksums.sha256"]);
     let merged = false;
     const runner: CommandRunner = async (command, args) => {
       if (args[0] === "remote") return "https://github.com/PointCommunity/pointaudio.git";
-      if (command === "gh" && args[1] === "diff") return path;
+      if (command === "gh" && args[1] === "diff") return [path, ...Object.keys(companions)].join("\n");
       if (command === "gh" && args[1] === "view") return JSON.stringify({ state: "OPEN", headRefOid: "a".repeat(40) });
       if (command === "gh" && args[1] === "merge") merged = true;
-      if (args[0] === "show") return content;
+      if (args[0] === "show") { const file = args[1].split(":").slice(1).join(":"); return args[1].startsWith("b".repeat(40)) ? base[file] : file === path ? content : companions[file]; }
       return "";
     };
     await expect(mergeAcceptedArtifact(input, "https://github.com/PointCommunity/pointaudio/pull/10", "/tmp/unused", async () => { throw new Error("Source checksum mismatch"); }, runner)).rejects.toThrow(/checksum/i);
     expect(merged).toBe(false);
+  });
+
+  it("refuses a changed purpose companion before validating or merging the accepted artifact", async () => {
+    const sessionId = "00000000-0000-4000-8000-000000000011", answerId = "00000000-0000-4000-8000-000000000012";
+    const path = `research/pointguide-training/${sessionId}/${answerId}.json`;
+    const content = JSON.stringify({ schemaVersion: 2, kind: "pointguide-accepted-training", sessionId, answerId, targetRepository: "PointCommunity/pointaudio", answer: { directAnswer: "Check cable." } });
+    const input = { id: sessionId, targetRepository: "PointCommunity/pointaudio", baseCommit: "b".repeat(40), targetPath: path, proposedContent: content, digest: contentDigest(content) };
+    const base = sourceFiles("PointCommunity/pointaudio");
+    const companions = acceptedPublicationCompanions(input, base["source-inventory.json"], base["checksums.sha256"]);
+    let merged = false, validated = false;
+    const runner: CommandRunner = async (command, args) => {
+      if (args[0] === "remote") return "https://github.com/PointCommunity/pointaudio.git";
+      if (command === "gh" && args[1] === "diff") return [path, ...Object.keys(companions)].join("\n");
+      if (command === "gh" && args[1] === "view") return JSON.stringify({ state: "OPEN", headRefOid: "a".repeat(40) });
+      if (command === "gh" && args[1] === "merge") merged = true;
+      if (args[0] === "show") { const file = args[1].split(":").slice(1).join(":"); return args[1].startsWith("b".repeat(40)) ? base[file] : file.endsWith("/README.md") ? "unapproved purpose change" : file === path ? content : companions[file]; }
+      return "";
+    };
+    await expect(mergeAcceptedArtifact(input, "https://github.com/PointCommunity/pointaudio/pull/10", "/tmp/unused", async () => { validated = true; }, runner)).rejects.toThrow(/companion changed/i);
+    expect(merged).toBe(false); expect(validated).toBe(false);
   });
 
   it("writes only the approved path and passes exact arguments without a shell", async () => {

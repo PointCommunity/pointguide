@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import type { PointGuideDatabase } from "@/db/client";
-import { conversations, jobs, sourceChunks, sourceRepositories, trainingSessions, trainingTurns } from "@/db/schema";
+import { conversations, jobs, sourceRepositories, trainingSessions, trainingTurns } from "@/db/schema";
 import { TrainingStateError } from "@/lib/training/store";
-import { acceptedTrainingArtifact } from "@/lib/training/artifact";
+import { acceptedTrainingArtifact, hasEssentialClarification } from "@/lib/training/artifact";
 import { contentDigest } from "@/lib/git/proposals";
-import { acceptedGuidanceFromSession } from "@/lib/training/knowledge";
+import { acceptedGuidanceFromSession, hasVerifiedAcceptedArtifact } from "@/lib/training/knowledge";
 import type { SourceRepositoryRecord } from "@/lib/sources/types";
 import type { TrainingReport, TrainingSessionRecord, TrainingSessionStore, TrainingState } from "@/lib/training/types";
 
@@ -25,18 +25,24 @@ export class PostgresTrainingSessionStore implements TrainingSessionStore {
   async activeGuidance() {
     const rows = await this.database.select({ session: trainingSessions, source: sourceRepositories }).from(trainingSessions)
       .innerJoin(sourceRepositories, eq(trainingSessions.targetRepository, sourceRepositories.fullName))
-      .where(and(eq(trainingSessions.state, "ACTIVE_KNOWLEDGE"), eq(sourceRepositories.status, "ACTIVE"), sql`exists (select 1 from ${sourceChunks} where ${sourceChunks.repositoryId} = ${sourceRepositories.id} and ${sourceChunks.path} = ${trainingSessions.acceptedPath})`));
-    return rows.flatMap(row => acceptedGuidanceFromSession(fromRow(row.session), { fullName: row.source.fullName, status: row.source.status as SourceRepositoryRecord["status"], indexedCommit: row.source.indexedCommit }) ?? []);
+      .where(and(eq(trainingSessions.state, "ACTIVE_KNOWLEDGE"), eq(sourceRepositories.status, "ACTIVE")));
+    return rows.flatMap(row => acceptedGuidanceFromSession(fromRow(row.session), { fullName: row.source.fullName, status: row.source.status as SourceRepositoryRecord["status"], indexedCommit: row.source.indexedCommit, validationReport: row.source.validationReport as unknown as SourceRepositoryRecord["validationReport"] }) ?? []);
   }
   async listTurns(id: string, trainerAccountId: string) { await this.get(id, trainerAccountId); return (await this.database.select().from(trainingTurns).where(eq(trainingTurns.sessionId, id)).orderBy(asc(trainingTurns.ordinal))).map(row => ({ ordinal: row.ordinal, kind: row.kind, content: row.content, createdAt: row.createdAt.toISOString() })); }
   private async update(id: string, trainerAccountId: string, expected: TrainingState[], patch: Partial<typeof trainingSessions.$inferInsert>, kind: string, content: Readonly<Record<string, unknown>>, expectedVersion?: number, answerId?: string) { return this.database.transaction(async (transaction) => { const [current] = await transaction.select().from(trainingSessions).where(and(eq(trainingSessions.id, id), eq(trainingSessions.trainerAccountId, trainerAccountId))).for("update"); if (!current) throw new TrainingStateError("TRAINING_NOT_FOUND", "Training session was not found."); if (!expected.includes(current.state as TrainingState) || (expectedVersion !== undefined && (current.version !== expectedVersion || current.currentAnswer?.id !== answerId))) throw new TrainingStateError("INVALID_TRAINING_STATE", "That action is not available in the current training state or the answer changed."); const [{ count }] = await transaction.select({ count: sql<number>`count(*)::int` }).from(trainingTurns).where(eq(trainingTurns.sessionId, id)); await transaction.insert(trainingTurns).values({ id: randomUUID(), sessionId: id, ordinal: count + 1, actor: kind === "ANSWER" || kind === "REPORT" ? "AGENT" : "TRAINER", kind, content, createdAt: new Date() }); const [row] = await transaction.update(trainingSessions).set({ ...patch, updatedAt: new Date(), version: current.version + 1 }).where(eq(trainingSessions.id, id)).returning(); return fromRow(row!); }); }
   async saveAnswer(id: string, trainerAccountId: string, answer: Readonly<Record<string, unknown>>, insight?: string) { return this.update(id, trainerAccountId, ["ACTIVE", "REVISING", "REPORT_READY"], { currentAnswer: answer, currentReport: null, state: "ACTIVE" }, "ANSWER", { answer, insight: insight ?? null }); }
   async saveFeedback(id: string, trainerAccountId: string, expectedVersion: number, answerId: string, feedback: string) { return this.update(id, trainerAccountId, ["ACTIVE"], { state: "REVISING" }, "FEEDBACK", { answerId, feedback }, expectedVersion, answerId); }
+  async saveClarification(id: string, trainerAccountId: string, expectedVersion: number, answerId: string, response: string) {
+    const current = await this.get(id, trainerAccountId);
+    if (current.state !== "ACTIVE" || !hasEssentialClarification(current.currentAnswer)) throw new TrainingStateError("INVALID_TRAINING_STATE", "No essential clarifying question is pending.");
+    return this.update(id, trainerAccountId, ["ACTIVE"], { state: "REVISING" }, "CLARIFICATION", { answerId, question: current.currentAnswer!.clarifyingQuestion, response }, expectedVersion, answerId);
+  }
   async acceptAnswer(id: string, trainerAccountId: string, expectedVersion: number, answerId: string, source: SourceRepositoryRecord) {
     return this.database.transaction(async transaction => {
       const [current] = await transaction.select().from(trainingSessions).where(and(eq(trainingSessions.id, id), eq(trainingSessions.trainerAccountId, trainerAccountId))).for("update");
       if (!current) throw new TrainingStateError("TRAINING_NOT_FOUND", "Training session was not found.");
       if (current.state !== "ACTIVE" || current.version !== expectedVersion || current.currentAnswer?.id !== answerId) throw new TrainingStateError("INVALID_TRAINING_STATE", "That answer changed. Reload before acceptance.");
+      if (hasEssentialClarification(current.currentAnswer)) throw new TrainingStateError("INVALID_TRAINING_STATE", "Answer the essential clarifying question before accepting this answer.");
       const [registered] = await transaction.select().from(sourceRepositories).where(eq(sourceRepositories.id, source.id)).for("update");
       if (!registered || registered.status !== "ACTIVE" || registered.fullName !== current.targetRepository || registered.version !== source.version || registered.indexedCommit !== source.indexedCommit) throw new TrainingStateError("INVALID_TRAINING_STATE", "The selected repository changed. Reload before acceptance.");
       const now = new Date(); const artifact = acceptedTrainingArtifact(fromRow(current), trainerAccountId, registered.indexedCommit, now.toISOString());
@@ -65,8 +71,7 @@ export class PostgresTrainingSessionStore implements TrainingSessionStore {
       if (!current || current.state !== "ACTIVATING" || !current.publishedCommit || !current.acceptedPath || !current.acceptedContent || current.acceptedDigest !== digest || contentDigest(current.acceptedContent) !== digest) throw new TrainingStateError("INVALID_TRAINING_STATE", "Accepted publication changed before activation.");
       const [source] = await transaction.select().from(sourceRepositories).where(eq(sourceRepositories.fullName, current.targetRepository)).for("update");
       if (!source || source.status !== "ACTIVE" || source.indexedCommit !== indexedCommit) throw new TrainingStateError("INVALID_TRAINING_STATE", "The indexed repository changed before activation.");
-      const [artifact] = await transaction.select({ id: sourceChunks.chunkId }).from(sourceChunks).where(and(eq(sourceChunks.repositoryId, source.id), eq(sourceChunks.path, current.acceptedPath))).limit(1);
-      if (!artifact) throw new TrainingStateError("INVALID_TRAINING_STATE", "The accepted artifact is absent from the indexed repository.");
+      if (!hasVerifiedAcceptedArtifact({ indexedCommit: source.indexedCommit, validationReport: source.validationReport as unknown as SourceRepositoryRecord["validationReport"] }, current.acceptedPath, digest)) throw new TrainingStateError("INVALID_TRAINING_STATE", "The accepted artifact is absent from the validated repository snapshot.");
       await transaction.update(trainingSessions).set({ state: "SUPERSEDED", updatedAt: new Date(), version: sql`${trainingSessions.version}+1` }).where(and(sql`${trainingSessions.id}<>${id}`, eq(trainingSessions.state, "ACTIVE_KNOWLEDGE"), eq(trainingSessions.targetRepository, current.targetRepository), sql`lower(trim(${trainingSessions.originalQuestion}))=lower(trim(${current.originalQuestion}))`));
       await transaction.update(trainingSessions).set({ state: "ACTIVE_KNOWLEDGE", indexedCommit, publicationError: null, updatedAt: new Date(), version: current.version + 1 }).where(eq(trainingSessions.id, id));
     });
