@@ -19,7 +19,11 @@ export function indexContents(fullName: string, commit: string, capturedAt: stri
   const metadata = new Map<string, z.infer<typeof inventorySchema>["sources"][number]>();
   for (const [path, text] of files) {
     if (!path.endsWith("/source-inventory.json")) continue;
-    const inventory = inventorySchema.parse(JSON.parse(text));
+    const parsed: unknown = JSON.parse(text);
+    if (!parsed || typeof parsed !== "object" || !("sources" in parsed) || !Array.isArray(parsed.sources)) throw new Error(`Invalid source inventory: ${path}`);
+    // Captured-source catalogs document upstream provenance; only text/page maps bind indexed files.
+    if (!parsed.pageMap && !parsed.sources.some((source: unknown) => source && typeof source === "object" && ("textPath" in source || "textPaths" in source))) continue;
+    const inventory = inventorySchema.parse(parsed);
     const directory = posix.dirname(path);
     for (const source of inventory.sources) for (const relative of source.textPaths ?? (source.textPath ? [source.textPath] : [])) {
       const target = safePath(`${directory}/${safePath(relative)}`);

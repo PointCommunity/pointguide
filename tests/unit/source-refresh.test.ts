@@ -2,20 +2,21 @@ import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { validateSourceRepository } from "@/lib/sources/validator";
 import { MemorySourceRepositoryStore } from "@/lib/sources/store";
+import { commit, digest, seal, sourceFiles, upstream as sourceUpstream } from "../fixtures/source-contract";
 
-const commit = "b".repeat(40);
 function upstream(files: Record<string, string>, overrides: { truncated?: boolean } = {}) {
-  const all = { "AGENTS.md": "Source instructions are not executable.", ...files };
-  return vi.fn(async (url: string) => {
-    if (url.endsWith("/repos/PointCommunity/test")) return Response.json({ full_name: "PointCommunity/test", default_branch: "published", html_url: "https://github.com/PointCommunity/test", pushed_at: "2026-09-14T00:00:00Z" });
-    if (url.endsWith("/commits/published") || url.endsWith(`/commits/${commit}`)) return Response.json({ sha: commit });
-    if (url.includes("/git/trees/")) return Response.json({ sha: "c".repeat(40), truncated: overrides.truncated ?? false, tree: Object.entries(all).map(([path, content]) => ({ path, type: "blob", mode: "100644", size: Buffer.byteLength(content) })) });
-    const path = decodeURIComponent(url.split(`/${commit}/`)[1] ?? "");
-    return path in all ? new Response(all[path as keyof typeof all]) : new Response(null, { status: 404 });
-  });
+  return sourceUpstream(files, "PointCommunity/test", "published", overrides);
 }
 function files(text = "Validated sermon source") {
-  return { "docs/recording.txt": text, "checksums.sha256": `${createHash("sha256").update(text).digest("hex")}  docs/recording.txt\n` };
+  const result = sourceFiles("PointCommunity/test", text);
+  result["docs/recording.txt"] = text;
+  delete result["docs/setup.txt"];
+  result["pointguide-source.yaml"] = result["pointguide-source.yaml"].replace("default_branch: main", "default_branch: published");
+  const inventory = JSON.parse(result["source-inventory.json"]);
+  inventory.items[0].path = "docs/recording.txt";
+  inventory.items[0].digest = digest(text);
+  result["source-inventory.json"] = JSON.stringify(inventory);
+  return seal(result);
 }
 
 describe("knowledge refresh contract", () => {
@@ -139,8 +140,8 @@ it("enforces actual streamed byte limits, file count, and manifest target safety
   await expect(validateSourceRepository("https://github.com/PointCommunity/test", { fetcher: upstream({ ...files(), ...Object.fromEntries(Array.from({ length: 1001 }, (_, i) => [`docs/${i}.txt`, "text"])) }) })).rejects.toThrow(/1000/);
   await expect(validateSourceRepository("https://github.com/PointCommunity/test", { fetcher: upstream({ ...files(), "checksums.sha256": `${"a".repeat(64)}  docs/missing.txt` }) })).rejects.toThrow(/target missing/);
   const original = files();
-  const result = await validateSourceRepository("https://github.com/PointCommunity/test", { fetcher: upstream({ ...original, "original.pdf": "binary", "README.md": "readme", "checksums.sha256": `${original["checksums.sha256"]}${"a".repeat(64)}  original.pdf\n${createHash("sha256").update("readme").digest("hex")}  README.md\n` }) });
-  expect(result.report.checksumsVerified).toBe(2); expect(result.report.warnings).toHaveLength(1);
+  const result = await validateSourceRepository("https://github.com/PointCommunity/test", { fetcher: upstream({ ...original, "original.pdf": "binary", "checksums.sha256": `${original["checksums.sha256"]}${"a".repeat(64)}  original.pdf\n` }) });
+  expect(result.report.checksumsVerified).toBe(Object.keys(original).length - 1); expect(result.report.warnings).toHaveLength(1);
 });
 
 it("retains generic HTML, M32 page boundaries, and detects missing inventory pages", async () => {
@@ -155,4 +156,13 @@ it("retains generic HTML, M32 page boundaries, and detects missing inventory pag
   expect(chunks.filter(chunk => chunk.locator.includes("PDF page"))).toHaveLength(2);
   contents.delete("research/manual/manual.txt");
   expect(() => indexContents("PointCommunity/test", commit, new Date().toISOString(), contents, ["docs/page.html"])).toThrow(/Inventory text missing/);
+});
+
+it("does not treat captured-source catalogs as text-to-page inventories", async () => {
+  const { indexContents } = await import("@/lib/sources/content");
+  const contents = new Map([
+    ["docs/support.txt", "Vendor-supported audio setup."],
+    ["research/capture/source-inventory.json", JSON.stringify({ sources: [{ url: "https://example.org/manual", authority: "primary", purpose: "Provenance only" }] })],
+  ]);
+  expect(indexContents("PointCommunity/test", commit, new Date().toISOString(), contents, ["docs/support.txt"])).toHaveLength(1);
 });
