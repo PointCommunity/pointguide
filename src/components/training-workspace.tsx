@@ -21,6 +21,7 @@ export function TrainingWorkspace({ resumeSessionId }: { resumeSessionId?: strin
   const [question, setQuestion] = useState(""); const [targetRepository, setTargetRepository] = useState(""); const [feedback, setFeedback] = useState(""); const [clarification, setClarification] = useState("");
   const [needsArea, setNeedsArea] = useState(false);
   const [status, setStatus] = useState("Loading training workspace…"); const [busy, setBusy] = useState(false);
+  const [feedbackAction, setFeedbackAction] = useState<"FEEDBACK" | "CLARIFY" | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -60,27 +61,30 @@ export function TrainingWorkspace({ resumeSessionId }: { resumeSessionId?: strin
 
   async function action(body: Readonly<Record<string, unknown>>) {
     if (!session) return;
+    const submittingFeedback = body.action === "FEEDBACK" || body.action === "CLARIFY";
+    setFeedbackAction(submittingFeedback ? body.action as "FEEDBACK" | "CLARIFY" : null);
     setBusy(true);
     try {
       const response = await fetch(`/api/training/sessions/${session.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       const payload = await response.json() as { session?: TrainingSessionRecord; turns?: TrainingTurn[]; error?: { message?: string } };
       if (!response.ok || !payload.session) { setStatus(payload.error?.message ?? "Training action failed. Reload or retry."); return; }
       setSession(payload.session); if (payload.turns) setTurns(payload.turns); setFeedback(""); setClarification(""); setStatus(payload.error?.message ?? "");
-    } catch { setStatus("Training action failed. Reload or retry."); }
+      if (!payload.error) setFeedbackAction(null);
+    } catch { setStatus(submittingFeedback ? "Response unavailable. Feedback may have been saved. Reload this session to check before submitting again." : "Training action failed. Reload or retry."); }
     finally { setBusy(false); }
   }
 
   async function revise(event: FormEvent) {
     event.preventDefault(); const answer = session?.currentAnswer as TrainingAnswer | null;
     if (!session || !answer?.id) return;
-    setStatus("Revising answer with your feedback and session history…");
+    setStatus("Submitting feedback and waiting for an updated answer. This can take a moment.");
     await action({ action: "FEEDBACK", answerId: answer.id, expectedVersion: session.version, feedback });
   }
 
   async function clarify(event: FormEvent) {
     event.preventDefault(); const answer = session?.currentAnswer as TrainingAnswer | null;
     if (!session || !answer?.id || !answer.clarifyingQuestion) return;
-    setStatus("Revising the answer with your clarification…");
+    setStatus("Submitting feedback and waiting for an updated answer. This can take a moment.");
     await action({ action: "CLARIFY", answerId: answer.id, expectedVersion: session.version, response: clarification });
   }
 
@@ -92,17 +96,20 @@ export function TrainingWorkspace({ resumeSessionId }: { resumeSessionId?: strin
   const pendingClarification = session?.state === "REVISING" ? [...turns].reverse().find(turn => turn.kind === "CLARIFICATION") : null;
   const updated = turns.some(turn => turn.kind === "FEEDBACK" || turn.kind === "CLARIFICATION");
   const earlierTurns = turns.filter(turn => turn.kind !== "ANSWER" || (turn.content.answer as TrainingAnswer | undefined)?.id !== answer?.id);
+  const feedbackStatus = status && feedbackAction ? <p className={`training-inline-status${busy ? " training-progress" : ""}`} role={busy ? "status" : "alert"}>{busy ? <span aria-hidden="true" /> : null}{status}</p> : null;
+  const stage = !session ? 1 : session.state === "ACTIVE_KNOWLEDGE" ? 4 : ["PUBLISHING", "ACTIVATING", "FAILED"].includes(session.state) ? 3 : 2;
 
   return <>
-    <section className="welcome-panel compact-welcome"><p className="eyebrow">Guided improvement</p><h1>Training</h1><p>Ask a question. Give feedback until the answer is ready. Accept that exact answer for future answers.</p><Link className="subpage-link" href="/training/sessions">Training Sessions <span aria-hidden="true">→</span></Link></section>
-    {status && !session ? <p className="training-status" role="status">{status}</p> : null}
+    <section className="welcome-panel compact-welcome"><p className="eyebrow">Guided improvement</p><h1>Training</h1>{!session ? <p>Ask a question. Give feedback until the answer is ready. Accept that exact answer for future answers.</p> : null}<Link className="subpage-link" href="/training/sessions">Training Sessions <span aria-hidden="true">→</span></Link></section>
+    <nav className="training-steps" aria-label="Training steps"><ol>{["Ask", "Improve", "Publish"].map((label, index) => <li key={label} className={stage > index + 1 ? "complete" : ""}><span aria-current={stage === index + 1 ? "step" : undefined}><small>{index + 1}</small>{label}</span></li>)}</ol></nav>
+    {status && !session ? <p className={`training-status${busy ? " training-progress" : ""}`} role="status">{busy ? <span aria-hidden="true" /> : null}{status}</p> : null}
     {!session ? <form className="training-session-card compact-card" onSubmit={start}>
       <h2>Start a training session</h2>
       <label>Question<textarea required maxLength={8000} value={question} onChange={event => setQuestion(event.target.value)} placeholder="Ask the question you want PointGuide to answer" /></label>
       {needsArea ? <label>Which area is this about?<select required value={targetRepository} onChange={event => setTargetRepository(event.target.value)}><option value="">Choose an area</option>{sources.map(source => <option key={source.id} value={source.fullName}>{sourceAreaLabel(source.fullName)}</option>)}</select><span className="field-hint">This helps keep accepted guidance with the right knowledge.</span></label> : null}
       <button type="submit" disabled={busy || !question.trim() || (needsArea && !targetRepository) || !sources.length}>{busy ? "Preparing answer…" : "Start training"}</button>
     </form> : <section className="training-session" aria-label="Training session">
-      <header className="training-session-header"><div><p className="eyebrow">Original question</p><h2>{session.originalQuestion}</h2><p>Area: {sourceAreaLabel(session.targetRepository)}</p></div><span>{trainingStateLabel(session)}</span></header>
+      <header className="training-session-header"><div><p className="eyebrow">Original question</p><h2>{session.originalQuestion}</h2><p>Area: {sourceAreaLabel(session.targetRepository)}</p></div><span>{session.state === "ACTIVE" && answer ? "Draft saved" : trainingStateLabel(session)}</span></header>
       {earlierTurns.length ? <section className="training-history" aria-label="Conversation so far"><h3>Conversation so far</h3><ol>{earlierTurns.map(turn => {
         if (turn.kind === "FEEDBACK") return <li key={turn.ordinal}><strong>Your feedback:</strong> {String(turn.content.feedback ?? "")}</li>;
         if (turn.kind === "CLARIFICATION") return <li key={turn.ordinal}><strong>Your clarification:</strong> {String(turn.content.response ?? "")} <small>In response to: {String(turn.content.question ?? "")}</small></li>;
@@ -120,14 +127,14 @@ export function TrainingWorkspace({ resumeSessionId }: { resumeSessionId?: strin
           {answer.claims?.length ? <section aria-label="Claim check"><h3>Claim check</h3><ul>{answer.claims.map(claim => <li key={claim.id}>{claim.status}: {claim.text} ({claim.evidenceIds.join(", ") || "no supporting source"})</li>)}</ul></section> : null}
         </div></details>
       </article> : null}
-      {canCoach && answer?.clarifyingQuestion ? <section className="training-clarification compact-card" aria-labelledby="clarifying-question-heading"><h3 id="clarifying-question-heading">Clarifying question</h3><p>{answer.clarifyingQuestion}</p><form onSubmit={clarify}><label>Your response<input required maxLength={1000} value={clarification} onChange={event => setClarification(event.target.value)} /></label><button type="submit" disabled={busy || !clarification.trim()}>Update answer</button></form><p className="field-hint">The answer above is saved, but this essential gap must be resolved before acceptance. Your response is not published as part of the accepted answer.</p></section> : null}
+      {canCoach && answer?.clarifyingQuestion ? <section className="training-clarification compact-card" aria-labelledby="clarifying-question-heading"><h3 id="clarifying-question-heading">Clarifying question</h3><p>{answer.clarifyingQuestion}</p><form onSubmit={clarify} aria-busy={busy && feedbackAction === "CLARIFY"}><label>Your response<input required maxLength={1000} value={clarification} onChange={event => setClarification(event.target.value)} /></label><button type="submit" disabled={busy || !clarification.trim()}>{busy && feedbackAction === "CLARIFY" ? "Submitting feedback…" : "Submit Feedback"}</button></form>{feedbackAction === "CLARIFY" ? feedbackStatus : null}<p className="field-hint">The answer above is saved, but this essential gap must be resolved before acceptance. Your response is not published as part of the accepted answer.</p></section> : null}
       {needsRetry ? <section className="training-status" role="alert"><p>{status || (session.state === "REVISING" ? "The revision did not complete. Your feedback is saved." : "The first answer did not complete. Your question is saved.")}</p>{pendingFeedback ? <p><strong>Feedback waiting for revision:</strong> {String(pendingFeedback.content.feedback ?? "")}</p> : null}{pendingClarification ? <p><strong>Clarification waiting for revision:</strong> {String(pendingClarification.content.response ?? "")}</p> : null}<button type="button" disabled={busy} onClick={() => { setStatus(session.state === "REVISING" ? "Retrying revision with your saved feedback…" : "Retrying the first answer…"); void action({ action: "RETRY", expectedVersion: session.version }); }}>{session.state === "REVISING" ? "Retry revision" : "Retry first answer"}</button></section> : null}
-      {canCoach ? <section className="training-feedback compact-card"><div><h3>Help PointGuide improve this answer</h3><p className="training-guidance">Describe what should change. PointGuide will use this entire session, including earlier corrections and constraints.</p></div>
-        <form onSubmit={revise}><label>Feedback for this answer<textarea required minLength={3} maxLength={4000} value={feedback} onChange={event => setFeedback(event.target.value)} placeholder="Example: Use three short numbered checks and explain what I should see after each one." /></label><button type="submit" className="secondary-button" disabled={busy || feedback.trim().length < 3}>Revise with feedback</button></form>
-        <div className="training-accept"><p><strong>Ready to teach PointGuide?</strong> Publishing makes this exact answer available to future answers in {sourceAreaLabel(session.targetRepository)}.</p>{answer?.clarifyingQuestion ? <p className="field-hint">Answer the essential clarifying question above before accepting this response.</p> : null}<button type="button" disabled={busy || !activeSource || Boolean(answer?.clarifyingQuestion)} onClick={() => { setStatus("Accepting this exact answer and preparing it for publishing…"); void action({ action: "ACCEPT_ANSWER", answerId: answer?.id, expectedVersion: session.version }); }}>Accept and publish</button></div>
-        {status ? <p className="training-inline-status" role="status">{status}</p> : null}
+      {canCoach ? <section className="training-feedback compact-card"><div><h3>Improve this answer</h3><p className="training-guidance">Describe what should change. PointGuide will use this entire session, including earlier corrections and constraints.</p></div>
+        <form onSubmit={revise} aria-busy={busy && feedbackAction === "FEEDBACK"}><label>Feedback for this answer<textarea required minLength={3} maxLength={4000} value={feedback} onChange={event => setFeedback(event.target.value)} placeholder="Example: Use three short numbered checks and explain what I should see after each one." /></label><button type="submit" className="secondary-button" disabled={busy || feedback.trim().length < 3}>{busy && feedbackAction === "FEEDBACK" ? "Submitting feedback…" : "Submit Feedback"}</button></form>
+        {feedbackAction === "FEEDBACK" ? feedbackStatus : null}
       </section> : null}
-      {["PUBLISHING", "ACTIVATING", "ACTIVE_KNOWLEDGE", "FAILED"].includes(session.state) ? <div className="training-status" role={session.state === "FAILED" ? "alert" : "status"}><p><strong>{trainingStateLabel(session)}.</strong> {trainingStateSummary(session)}</p>{session.state === "PUBLISHING" || session.state === "ACTIVATING" ? <p>Progress is saved; you can safely leave this page and return from Training Sessions.</p> : null}{session.state === "FAILED" && session.publicationError ? <p>{session.publicationError}</p> : null}{status ? <p>{status}</p> : null}{session.state === "ACTIVE_KNOWLEDGE" && session.indexedCommit && session.acceptedPath ? <p><a href={`https://github.com/${session.targetRepository}/blob/${session.indexedCommit}/${session.acceptedPath}`} target="_blank" rel="noopener noreferrer">Open active repository artifact</a><br /><small>Indexed revision: {session.indexedCommit}</small></p> : null}{session.state === "FAILED" ? <button type="button" disabled={busy || !activeSource} onClick={() => { setStatus(session.publishedCommit ? "Retrying activation without republishing…" : "Retrying publication of the saved answer…"); void action({ action: "RETRY_PUBLICATION" }); }}>{trainingRetryLabel(session)}</button> : null}</div> : null}
+      {canCoach ? <section className="training-accept compact-card"><h3>Ready to publish?</h3><p>Accepting makes this exact answer available to future answers in {sourceAreaLabel(session.targetRepository)}. If anything is incorrect, submit feedback first.</p>{answer?.clarifyingQuestion ? <p className="field-hint">Answer the essential clarifying question above before accepting this response.</p> : null}<button type="button" disabled={busy || !activeSource || Boolean(answer?.clarifyingQuestion)} onClick={() => { setStatus("Accepting this exact answer and preparing it for publishing…"); void action({ action: "ACCEPT_ANSWER", answerId: answer?.id, expectedVersion: session.version }); }}>Accept and publish</button>{status && !feedbackAction ? <p className={`training-inline-status${busy ? " training-progress" : ""}`} role={busy ? "status" : "alert"}>{busy ? <span aria-hidden="true" /> : null}{status}</p> : null}</section> : null}
+      {["PUBLISHING", "ACTIVATING", "ACTIVE_KNOWLEDGE", "FAILED"].includes(session.state) ? <div className="training-status" role={session.state === "FAILED" ? "alert" : "status"}><p className={!status && (session.state === "PUBLISHING" || session.state === "ACTIVATING") ? "training-progress" : ""}>{!status && (session.state === "PUBLISHING" || session.state === "ACTIVATING") ? <span aria-hidden="true" /> : null}<strong>{trainingStateLabel(session)}.</strong> {trainingStateSummary(session)}</p>{session.state === "PUBLISHING" || session.state === "ACTIVATING" ? <p>Progress is saved; you can safely leave this page and return from Training Sessions.</p> : null}{session.state === "FAILED" && session.publicationError ? <p>{session.publicationError}</p> : null}{status ? <p>{status}</p> : null}{session.state === "ACTIVE_KNOWLEDGE" && session.indexedCommit && session.acceptedPath ? <p><a href={`https://github.com/${session.targetRepository}/blob/${session.indexedCommit}/${session.acceptedPath}`} target="_blank" rel="noopener noreferrer">Open active repository artifact</a><br /><small>Indexed revision: {session.indexedCommit}</small></p> : null}{session.state === "FAILED" ? <button type="button" disabled={busy || !activeSource} onClick={() => { setStatus(session.publishedCommit ? "Retrying activation without republishing…" : "Retrying publication of the saved answer…"); void action({ action: "RETRY_PUBLICATION" }); }}>{trainingRetryLabel(session)}</button> : null}</div> : null}
       {["REPORT_READY", "REPORT_ACCEPTED", "PROPOSED"].includes(session.state) ? <details className="starter-accordion"><summary>Earlier learning-report workflow</summary><p>{session.currentReport?.summary ?? "Historical repository proposal: " + (session.proposalId ?? "none")}</p></details> : null}
     </section>}
   </>;

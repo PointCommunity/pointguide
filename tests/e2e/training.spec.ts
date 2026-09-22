@@ -3,19 +3,26 @@ import { expect, test } from "@playwright/test";
 test("revises an answer with feedback and preserves ordered turns after resume", async ({ page }) => {
   await page.goto("/training");
   await expect(page.getByRole("heading", { name: "Training", exact: true })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Training steps" }).getByText("Ask")).toHaveAttribute("aria-current", "step");
   await expect(page.getByLabel("Which area is this about?")).toHaveCount(0);
   await page.getByLabel("Question").fill("What does a red AES50 sync light on the DL32 mean?");
   await page.getByRole("button", { name: "Start training" }).click();
   await expect(page.getByText("PointGuide response")).toBeVisible();
-  await expect(page.getByText("Publishing makes this exact answer available", { exact: false })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Training steps" }).getByText("Improve")).toHaveAttribute("aria-current", "step");
+  await expect(page.locator(".training-accept").getByRole("button", { name: "Accept and publish" })).toBeVisible();
+  await expect(page.locator(".training-accept")).toContainText("this exact answer available to future answers");
   await expect(page.getByLabel("Feedback for this answer")).toHaveAttribute("placeholder", /numbered checks/u);
+  let finishRequest!: () => void;
+  const requestHeld = new Promise<void>(resolve => { finishRequest = resolve; });
   await page.route("**/api/training/sessions/*", async route => {
-    if (route.request().method() === "PATCH") await new Promise(resolve => setTimeout(resolve, 250));
+    if (route.request().method() === "PATCH") await requestHeld;
     await route.continue();
   });
   await page.getByLabel("Feedback for this answer").fill("Use short numbered steps and explain what I should see after each check.");
-  await page.getByRole("button", { name: "Revise with feedback" }).click();
-  await expect(page.locator(".training-feedback").getByRole("status")).toContainText("Revising");
+  await page.locator(".training-feedback").getByRole("button", { name: "Submit Feedback" }).click();
+  await expect(page.locator(".training-feedback").getByRole("status")).toContainText("Submitting feedback and waiting for an updated answer");
+  await expect(page.locator(".training-feedback").getByRole("button", { name: "Submitting feedback…" })).toBeDisabled();
+  finishRequest();
   await expect(page.getByRole("heading", { name: "Updated answer" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Clarifying question" })).toHaveCount(0);
   await expect(page.getByText("Use short numbered steps", { exact: false })).toBeVisible();
@@ -125,7 +132,7 @@ test("shows saved feedback and previous answer when revision fails, then resumes
     return route.continue();
   });
   await page.getByLabel("Feedback for this answer").fill(feedback);
-  await page.getByRole("button", { name: "Revise with feedback" }).click();
+  await page.locator(".training-feedback").getByRole("button", { name: "Submit Feedback" }).click();
   await expect(page.getByText("The revision failed. Your feedback is saved. Retry this revision.")).toBeVisible();
   await expect(page.locator(".training-answer .direct-answer")).toHaveText(original);
   await expect(page.getByText(feedback).first()).toBeVisible();
@@ -160,6 +167,7 @@ test("distinguishes publication recovery from activation recovery", async ({ pag
   let session: Record<string, unknown> = { ...base, publishedCommit: null };
   await page.route(`**/api/training/sessions/${id}`, route => route.fulfill({ status: 200, json: { session, turns: [] } }));
   await page.goto(`/training/sessions/${id}`);
+  await expect(page.getByRole("navigation", { name: "Training steps" }).getByText("Publish")).toHaveAttribute("aria-current", "step");
   await expect(page.getByRole("button", { name: "Retry publishing" })).toBeVisible();
   await expect(page.getByText("exact accepted answer is saved", { exact: false })).toBeVisible();
 
@@ -172,6 +180,7 @@ test("distinguishes publication recovery from activation recovery", async ({ pag
   const acceptedPath = `research/pointguide-training/${id}/00000000-0000-4000-8000-000000000096.json`;
   session = { ...base, state: "ACTIVE_KNOWLEDGE", publishedCommit: "a".repeat(40), indexedCommit, acceptedPath };
   await page.reload();
+  await expect(page.getByRole("navigation", { name: "Training steps" }).getByText("Publish")).not.toHaveAttribute("aria-current", "step");
   await expect(page.getByText("accepted guidance is active", { exact: false })).toBeVisible();
   await expect(page.getByText("Ready to use", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Open active repository artifact" })).toHaveAttribute("href", `https://github.com/PointCommunity/pointaudio/blob/${indexedCommit}/${acceptedPath}`);
@@ -183,10 +192,13 @@ test("separates an essential clarification from the saved answer and gates accep
   const firstId = "00000000-0000-4000-8000-000000000098";
   let session: Record<string, unknown> = { id, targetRepository: "PointCommunity/pointaudio", originalQuestion: "How many local inputs?", state: "ACTIVE", version: 2, currentAnswer: { id: firstId, directAnswer: "The count depends on the console model.", clarifyingQuestion: "Is the console an M32R?", steps: [], safetyAndAssumptions: [], evidence: [], claims: [] } };
   let turns: Record<string, unknown>[] = [{ ordinal: 1, kind: "ANSWER", content: { answer: session.currentAnswer } }];
+  let finishRequest!: () => void;
+  const requestHeld = new Promise<void>(resolve => { finishRequest = resolve; });
   await page.route(`**/api/training/sessions/${id}`, async route => {
     if (route.request().method() === "GET") return route.fulfill({ status: 200, json: { session, turns } });
     const body = route.request().postDataJSON() as { action: string; response: string };
     expect(body).toMatchObject({ action: "CLARIFY", response: "Yes, M32R" });
+    await requestHeld;
     turns = [...turns, { ordinal: 2, kind: "CLARIFICATION", content: { question: "Is the console an M32R?", response: body.response } }, { ordinal: 3, kind: "ANSWER", content: { answer: { id: "00000000-0000-4000-8000-000000000099", directAnswer: "The M32R has 16 local microphone sockets.", clarifyingQuestion: null } } }];
     session = { ...session, state: "ACTIVE", version: 4, currentAnswer: { id: "00000000-0000-4000-8000-000000000099", directAnswer: "The M32R has 16 local microphone sockets.", clarifyingQuestion: null, evidence: [], claims: [] } };
     return route.fulfill({ status: 200, json: { session, turns } });
@@ -197,7 +209,10 @@ test("separates an essential clarification from the saved answer and gates accep
   await expect(page.getByText("The count depends on the console model.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Accept and publish" })).toBeDisabled();
   await page.getByLabel("Your response").fill("Yes, M32R");
-  await page.getByRole("button", { name: "Update answer" }).click();
+  await page.locator(".training-clarification").getByRole("button", { name: "Submit Feedback" }).click();
+  await expect(page.locator(".training-clarification").getByRole("status")).toContainText("Submitting feedback and waiting for an updated answer");
+  await expect(page.locator(".training-clarification").getByRole("button", { name: "Submitting feedback…" })).toBeDisabled();
+  finishRequest();
   await expect(page.getByRole("heading", { name: "Updated answer" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Clarifying question" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Accept and publish" })).toBeEnabled();
@@ -205,4 +220,18 @@ test("separates an essential clarification from the saved answer and gates accep
   await expect(page.getByRole("heading", { name: "Updated answer" })).toBeVisible();
   await expect(page.getByText("Yes, M32R")).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+});
+
+test("does not claim feedback was saved when the response is lost", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile-320", "One focused viewport covers uncertain submission recovery.");
+  const id = "00000000-0000-4000-8000-000000000101";
+  const session = { id, targetRepository: "PointCommunity/pointaudio", originalQuestion: "How do I route the M32?", state: "ACTIVE", version: 2, currentAnswer: { id: "00000000-0000-4000-8000-000000000102", directAnswer: "Check the routing page.", steps: [], safetyAndAssumptions: [], evidence: [], claims: [] } };
+  await page.route(`**/api/training/sessions/${id}`, route => route.request().method() === "PATCH" ? route.abort("failed") : route.fulfill({ json: { session, turns: [] } }));
+  await page.goto(`/training/sessions/${id}`);
+  const feedback = page.locator(".training-feedback");
+  await feedback.getByLabel("Feedback for this answer").fill("Explain which M32 routing page and why.");
+  await feedback.getByRole("button", { name: "Submit Feedback" }).click();
+  await expect(feedback.getByRole("alert")).toContainText("Feedback may have been saved. Reload this session to check before submitting again.");
+  await expect(feedback.getByRole("button", { name: "Submit Feedback" })).toBeEnabled();
+  await expect(feedback.getByLabel("Feedback for this answer")).toHaveValue("Explain which M32 routing page and why.");
 });
