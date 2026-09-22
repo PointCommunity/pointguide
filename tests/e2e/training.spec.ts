@@ -19,6 +19,20 @@ test("shows a saved first answer in progress, resumes after reload, and reveals 
   await expect(page.getByText("Check the documented routing path.")).toBeVisible();
 });
 
+test("calls lost progress unknown instead of claiming generation is still running", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile-320", "One viewport covers polling loss.");
+  const id = "00000000-0000-4000-8000-000000000198";
+  let disconnected = false;
+  await page.route(`**/api/training/sessions/${id}`, route => disconnected
+    ? route.abort("failed")
+    : route.fulfill({ json: { session: { id, originalQuestion: "Which bus?", targetRepository: "PointCommunity/pointaudio", state: "GENERATING", version: 1, currentAnswer: null }, turns: [] } }));
+  await page.goto(`/training/sessions/${id}`);
+  await expect(page.getByRole("status")).toContainText("Your question is saved");
+  disconnected = true;
+  await expect(page.getByRole("status")).toContainText("Progress is unknown. Reload to check saved work.");
+  await expect(page.getByRole("status")).not.toContainText("PointGuide is preparing the first answer");
+});
+
 test("revises an answer with feedback and preserves ordered turns after resume", async ({ page }) => {
   await page.goto("/training");
   await expect(page.getByRole("heading", { name: "Training", exact: true })).toBeVisible();
@@ -250,7 +264,9 @@ test("does not claim feedback was saved when the response is lost", async ({ pag
   const feedback = page.locator(".training-feedback");
   await feedback.getByLabel("Feedback for this answer").fill("Explain which M32 routing page and why.");
   await feedback.getByRole("button", { name: "Submit Feedback" }).click();
-  await expect(feedback.getByRole("alert")).toContainText("Feedback may have been saved. Reload this session to check before submitting again.");
-  await expect(feedback.getByRole("button", { name: "Submit Feedback" })).toBeEnabled();
-  await expect(feedback.getByLabel("Feedback for this answer")).toHaveValue("Explain which M32 routing page and why.");
+  await expect(page.locator(".training-status[role=alert]")).toContainText("Feedback may have been saved. Reload this session to check before submitting again.");
+  await expect(page.getByRole("button", { name: "Accept and publish" })).toHaveCount(0);
+  await expect(feedback.getByRole("button", { name: "Submit Feedback" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Reload session" }).click();
+  await expect(page.getByRole("button", { name: "Accept and publish" })).toBeVisible();
 });
