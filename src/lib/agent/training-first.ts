@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { AcceptedGuidance } from "@/lib/training/knowledge";
 import type { AnswerDraft, EvidenceItem } from "./schema";
 
-export const trainingAssessmentSchema = z.object({ selected: z.array(z.object({ id: z.string(), coverage: z.enum(["COMPLETE", "PARTIAL", "CONFLICT", "INAPPLICABLE"]), missing: z.array(z.string()), rationale: z.string() })), unresolvedContext: z.string().optional() });
+export const trainingAssessmentSchema = z.object({ selected: z.array(z.object({ id: z.string(), coverage: z.enum(["COMPLETE", "PARTIAL", "CONFLICT", "INAPPLICABLE"]), missing: z.array(z.string()), rationale: z.string() })), unresolvedContext: z.string().nullish() });
 export type TrainingAssessment = z.infer<typeof trainingAssessmentSchema>;
 export interface TrainingPlan { coverage: "NONE" | "COMPLETE" | "PARTIAL" | "CONFLICT"; guidance: AcceptedGuidance[]; missing: string[]; unresolvedContext?: string }
 
@@ -31,7 +31,7 @@ export async function planAcceptedTraining(question: string, records: AcceptedGu
   }
   const coverage = selected.some(item => item.coverage === "CONFLICT") || selected.filter(item => item.coverage === "COMPLETE").length > 1 ? "CONFLICT"
     : selected.some(item => item.coverage === "PARTIAL") || assessment.unresolvedContext || selected.some(item => item.missing.length) ? "PARTIAL" : "COMPLETE";
-  return { coverage, guidance: selected.map(item => ids.get(item.id)!), missing: [...new Set(selected.flatMap(item => item.missing))], unresolvedContext: assessment.unresolvedContext };
+  return { coverage, guidance: selected.map(item => ids.get(item.id)!), missing: [...new Set(selected.flatMap(item => item.missing))], unresolvedContext: assessment.unresolvedContext ?? undefined };
 }
 
 export function trainingEvidence(record: AcceptedGuidance): EvidenceItem {

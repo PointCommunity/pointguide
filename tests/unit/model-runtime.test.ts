@@ -98,7 +98,27 @@ describe("model execution boundary", () => {
       },
     };
     await expect(generateAnswer(profile("CODEX"), "q", evidence, { secretKey: "unused", codexClient: client }, [{ actor: "USER", content: "Trainer feedback: revise this." }])).resolves.toEqual(answer);
-    expect(turnParams?.outputSchema).toMatchObject({ type: "object", required: ["directAnswer", "steps", "safetyAndAssumptions", "confidence", "claims"] });
+    expect(turnParams?.outputSchema).toMatchObject({ type: "object", required: ["directAnswer", "steps", "safetyAndAssumptions", "confidence", "clarifyingQuestion", "claims"] });
+    expect(turnParams?.outputSchema).toMatchObject({ properties: { clarifyingQuestion: { anyOf: [{ type: "string" }, { type: "null" }] } } });
+  });
+
+  it("requires nullable unresolved context in the Codex training assessment schema", async () => {
+    let listener: ((method: string, params: unknown) => void) | undefined;
+    let outputSchema: Record<string, unknown> | undefined;
+    const client: AppServerClient = {
+      subscribe(next) { listener = next; return () => { listener = undefined; }; },
+      async request(method, params) {
+        if (method === "thread/start") return { thread: { id: "thread-assessment" } };
+        outputSchema = params.outputSchema as Record<string, unknown>;
+        queueMicrotask(() => {
+          listener?.("item/agentMessage/delta", { threadId: "thread-assessment", delta: JSON.stringify({ selected: [], unresolvedContext: null }) });
+          listener?.("turn/completed", { threadId: "thread-assessment", turn: { status: "completed" } });
+        });
+        return {};
+      },
+    };
+    await expect(generateTrainingAssessment(profile("CODEX"), "Which model?", [], { secretKey: "unused", codexClient: client })).resolves.toMatchObject({ selected: [], unresolvedContext: null });
+    expect(outputSchema).toMatchObject({ required: ["selected", "unresolvedContext"], properties: { unresolvedContext: { type: ["string", "null"] } } });
   });
 
   it("reports a failed Codex turn instead of parsing an empty response", async () => {
