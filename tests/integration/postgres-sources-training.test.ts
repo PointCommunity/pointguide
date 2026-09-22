@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { execFileSync } from "node:child_process";
 import { expect, it } from "vitest";
 import { getDatabase } from "@/db/client";
 import { PostgresAccountStore } from "@/db/accounts";
@@ -13,6 +14,50 @@ import { searchCorpus } from "@/lib/evidence/search";
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 const databaseTest = testDatabaseUrl ? it : it.skip;
+
+databaseTest("queues first answers and revisions atomically, with saved feedback and bounded retry", async () => {
+  const database = getDatabase(disposableDatabaseUrl(testDatabaseUrl as string));
+  await database.execute(sql`truncate table accounts cascade`);
+  const actor = await new PostgresAccountStore(database).provisionAccount({ issuer: "https://pointguide.test", subject: "queued-owner", email: "queued@example.com", displayName: "Owner" });
+  const conversation = await new PostgresLearningRepository(database).createConversation(actor.id, "Queued training test");
+  const store = new PostgresTrainingSessionStore(database);
+  const started = await store.create({ trainerAccountId: actor.id, conversationId: conversation.id, targetRepository: "PointCommunity/pointaudio", originalQuestion: "How do I route a channel?" }, true);
+  expect(started).toMatchObject({ state: "GENERATING", currentAnswer: null, answerError: null });
+  const [firstJob] = await database.execute(sql`select payload from jobs where kind='GENERATE_TRAINING_ANSWER' and payload->>'sessionId'=${started.id}`);
+  expect(firstJob.payload).toMatchObject({ sessionId: started.id, version: started.version });
+  await store.failAnswer(started.id, started.version, "The first answer failed. Your question is saved. Retry the first answer.");
+  const failed = await store.get(started.id, actor.id);
+  expect(failed).toMatchObject({ state: "ACTIVE", currentAnswer: null, answerError: expect.stringContaining("Retry") });
+  const retried = await store.retryAnswer(started.id, actor.id, failed.version);
+  expect(retried).toMatchObject({ state: "GENERATING", answerError: null });
+  await expect(store.retryAnswer(started.id, actor.id, retried.version)).rejects.toThrow(/Reload/u);
+  const answerId = "00000000-0000-4000-8000-000000000099";
+  const answered = await store.saveAnswer(started.id, actor.id, { id: answerId, directAnswer: "Check the documented route." }, undefined, retried.version);
+  const revising = await store.saveFeedback(started.id, actor.id, answered.version, answerId, "Clarify the exact bus.", true);
+  expect(revising).toMatchObject({ state: "REVISING", answerError: null, currentAnswer: { id: answerId } });
+  expect((await store.listTurns(started.id, actor.id)).map(turn => turn.kind)).toEqual(["ANSWER", "FEEDBACK"]);
+  const queued = await database.execute(sql`select payload from jobs where kind='GENERATE_TRAINING_ANSWER' and payload->>'sessionId'=${started.id} order by created_at desc limit 1`);
+  expect(queued[0].payload).toMatchObject({ version: revising.version });
+  await store.failAnswer(started.id, revising.version, "The revision failed. Your feedback is saved. Retry this revision.");
+  expect(await store.get(started.id, actor.id)).toMatchObject({ state: "REVISING", answerError: expect.stringContaining("Retry this revision") });
+});
+
+databaseTest("worker completes a queued answer without holding the start request open", async () => {
+  const url = disposableDatabaseUrl(testDatabaseUrl as string);
+  const database = getDatabase(url);
+  await database.execute(sql`truncate table accounts cascade`);
+  await database.execute(sql`truncate table jobs`);
+  const actor = await new PostgresAccountStore(database).provisionAccount({ issuer: "https://pointguide.test", subject: "worker-owner", email: "worker@example.com", displayName: "Owner" });
+  const conversation = await new PostgresLearningRepository(database).createConversation(actor.id, "Worker training test");
+  const store = new PostgresTrainingSessionStore(database);
+  const pending = await store.create({ trainerAccountId: actor.id, conversationId: conversation.id, targetRepository: "PointCommunity/pointaudio", originalQuestion: "Which bus is this?" }, true);
+  execFileSync(process.execPath, ["./node_modules/tsx/dist/cli.mjs", "scripts/worker.ts"], { env: { ...process.env, DATABASE_URL: url, WORKER_ONCE: "true", AUTH_MODE: "fixture", NODE_ENV: "test" }, timeout: 30_000 });
+  const completed = await store.get(pending.id, actor.id);
+  expect(completed).toMatchObject({ state: "ACTIVE", answerError: null, currentAnswer: { confidence: "UNKNOWN" } });
+  expect((await store.listTurns(pending.id, actor.id)).map(turn => turn.kind)).toEqual(["ANSWER"]);
+  const [job] = await database.execute(sql`select status from jobs where payload->>'sessionId'=${pending.id}`);
+  expect(job.status).toBe("SUCCEEDED");
+}, 40_000);
 
 function disposableDatabaseUrl(value: string): string {
   const url = new URL(value);

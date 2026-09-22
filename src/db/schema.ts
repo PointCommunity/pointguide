@@ -263,6 +263,7 @@ export const trainingSessions = pgTable("training_sessions", {
   publishedCommit: text("published_commit"),
   indexedCommit: text("indexed_commit"),
   publicationError: text("publication_error"),
+  answerError: text("answer_error"),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull(),
   version: integer("version").notNull().default(1),

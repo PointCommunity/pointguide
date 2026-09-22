@@ -38,14 +38,14 @@ export function TrainingWorkspace({ resumeSessionId }: { resumeSessionId?: strin
     return () => { active = false; };
   }, [resumeSessionId]);
 
-  const pollingSessionId = session?.id; const pollingState = session?.state;
+  const pollingSessionId = session?.id; const pollingState = session?.state; const pollingAnswerError = session?.answerError;
   useEffect(() => {
-    if (!pollingSessionId || !pollingState || !["PUBLISHING", "ACTIVATING"].includes(pollingState)) return;
+    if (!pollingSessionId || !pollingState || !["GENERATING", "REVISING", "PUBLISHING", "ACTIVATING"].includes(pollingState) || (pollingState === "REVISING" && pollingAnswerError)) return;
     const timer = window.setInterval(() => {
       void fetch(`/api/training/sessions/${pollingSessionId}`, { cache: "no-store" }).then(response => response.ok ? response.json() as Promise<{ session: TrainingSessionRecord; turns: TrainingTurn[] }> : null).then(payload => { if (payload) { setSession(payload.session); setTurns(payload.turns); setStatus(""); } else setStatus("Publication status unavailable. Reload to check the accepted answer."); }).catch(() => setStatus("Publication status unavailable. Reload to check the accepted answer."));
     }, 2_000);
     return () => window.clearInterval(timer);
-  }, [pollingSessionId, pollingState]);
+  }, [pollingSessionId, pollingState, pollingAnswerError]);
 
   async function start(event: FormEvent) {
     event.preventDefault(); setBusy(true); setStatus("PointGuide is checking sources and preparing the first answer…");
@@ -55,7 +55,7 @@ export function TrainingWorkspace({ resumeSessionId }: { resumeSessionId?: strin
       if (payload.error?.code === "SOURCE_AREA_REQUIRED") { setNeedsArea(true); setStatus(payload.error.message ?? "Choose the subject area for this question."); return; }
       if (!response.ok || !payload.session) { setStatus(payload.error?.message ?? "Training session could not be started."); return; }
       router.replace(`/training/sessions/${payload.session.id}`);
-    } catch { setStatus("Training session could not be started. Try again."); }
+    } catch { setStatus("The start response is unavailable. Check Training Sessions for a saved question before trying again."); }
     finally { setBusy(false); }
   }
 
@@ -68,7 +68,7 @@ export function TrainingWorkspace({ resumeSessionId }: { resumeSessionId?: strin
       const response = await fetch(`/api/training/sessions/${session.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       const payload = await response.json() as { session?: TrainingSessionRecord; turns?: TrainingTurn[]; error?: { message?: string } };
       if (!response.ok || !payload.session) { setStatus(payload.error?.message ?? "Training action failed. Reload or retry."); return; }
-      setSession(payload.session); if (payload.turns) setTurns(payload.turns); setFeedback(""); setClarification(""); setStatus(payload.error?.message ?? "");
+      setSession(payload.error ? { ...payload.session, answerError: payload.error.message } : payload.session); if (payload.turns) setTurns(payload.turns); setFeedback(""); setClarification(""); setStatus(payload.error?.message ?? "");
       if (!payload.error) setFeedbackAction(null);
     } catch { setStatus(submittingFeedback ? "Response unavailable. Feedback may have been saved. Reload this session to check before submitting again." : "Training action failed. Reload or retry."); }
     finally { setBusy(false); }
@@ -91,7 +91,8 @@ export function TrainingWorkspace({ resumeSessionId }: { resumeSessionId?: strin
   const answer = session?.currentAnswer as TrainingAnswer | null;
   const activeSource = sources.some(source => source.fullName === session?.targetRepository);
   const canCoach = session?.state === "ACTIVE" && Boolean(answer?.id);
-  const needsRetry = session?.state === "REVISING" || (session?.state === "ACTIVE" && !answer);
+  const needsRetry = session?.state === "REVISING" && Boolean(session.answerError) || (session?.state === "ACTIVE" && !answer);
+  const generating = session?.state === "GENERATING" || (session?.state === "REVISING" && !session.answerError);
   const pendingFeedback = session?.state === "REVISING" ? [...turns].reverse().find(turn => turn.kind === "FEEDBACK") : null;
   const pendingClarification = session?.state === "REVISING" ? [...turns].reverse().find(turn => turn.kind === "CLARIFICATION") : null;
   const updated = turns.some(turn => turn.kind === "FEEDBACK" || turn.kind === "CLARIFICATION");
@@ -128,7 +129,8 @@ export function TrainingWorkspace({ resumeSessionId }: { resumeSessionId?: strin
         </div></details>
       </article> : null}
       {canCoach && answer?.clarifyingQuestion ? <section className="training-clarification compact-card" aria-labelledby="clarifying-question-heading"><h3 id="clarifying-question-heading">Clarifying question</h3><p>{answer.clarifyingQuestion}</p><form onSubmit={clarify} aria-busy={busy && feedbackAction === "CLARIFY"}><label>Your response<input required maxLength={1000} value={clarification} onChange={event => setClarification(event.target.value)} /></label><button type="submit" disabled={busy || !clarification.trim()}>{busy && feedbackAction === "CLARIFY" ? "Submitting feedback…" : "Submit Feedback"}</button></form>{feedbackAction === "CLARIFY" ? feedbackStatus : null}<p className="field-hint">The answer above is saved, but this essential gap must be resolved before acceptance. Your response is not published as part of the accepted answer.</p></section> : null}
-      {needsRetry ? <section className="training-status" role="alert"><p>{status || (session.state === "REVISING" ? "The revision did not complete. Your feedback is saved." : "The first answer did not complete. Your question is saved.")}</p>{pendingFeedback ? <p><strong>Feedback waiting for revision:</strong> {String(pendingFeedback.content.feedback ?? "")}</p> : null}{pendingClarification ? <p><strong>Clarification waiting for revision:</strong> {String(pendingClarification.content.response ?? "")}</p> : null}<button type="button" disabled={busy} onClick={() => { setStatus(session.state === "REVISING" ? "Retrying revision with your saved feedback…" : "Retrying the first answer…"); void action({ action: "RETRY", expectedVersion: session.version }); }}>{session.state === "REVISING" ? "Retry revision" : "Retry first answer"}</button></section> : null}
+      {generating ? <section className="training-status" role="status"><p className={status ? "" : "training-progress"}>{status ? null : <span aria-hidden="true" />}<strong>{trainingStateLabel(session)}.</strong> {trainingStateSummary(session)}</p>{pendingFeedback ? <p><strong>Saved feedback:</strong> {String(pendingFeedback.content.feedback ?? "")}</p> : null}{pendingClarification ? <p><strong>Saved clarification:</strong> {String(pendingClarification.content.response ?? "")}</p> : null}{status ? <p>{status}</p> : null}</section> : null}
+      {needsRetry ? <section className="training-status" role="alert"><p>{session.answerError || status || (session.state === "REVISING" ? "The revision did not complete. Your feedback is saved." : "The first answer did not complete. Your question is saved.")}</p>{pendingFeedback ? <p><strong>Feedback waiting for revision:</strong> {String(pendingFeedback.content.feedback ?? "")}</p> : null}{pendingClarification ? <p><strong>Clarification waiting for revision:</strong> {String(pendingClarification.content.response ?? "")}</p> : null}<button type="button" disabled={busy} onClick={() => { setStatus(session.state === "REVISING" ? "Retrying revision with your saved feedback…" : "Retrying the first answer…"); void action({ action: "RETRY", expectedVersion: session.version }); }}>{session.state === "REVISING" ? "Retry revision" : "Retry first answer"}</button></section> : null}
       {canCoach ? <section className="training-feedback compact-card"><div><h3>Improve this answer</h3><p className="training-guidance">Describe what should change. PointGuide will use this entire session, including earlier corrections and constraints.</p></div>
         <form onSubmit={revise} aria-busy={busy && feedbackAction === "FEEDBACK"}><label>Feedback for this answer<textarea required minLength={3} maxLength={4000} value={feedback} onChange={event => setFeedback(event.target.value)} placeholder="Example: Use three short numbered checks and explain what I should see after each one." /></label><button type="submit" className="secondary-button" disabled={busy || feedback.trim().length < 3}>{busy && feedbackAction === "FEEDBACK" ? "Submitting feedback…" : "Submit Feedback"}</button></form>
         {feedbackAction === "FEEDBACK" ? feedbackStatus : null}

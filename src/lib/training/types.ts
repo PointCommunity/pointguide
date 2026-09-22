@@ -1,4 +1,4 @@
-export type TrainingState = "ACTIVE" | "REVISING" | "PUBLISHING" | "ACTIVATING" | "ACTIVE_KNOWLEDGE" | "SUPERSEDED" | "FAILED" | "REPORT_READY" | "REPORT_ACCEPTED" | "PROPOSED";
+export type TrainingState = "ACTIVE" | "GENERATING" | "REVISING" | "PUBLISHING" | "ACTIVATING" | "ACTIVE_KNOWLEDGE" | "SUPERSEDED" | "FAILED" | "REPORT_READY" | "REPORT_ACCEPTED" | "PROPOSED";
 export interface TrainingTurn { ordinal: number; kind: string; content: Readonly<Record<string, unknown>>; createdAt: string }
 export interface TrainingReport { summary: string; learned: string[]; responseChanges: string[]; evidenceBoundary: string }
 export interface TrainingSessionRecord {
@@ -7,14 +7,16 @@ export interface TrainingSessionRecord {
   proposalId: string | null; createdAt: string; updatedAt: string; version: number;
   acceptedContent?: string | null; acceptedDigest?: string | null; acceptedPath?: string | null; acceptedSourceVersion?: number | null;
   publishedCommit?: string | null; indexedCommit?: string | null; publicationError?: string | null;
+  answerError?: string | null;
 }
 export interface TrainingSessionStore {
-  create(input: { trainerAccountId: string; conversationId: string; targetRepository: string; originalQuestion: string }): Promise<TrainingSessionRecord>;
+  create(input: { trainerAccountId: string; conversationId: string; targetRepository: string; originalQuestion: string }, queue?: boolean): Promise<TrainingSessionRecord>;
   list(trainerAccountId: string, query?: string): Promise<TrainingSessionRecord[]>;
   get(id: string, trainerAccountId: string): Promise<TrainingSessionRecord>;
   listTurns(id: string, trainerAccountId: string): Promise<TrainingTurn[]>;
-  saveFeedback(id: string, trainerAccountId: string, expectedVersion: number, answerId: string, feedback: string): Promise<TrainingSessionRecord>;
-  saveClarification(id: string, trainerAccountId: string, expectedVersion: number, answerId: string, response: string): Promise<TrainingSessionRecord>;
+  saveFeedback(id: string, trainerAccountId: string, expectedVersion: number, answerId: string, feedback: string, queue?: boolean): Promise<TrainingSessionRecord>;
+  saveClarification(id: string, trainerAccountId: string, expectedVersion: number, answerId: string, response: string, queue?: boolean): Promise<TrainingSessionRecord>;
+  retryAnswer(id: string, trainerAccountId: string, expectedVersion: number): Promise<TrainingSessionRecord>;
   acceptAnswer(id: string, trainerAccountId: string, expectedVersion: number, answerId: string, source: import("@/lib/sources/types").SourceRepositoryRecord): Promise<TrainingSessionRecord>;
   retryPublication(id: string, trainerAccountId: string, source: import("@/lib/sources/types").SourceRepositoryRecord): Promise<TrainingSessionRecord>;
   activeGuidance(): Promise<import("./knowledge").AcceptedGuidance[]>;

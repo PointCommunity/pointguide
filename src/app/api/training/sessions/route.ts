@@ -28,10 +28,11 @@ export async function POST(request: Request) {
     if (!target) return Response.json({ error: { code: "SOURCE_AREA_REQUIRED", message: "Which area is your question about? Choose one below, then start Training." } }, { status: 409 });
     const source = snapshot.sources.find((candidate) => candidate.status === "ACTIVE" && candidate.fullName === target);
     if (!source) return Response.json({ error: { code: "SOURCE_NOT_ACTIVE", message: "That area is not available for Training right now." } }, { status: 409 });
+    const environment = parseEnvironment(process.env); const fixture = environment.AUTH_MODE === "fixture";
     const learning = getRuntimeLearningRepository(); const conversation = await learning.createConversation(actor.id, `Training: ${parsed.data.question.slice(0, 90)}`);
-    const session = await getRuntimeTrainingStore().create({ trainerAccountId: actor.id, conversationId: conversation.id, targetRepository: source.fullName, originalQuestion: parsed.data.question });
+    const session = await getRuntimeTrainingStore().create({ trainerAccountId: actor.id, conversationId: conversation.id, targetRepository: source.fullName, originalQuestion: parsed.data.question }, !fixture);
+    if (!fixture) return Response.json({ session }, { status: 202 });
     try {
-      const environment = parseEnvironment(process.env); const fixture = environment.AUTH_MODE === "fixture";
       const { chunks, navigation } = await knowledgeSnapshot(getRuntimeSourceStore(), environment);
       const result = await answerQuestion({ actor, conversationId: conversation.id, question: parsed.data.question, deepResearch: false, providers: getRuntimeProviderDependencies().store, learning, fixture, modelRuntime: fixture ? undefined : getRuntimeModelRuntime(), chunks, navigation, training: true, guidance: await getRuntimeTrainingStore().activeGuidance() });
       return Response.json({ session: await getRuntimeTrainingStore().saveAnswer(session.id, actor.id, result.answer as unknown as Readonly<Record<string, unknown>>) }, { status: 201 });

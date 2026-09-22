@@ -1,5 +1,24 @@
 import { expect, test } from "@playwright/test";
 
+test("shows a saved first answer in progress, resumes after reload, and reveals worker completion", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile-320", "One viewport covers the queued start and resume contract.");
+  const id = "00000000-0000-4000-8000-000000000099";
+  let ready = false;
+  await page.route("**/api/training/sessions", route => route.request().method() === "POST"
+    ? route.fulfill({ status: 202, json: { session: { id, originalQuestion: "How do I route a channel?", targetRepository: "PointCommunity/pointaudio", state: "GENERATING", version: 1, currentAnswer: null } } })
+    : route.continue());
+  await page.route(`**/api/training/sessions/${id}`, route => route.fulfill({ json: { session: { id, originalQuestion: "How do I route a channel?", targetRepository: "PointCommunity/pointaudio", state: ready ? "ACTIVE" : "GENERATING", version: ready ? 2 : 1, currentAnswer: ready ? { id: crypto.randomUUID(), directAnswer: "Check the documented routing path.", evidence: [], claims: [] } : null }, turns: [] } }));
+  await page.goto("/training");
+  await page.getByLabel("Question").fill("How do I route a channel?");
+  await page.getByRole("button", { name: "Start training" }).click();
+  await expect(page.getByText("Your question is saved", { exact: false })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Retry first answer" })).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByText("Your question is saved", { exact: false })).toBeVisible();
+  ready = true;
+  await expect(page.getByText("Check the documented routing path.")).toBeVisible();
+});
+
 test("revises an answer with feedback and preserves ordered turns after resume", async ({ page }) => {
   await page.goto("/training");
   await expect(page.getByRole("heading", { name: "Training", exact: true })).toBeVisible();
@@ -121,7 +140,7 @@ test("shows saved feedback and previous answer when revision fails, then resumes
     if (body.action === "FEEDBACK") {
       const response = await page.request.get(request.url());
       const current = await response.json() as { session: Record<string, unknown>; turns: Record<string, unknown>[] };
-      pending = { session: { ...current.session, state: "REVISING", version: Number(current.session.version) + 1 }, turns: [...current.turns, { ordinal: current.turns.length + 1, kind: "FEEDBACK", content: { feedback } }] };
+      pending = { session: { ...current.session, state: "REVISING", answerError: "The revision failed. Your feedback is saved. Retry this revision.", version: Number(current.session.version) + 1 }, turns: [...current.turns, { ordinal: current.turns.length + 1, kind: "FEEDBACK", content: { feedback } }] };
       return route.fulfill({ status: 202, json: { ...pending, error: { code: "ANSWER_FAILED", message: "The revision failed. Your feedback is saved. Retry this revision." } } });
     }
     if (body.action === "RETRY" && pending) {
@@ -141,7 +160,7 @@ test("shows saved feedback and previous answer when revision fails, then resumes
   await page.getByRole("button", { name: "Retry revision" }).focus();
   await expect(page.getByRole("button", { name: "Retry revision" })).toBeFocused();
   await page.reload();
-  await expect(page.getByText("The revision did not complete. Your feedback is saved.")).toBeVisible();
+  await expect(page.getByText("The revision failed. Your feedback is saved. Retry this revision.")).toBeVisible();
   await page.getByRole("button", { name: "Retry revision" }).click();
   await expect(page.locator(".training-answer .direct-answer")).toHaveText("Check the documented sync indicator and earlier feedback.");
   await expect(page.getByLabel("Feedback for this answer")).toBeVisible();

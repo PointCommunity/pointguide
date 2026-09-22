@@ -56,12 +56,15 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       return Response.json({ session: accepted, turns: await store.listTurns(id, actor.id) });
     }
     if (parsed.data.action === "FEEDBACK" || parsed.data.action === "CLARIFY" || parsed.data.action === "RETRY") {
-      if (parsed.data.action === "FEEDBACK") await store.saveFeedback(id, actor.id, parsed.data.expectedVersion, parsed.data.answerId, parsed.data.feedback);
-      else if (parsed.data.action === "CLARIFY") await store.saveClarification(id, actor.id, parsed.data.expectedVersion, parsed.data.answerId, parsed.data.response);
+      const fixture = parseEnvironment(process.env).AUTH_MODE === "fixture";
+      if (parsed.data.action === "FEEDBACK") await store.saveFeedback(id, actor.id, parsed.data.expectedVersion, parsed.data.answerId, parsed.data.feedback, !fixture);
+      else if (parsed.data.action === "CLARIFY") await store.saveClarification(id, actor.id, parsed.data.expectedVersion, parsed.data.answerId, parsed.data.response, !fixture);
+      else if (!fixture) await store.retryAnswer(id, actor.id, parsed.data.expectedVersion);
       else if (session.version !== parsed.data.expectedVersion || (session.state !== "REVISING" && !(session.state === "ACTIVE" && !session.currentAnswer))) throw new TrainingStateError("INVALID_TRAINING_STATE", "Reload the session before retrying the answer.");
+      if (!fixture) return Response.json({ session: await store.get(id, actor.id), turns: await store.listTurns(id, actor.id) }, { status: 202 });
       try {
         const current = await store.get(id, actor.id); const turns = await store.listTurns(id, actor.id);
-        const environment = parseEnvironment(process.env); const fixture = environment.AUTH_MODE === "fixture";
+        const environment = parseEnvironment(process.env);
         const { chunks, navigation } = await knowledgeSnapshot(getRuntimeSourceStore(), environment);
         const result = await answerQuestion({ actor, conversationId: current.conversationId, question: current.originalQuestion, deepResearch: false, providers: getRuntimeProviderDependencies().store, learning: getRuntimeLearningRepository(), fixture, modelRuntime: fixture ? undefined : getRuntimeModelRuntime(), chunks, navigation, training: true, trainingHistory: trainingHistory(current, turns), guidance: await store.activeGuidance() });
         const saved = await store.saveAnswer(id, actor.id, result.answer as unknown as Readonly<Record<string, unknown>>);

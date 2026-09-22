@@ -3,7 +3,8 @@ import type { TrainingSessionRecord } from "./types";
 export function trainingStateLabel(session: TrainingSessionRecord): string {
   switch (session.state) {
     case "ACTIVE": return session.currentAnswer ? "Saved" : "Needs attention";
-    case "REVISING": return "Needs attention";
+    case "GENERATING": return "Preparing answer";
+    case "REVISING": return session.answerError ? "Needs attention" : "Revising answer";
     case "PUBLISHING": return "Publishing";
     case "ACTIVATING": return "Activating";
     case "ACTIVE_KNOWLEDGE": return "Ready to use";
@@ -18,7 +19,8 @@ export function trainingStateLabel(session: TrainingSessionRecord): string {
 export function trainingStateSummary(session: TrainingSessionRecord): string {
   switch (session.state) {
     case "ACTIVE": return session.currentAnswer ? "PointGuide's answer is ready for your feedback." : "Your question is saved; the first answer needs retry.";
-    case "REVISING": return "Your feedback is saved; the revision needs retry.";
+    case "GENERATING": return "Your question is saved. PointGuide is preparing the first answer; you can leave and return later.";
+    case "REVISING": return session.answerError ? "Your feedback is saved; the revision needs retry." : "Your feedback is saved. PointGuide is preparing the updated answer; you can leave and return later.";
     case "PUBLISHING": return `Saving the exact accepted answer to ${session.targetRepository}.`;
     case "ACTIVATING": return "The answer is published; PointGuide is validating and activating it.";
     case "ACTIVE_KNOWLEDGE": return "The accepted guidance is active and available to future answers.";

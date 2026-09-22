@@ -102,3 +102,22 @@ it("routes a named model automatically but requires a subject-area answer for am
   expect(routed.status).toBe(201);
   expect(await routed.json()).toMatchObject({ session: { targetRepository: "PointCommunity/pointaudio" } });
 });
+
+it("returns saved live sessions and feedback before the provider runs", async () => {
+  vi.stubEnv("AUTH_MODE", "cloudflare");
+  const sources = [{ id: "audio", fullName: "PointCommunity/pointaudio", status: "ACTIVE" }];
+  vi.mocked(getRuntimeSourceStore).mockReturnValue({ snapshot: async () => ({ sources, chunks: [] }) } as unknown as ReturnType<typeof getRuntimeSourceStore>);
+  const conversationId = crypto.randomUUID();
+  vi.mocked(getRuntimeLearningRepository).mockReturnValue({ createConversation: async () => ({ id: conversationId }) } as unknown as ReturnType<typeof getRuntimeLearningRepository>);
+  const response = await POST(new Request("http://localhost/api/training/sessions", { method: "POST", headers, body: JSON.stringify({ question: "How do I route a channel?", targetRepository: "PointCommunity/pointaudio" }) }));
+  expect(response.status).toBe(202);
+  const { session } = await response.json();
+  expect(session).toMatchObject({ state: "GENERATING", currentAnswer: null, targetRepository: "PointCommunity/pointaudio" });
+  expect(answerQuestion).not.toHaveBeenCalled();
+  const answerId = crypto.randomUUID();
+  const answered = await store.saveAnswer(session.id, actorId, { id: answerId, directAnswer: "Check the route." });
+  const revised = await action(session.id, { action: "FEEDBACK", answerId, expectedVersion: answered.version, feedback: "Check the right bus first." });
+  expect(revised.status).toBe(202);
+  expect(await revised.json()).toMatchObject({ session: { state: "REVISING", answerError: null }, turns: [{ kind: "ANSWER" }, { kind: "FEEDBACK" }] });
+  expect(answerQuestion).not.toHaveBeenCalled();
+});
