@@ -107,7 +107,7 @@ it("routes a named model automatically but requires a subject-area answer for am
 it("returns saved live sessions and feedback before the provider runs", async () => {
   vi.stubEnv("AUTH_MODE", "cloudflare");
   const sources = [{ id: "audio", fullName: "PointCommunity/pointaudio", status: "ACTIVE" }];
-  vi.mocked(getRuntimeSourceStore).mockReturnValue({ snapshot: async () => ({ sources, chunks: [] }) } as unknown as ReturnType<typeof getRuntimeSourceStore>);
+  vi.mocked(getRuntimeSourceStore).mockReturnValue({ list: async () => sources } as unknown as ReturnType<typeof getRuntimeSourceStore>);
   const conversationId = crypto.randomUUID();
   vi.mocked(getRuntimeLearningRepository).mockReturnValue({ createConversation: async () => ({ id: conversationId }) } as unknown as ReturnType<typeof getRuntimeLearningRepository>);
   const response = await POST(new Request("http://localhost/api/training/sessions", { method: "POST", headers, body: JSON.stringify({ question: "How do I route a channel?", targetRepository: "PointCommunity/pointaudio" }) }));
@@ -123,9 +123,29 @@ it("returns saved live sessions and feedback before the provider runs", async ()
   expect(answerQuestion).not.toHaveBeenCalled();
 });
 
+it("starts selected-area training with material without loading the indexed corpus", async () => {
+  vi.stubEnv("AUTH_MODE", "cloudflare");
+  const sourceStore = {
+    list: vi.fn().mockResolvedValue([{ id: "audio", fullName: "PointCommunity/pointaudio", status: "ACTIVE" }]),
+    snapshot: vi.fn().mockRejectedValue(new Error("full corpus must not load during session creation")),
+  };
+  vi.mocked(getRuntimeSourceStore).mockReturnValue(sourceStore as unknown as ReturnType<typeof getRuntimeSourceStore>);
+  vi.mocked(getRuntimeLearningRepository).mockReturnValue({ createConversation: async () => ({ id: crypto.randomUUID() }) } as unknown as ReturnType<typeof getRuntimeLearningRepository>);
+  const form = new FormData();
+  form.set("question", "How do I add a channel to a bus?");
+  form.set("targetRepository", "PointCommunity/pointaudio");
+  form.set("urls", "https://example.com/manual");
+  form.set("sources", new File(["%PDF-1.7\n"], "manual.pdf", { type: "application/pdf" }));
+  const response = await POST(new Request("http://localhost/api/training/sessions", { method: "POST", headers: { "x-pointguide-fixture-subject": "owner", "x-pointguide-fixture-email": "owner@example.com" }, body: form }));
+  expect(response.status).toBe(202);
+  expect(await response.json()).toMatchObject({ session: { state: "GENERATING", targetRepository: "PointCommunity/pointaudio" } });
+  expect(sourceStore.snapshot).not.toHaveBeenCalled();
+  expect(answerQuestion).not.toHaveBeenCalled();
+});
+
 it("uses uploaded trainer material immediately and republishes the answer when material changes", async () => {
   const sourceRepository = { id: "audio", fullName: "PointCommunity/pointaudio", status: "ACTIVE" };
-  vi.mocked(getRuntimeSourceStore).mockReturnValue({ snapshot: async () => ({ sources: [sourceRepository], chunks: [] }) } as unknown as ReturnType<typeof getRuntimeSourceStore>);
+  vi.mocked(getRuntimeSourceStore).mockReturnValue({ list: async () => [sourceRepository] } as unknown as ReturnType<typeof getRuntimeSourceStore>);
   vi.mocked(getRuntimeLearningRepository).mockReturnValue({ createConversation: async () => ({ id: crypto.randomUUID() }) } as unknown as ReturnType<typeof getRuntimeLearningRepository>);
   vi.mocked(answerQuestion).mockResolvedValue({ answer: { id: crypto.randomUUID(), directAnswer: "Use the trainer-provided routing note." } } as Awaited<ReturnType<typeof answerQuestion>>);
   const form = new FormData(); form.set("question", "How do I route this channel?"); form.set("targetRepository", sourceRepository.fullName); form.set("sources", new File(["Route channel 1 to bus 2."], "routing.txt", { type: "text/plain" }));

@@ -28,10 +28,11 @@ export async function POST(request: Request) {
     if (!parsed.success) return Response.json({ error: { code: "INVALID_TRAINING", message: "Enter a question to start Training." } }, { status: 400 });
     const sourceInputs = form ? await parseTrainingSourceForm(form) : [];
     const sourceStore = getRuntimeSourceStore();
-    const snapshot = await sourceStore.snapshot();
-    const target = parsed.data.targetRepository ?? selectTrainingSource(parsed.data.question, snapshot.sources, snapshot.chunks);
+    const snapshot = parsed.data.targetRepository ? null : await sourceStore.snapshot();
+    const sources = snapshot?.sources ?? await sourceStore.list();
+    const target = parsed.data.targetRepository ?? selectTrainingSource(parsed.data.question, sources, snapshot?.chunks ?? []);
     if (!target) return Response.json({ error: { code: "SOURCE_AREA_REQUIRED", message: "Which area is your question about? Choose one below, then start Training." } }, { status: 409 });
-    const source = snapshot.sources.find((candidate) => candidate.status === "ACTIVE" && candidate.fullName === target);
+    const source = sources.find((candidate) => candidate.status === "ACTIVE" && candidate.fullName === target);
     if (!source) return Response.json({ error: { code: "SOURCE_NOT_ACTIVE", message: "That area is not available for Training right now." } }, { status: 409 });
     const environment = parseEnvironment(process.env); const fixture = environment.AUTH_MODE === "fixture";
     const learning = getRuntimeLearningRepository(); const conversation = await learning.createConversation(actor.id, `Training: ${parsed.data.question.slice(0, 90)}`);
