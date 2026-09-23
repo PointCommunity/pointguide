@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { execFileSync } from "node:child_process";
+import { PDFDocument, StandardFonts } from "pdf-lib";
 import { expect, it } from "vitest";
 import { getDatabase } from "@/db/client";
 import { PostgresAccountStore } from "@/db/accounts";
@@ -64,6 +65,33 @@ databaseTest("worker completes a queued answer without holding the start request
   const [job] = await database.execute(sql`select status from jobs where payload->>'sessionId'=${pending.id}`);
   expect(job.status).toBe("SUCCEEDED");
 }, 40_000);
+
+databaseTest("worker prepares later material when an earlier source fails", async () => {
+  const url = disposableDatabaseUrl(testDatabaseUrl as string);
+  const database = getDatabase(url);
+  await database.execute(sql`truncate table accounts cascade`);
+  await database.execute(sql`truncate table jobs`);
+  const actor = await new PostgresAccountStore(database).provisionAccount({ issuer: "https://pointguide.test", subject: "source-failure-owner", email: "source-failure@example.com", displayName: "Owner" });
+  const conversation = await new PostgresLearningRepository(database).createConversation(actor.id, "Source failure test");
+  const pdf = await PDFDocument.create();
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  pdf.addPage().drawText("Route channel 1 to bus 2.", { font });
+  const store = new PostgresTrainingSessionStore(database);
+  const session = await store.create({ trainerAccountId: actor.id, conversationId: conversation.id, targetRepository: "PointCommunity/pointaudio", originalQuestion: "How do I route a channel?" }, true, [
+    { kind: "URL", originalName: "blocked", mediaType: "text/html", sourceUrl: "http://127.0.0.1/" },
+    { kind: "FILE", originalName: "routing.pdf", mediaType: "application/pdf", originalBytes: Buffer.from(await pdf.save()) },
+  ]);
+  const runWorker = () => execFileSync(process.execPath, ["./node_modules/tsx/dist/cli.mjs", "scripts/worker.ts"], { env: { ...process.env, DATABASE_URL: url, WORKER_ONCE: "true", AUTH_MODE: "fixture", NODE_ENV: "test" }, timeout: 40_000 });
+  runWorker();
+  const [failedUrl, readyPdf] = await store.listSources(session.id, actor.id);
+  expect(failedUrl).toMatchObject({ kind: "URL", status: "FAILED" });
+  expect(readyPdf).toMatchObject({ originalName: "routing.pdf", status: "READY", extractedDigest: expect.stringMatching(/^[a-f0-9]{64}$/u) });
+  const failed = await store.get(session.id, actor.id);
+  expect(failed).toMatchObject({ state: "ACTIVE", answerError: expect.stringContaining("trainer sources") });
+  await store.removeSource(session.id, actor.id, failed.version, failedUrl!.id, true);
+  runWorker();
+  expect(await store.get(session.id, actor.id)).toMatchObject({ state: "ACTIVE", answerError: null, currentAnswer: { evidence: [expect.objectContaining({ kind: "TRAINER_SOURCE", title: "routing.pdf" })] } });
+}, 90_000);
 
 function disposableDatabaseUrl(value: string): string {
   const url = new URL(value);

@@ -39,6 +39,7 @@ async function generateTrainingAnswer(sessionId: string, version: number) {
   const profile = await providerDependencies.store.getExecutionProfile("PRIMARY");
   const modelRuntime = environment.AUTH_MODE === "fixture" ? undefined : getRuntimeModelRuntime();
   const sourceRecords = await store.listSourceContents(sessionId, actor.id);
+  let sourceFailed = false;
   for (const source of sourceRecords.filter(item => item.status !== "READY")) {
     try {
       const prepared = await prepareTrainingSource(source, { describeImage: async (bytes, mediaType) => {
@@ -50,9 +51,10 @@ async function generateTrainingAnswer(sessionId: string, version: number) {
     } catch (error) {
       console.warn("training-source-failed", { sourceId: source.id, type: source.kind, detail: error instanceof Error ? error.message.slice(0, 200) : "unknown" });
       await store.failSource(source.id, sessionId, "This source could not be prepared. Check its type, size, or availability, then retry.");
-      throw new Error("TRAINING_SOURCE_FAILED");
+      sourceFailed = true;
     }
   }
+  if (sourceFailed) throw new Error("TRAINING_SOURCE_FAILED");
   const preparedSources = await store.listSourceContents(sessionId, actor.id);
   const { chunks, navigation } = await knowledgeSnapshot(new PostgresSourceRepositoryStore(database), environment);
   const fixture = environment.AUTH_MODE === "fixture";

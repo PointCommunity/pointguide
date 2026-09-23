@@ -76,12 +76,19 @@ const publicAddress = (value: string): boolean => { const family = isIP(value); 
 
 async function defaultResolve(hostname: string): Promise<Address[]> { return dnsLookup(hostname, { all: true, verbatim: true }); }
 
+export function pinnedLookup(selected: Address): NonNullable<RequestOptions["lookup"]> {
+  return (_hostname, options, callback) => {
+    if (options.all) callback(null, [selected]);
+    else callback(null, selected.address, selected.family);
+  };
+}
+
 async function defaultRequest(url: URL, selected: Address): Promise<WebResponse> {
   return new Promise((resolve, reject) => {
     const options: RequestOptions = {
       protocol: url.protocol, hostname: url.hostname, port: url.port || undefined, path: `${url.pathname}${url.search}`,
       method: "GET", headers: { accept: "text/html,application/xhtml+xml,text/plain;q=0.8", "accept-encoding": "identity", "user-agent": "PointGuide/1.0" },
-      lookup: ((_hostname: string, _options: unknown, callback: (error: NodeJS.ErrnoException | null, address: string, family: number) => void) => callback(null, selected.address, selected.family)) as RequestOptions["lookup"],
+      lookup: pinnedLookup(selected),
     };
     const request = (url.protocol === "https:" ? httpsRequest : httpRequest)(options, response => {
       const chunks: Buffer[] = []; let size = 0;

@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   captureTrainingWebPage,
   assertTrainingSourceCapacity,
+  pinnedLookup,
   parseTrainingSourceForm,
   prepareTrainingSource,
   trainingSourceEvidence,
@@ -37,6 +38,16 @@ function source(overrides: Partial<TrainingSourceContent> = {}): TrainingSourceC
 }
 
 describe("training source intake", () => {
+  it("returns the pinned address in Node single- and all-address lookup modes", () => {
+    const lookup = pinnedLookup({ address: "93.184.216.34", family: 4 });
+    const callback = vi.fn();
+    lookup("example.com", { all: true }, callback);
+    expect(callback).toHaveBeenCalledWith(null, [{ address: "93.184.216.34", family: 4 }]);
+    callback.mockClear();
+    lookup("example.com", { all: false }, callback);
+    expect(callback).toHaveBeenCalledWith(null, "93.184.216.34", 4);
+  });
+
   it("parses allowed files and website URLs with bounded totals", async () => {
     const data = new FormData();
     data.append("urls", "https://example.com/guide\nhttps://docs.example.com/setup");
