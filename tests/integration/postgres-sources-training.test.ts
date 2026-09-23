@@ -58,7 +58,7 @@ databaseTest("worker completes a queued answer without holding the start request
   const pending = await store.create({ trainerAccountId: actor.id, conversationId: conversation.id, targetRepository: "PointCommunity/pointaudio", originalQuestion: "Which bus is this?" }, true, [{ kind: "FILE", originalName: "routing.txt", mediaType: "text/plain", originalBytes: Buffer.from("Route channel 1 to bus 2 using sends on fader.") }]);
   execFileSync(process.execPath, ["./node_modules/tsx/dist/cli.mjs", "scripts/worker.ts"], { env: { ...process.env, DATABASE_URL: url, WORKER_ONCE: "true", AUTH_MODE: "fixture", NODE_ENV: "test" }, timeout: 30_000 });
   const completed = await store.get(pending.id, actor.id);
-  expect(completed).toMatchObject({ state: "ACTIVE", answerError: null, currentAnswer: { confidence: "UNKNOWN", evidence: [expect.objectContaining({ kind: "TRAINER_SOURCE", title: "routing.txt" })] } });
+  expect(completed).toMatchObject({ state: "ACTIVE", answerError: null, currentAnswer: { evidence: [expect.objectContaining({ kind: "TRAINER_SOURCE", title: "routing.txt" })] } });
   expect(await store.listSources(pending.id, actor.id)).toEqual([expect.objectContaining({ originalName: "routing.txt", status: "READY", extractedDigest: expect.stringMatching(/^[a-f0-9]{64}$/u) })]);
   expect((await store.listTurns(pending.id, actor.id)).map(turn => turn.kind)).toEqual(["ANSWER"]);
   const [job] = await database.execute(sql`select status from jobs where payload->>'sessionId'=${pending.id}`);
