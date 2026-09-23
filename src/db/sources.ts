@@ -27,7 +27,7 @@ export class PostgresSourceRepositoryStore implements SourceRepositoryStore {
     await this.syncBuiltin();
     return this.database.transaction(async transaction => {
       const sources = (await transaction.select().from(sourceRepositories).orderBy(asc(sourceRepositories.fullName))).map(fromRow);
-      const rows = await transaction.select({ chunk: sourceChunks, source: sourceRepositories }).from(sourceChunks).innerJoin(sourceRepositories, eq(sourceChunks.repositoryId, sourceRepositories.id)).where(eq(sourceRepositories.status, "ACTIVE"));
+      const rows = await transaction.select({ chunk: sourceChunks }).from(sourceChunks).innerJoin(sourceRepositories, eq(sourceChunks.repositoryId, sourceRepositories.id)).where(eq(sourceRepositories.status, "ACTIVE"));
       const inventories = new Map(sources.map(source => [source.id, new Map(source.validationReport.inventoryItems?.map(item => [item.path, item]) ?? [])]));
       return { sources, chunks: rows.map(({ chunk }) => fromChunk(chunk, inventories.get(chunk.repositoryId)?.get(chunk.path))) };
     }, { isolationLevel: "repeatable read", accessMode: "read only" });

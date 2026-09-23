@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { PDFDocument, StandardFonts } from "pdf-lib";
 import { expect, it } from "vitest";
 import { getDatabase } from "@/db/client";
@@ -81,9 +82,13 @@ databaseTest("worker prepares later material when an earlier source fails", asyn
     { kind: "URL", originalName: "blocked", mediaType: "text/html", sourceUrl: "http://127.0.0.1/" },
     { kind: "FILE", originalName: "routing.pdf", mediaType: "application/pdf", originalBytes: Buffer.from(await pdf.save()) },
   ]);
+  const urlSource = (await store.listSources(session.id, actor.id)).find(source => source.kind === "URL")!;
+  await database.execute(sql`update training_sources set created_at=created_at-interval '1 second' where id=${urlSource.id}`);
   const runWorker = () => execFileSync(process.execPath, ["./node_modules/tsx/dist/cli.mjs", "scripts/worker.ts"], { env: { ...process.env, DATABASE_URL: url, WORKER_ONCE: "true", AUTH_MODE: "fixture", NODE_ENV: "test" }, timeout: 40_000 });
   runWorker();
-  const [failedUrl, readyPdf] = await store.listSources(session.id, actor.id);
+  const sources = await store.listSources(session.id, actor.id);
+  const failedUrl = sources.find(source => source.kind === "URL");
+  const readyPdf = sources.find(source => source.originalName === "routing.pdf");
   expect(failedUrl).toMatchObject({ kind: "URL", status: "FAILED" });
   expect(readyPdf).toMatchObject({ originalName: "routing.pdf", status: "READY", extractedDigest: expect.stringMatching(/^[a-f0-9]{64}$/u) });
   const failed = await store.get(session.id, actor.id);
@@ -91,6 +96,31 @@ databaseTest("worker prepares later material when an earlier source fails", asyn
   await store.removeSource(session.id, actor.id, failed.version, failedUrl!.id, true);
   runWorker();
   expect(await store.get(session.id, actor.id)).toMatchObject({ state: "ACTIVE", answerError: null, currentAnswer: { evidence: [expect.objectContaining({ kind: "TRAINER_SOURCE", title: "routing.pdf" })] } });
+}, 90_000);
+
+databaseTest("source snapshots do not repeat repository reports for every chunk", async () => {
+  const url = disposableDatabaseUrl(testDatabaseUrl as string);
+  const database = getDatabase(url);
+  const repositoryId = randomUUID();
+  await database.execute(sql`insert into source_repositories (id, full_name, url, status, default_branch, indexed_commit, validation_report, linked_at, updated_at)
+    values (${repositoryId}, ${`PointCommunity/snapshot-memory-${repositoryId}`}, 'https://github.com/PointCommunity/snapshot-memory', 'ACTIVE', 'main', ${"a".repeat(40)},
+      jsonb_build_object('inventoryItems', (select jsonb_agg(jsonb_build_object('path', 'docs/' || number || '.md', 'purpose', md5(number::text)))
+        from generate_series(1, 1000) as number)), now(), now())`);
+  try {
+    await database.execute(sql`insert into source_chunks (repository_id, chunk_id, source_id, title, path, locator, authority, captured_at, digest, content)
+      select ${repositoryId}, 'snapshot-memory:' || number, 'source', 'Snapshot', 'docs/large.md', 'line 1', 'test', now(), ${"b".repeat(64)}, 'Small chunk'
+      from generate_series(1, 2200) as number`);
+    const script = `import { getDatabase } from "./src/db/client"; import { PostgresSourceRepositoryStore } from "./src/db/sources";
+      let peak = process.memoryUsage().rss; const timer = setInterval(() => { peak = Math.max(peak, process.memoryUsage().rss); }, 1);
+      void (async () => { const snapshot = await new PostgresSourceRepositoryStore(getDatabase(process.env.DATABASE_URL!)).snapshot();
+        clearInterval(timer); process.stdout.write(JSON.stringify({ count: snapshot.chunks.filter(chunk => chunk.chunkId.startsWith("snapshot-memory:")).length, peak })); process.exit(0); })();`;
+    const output = execFileSync(process.execPath, ["--max-old-space-size=256", "./node_modules/tsx/dist/cli.mjs", "-e", script],
+      { env: { ...process.env, DATABASE_URL: url }, timeout: 60_000, maxBuffer: 100_000 });
+    expect(JSON.parse(output.toString()).count).toBe(2200);
+    expect(JSON.parse(output.toString()).peak).toBeLessThan(256 * 1024 * 1024);
+  } finally {
+    await database.execute(sql`delete from source_repositories where id=${repositoryId}`);
+  }
 }, 90_000);
 
 function disposableDatabaseUrl(value: string): string {
