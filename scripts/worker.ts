@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import postgres from "postgres";
 import { contentDigest } from "../src/lib/git/proposals";
-import { mergeAcceptedArtifact, openProposalPullRequest, publishAcceptedArtifact, runCommand, verifyPublicationFiles, type ApprovedProposal } from "../src/lib/git/worker";
+import { acceptedArtifactAlreadyIndexed, mergeAcceptedArtifact, openProposalPullRequest, publishAcceptedArtifact, runCommand, verifyPublicationFiles, type ApprovedProposal } from "../src/lib/git/worker";
 import { PostgresSourceRepositoryStore } from "../src/db/sources";
 import { PostgresTrainingSessionStore } from "../src/db/training";
 import { PostgresAccountStore } from "../src/db/accounts";
@@ -112,13 +112,16 @@ async function acceptedTraining(sessionId: string) {
     await verifyPublicationFiles(current, sourceFiles, checkout);
     const currentSource = (await new PostgresSourceRepositoryStore(getDatabase(databaseUrl!)).list()).find(item => item.id === source.id && item.status === "ACTIVE");
     if (!currentSource) throw new Error("ACCEPTED_SOURCE_ARCHIVED");
-    const validated = await validateSourceRepository(currentSource.url, validationOptions);
-    if (!validated.report.complete || !validated.report.acceptedArtifacts?.some(item => item.path === session.accepted_path && item.digest === session.accepted_digest)) throw new Error("ACCEPTED_ARTIFACT_NOT_INDEXED");
     const store = new PostgresSourceRepositoryStore(getDatabase(databaseUrl!));
-    const indexed = await store.refresh(session.trainer_account_id, currentSource, validated);
-    const readback = await store.snapshot();
-    if (readback.sources.find(item => item.id === source.id)?.indexedCommit !== indexed.source.indexedCommit || !readback.sources.find(item => item.id === source.id)?.validationReport.acceptedArtifacts?.some(item => item.path === session.accepted_path && item.digest === session.accepted_digest)) throw new Error("ACCEPTED_ACTIVATION_READBACK_FAILED");
-    await new PostgresTrainingSessionStore(getDatabase(databaseUrl!)).activateKnowledge(session.id, session.accepted_digest, indexed.source.indexedCommit);
+    let indexed = currentSource;
+    if (!acceptedArtifactAlreadyIndexed(currentSource, current, session.accepted_path, session.accepted_digest)) {
+      const validated = await validateSourceRepository(currentSource.url, validationOptions);
+      if (!validated.report.complete || !validated.report.acceptedArtifacts?.some(item => item.path === session.accepted_path && item.digest === session.accepted_digest)) throw new Error("ACCEPTED_ARTIFACT_NOT_INDEXED");
+      indexed = (await store.refresh(session.trainer_account_id, currentSource, validated)).source;
+    }
+    const readback = (await store.list()).find(item => item.id === source.id);
+    if (readback?.status !== "ACTIVE" || !acceptedArtifactAlreadyIndexed(readback, indexed.indexedCommit, session.accepted_path, session.accepted_digest)) throw new Error("ACCEPTED_ACTIVATION_READBACK_FAILED");
+    await new PostgresTrainingSessionStore(getDatabase(databaseUrl!)).activateKnowledge(session.id, session.accepted_digest, indexed.indexedCommit);
   } finally { await rm(temporaryRoot, { recursive: true }); }
 }
 

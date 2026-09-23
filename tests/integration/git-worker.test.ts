@@ -4,11 +4,21 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { contentDigest } from "@/lib/git/proposals";
-import { acceptedPublicationCompanions, mergeAcceptedArtifact, openProposalPullRequest, publishAcceptedArtifact, type CommandRunner } from "@/lib/git/worker";
+import { acceptedArtifactAlreadyIndexed, acceptedPublicationCompanions, mergeAcceptedArtifact, openProposalPullRequest, publishAcceptedArtifact, type CommandRunner } from "@/lib/git/worker";
 import { sourceFiles, upstream } from "../fixtures/source-contract";
 import { validateSourceRepository } from "@/lib/sources/validator";
 
 describe("governed Git worker", () => {
+  it("reuses only an exact, complete, already-indexed accepted artifact on activation retry", async () => {
+    const validated = await validateSourceRepository("https://github.com/PointCommunity/test", { fetcher: upstream(sourceFiles()) });
+    const path = "research/pointguide-training/session/answer.json", digest = "a".repeat(64);
+    const source = { indexedCommit: validated.report.commitSha, validationReport: { ...validated.report, acceptedArtifacts: [{ path, digest }] } };
+    expect(acceptedArtifactAlreadyIndexed(source, validated.report.commitSha, path, digest)).toBe(true);
+    expect(acceptedArtifactAlreadyIndexed(source, "b".repeat(40), path, digest)).toBe(false);
+    expect(acceptedArtifactAlreadyIndexed(source, validated.report.commitSha, path, "b".repeat(64))).toBe(false);
+    expect(acceptedArtifactAlreadyIndexed({ ...source, validationReport: { ...source.validationReport, complete: false } }, validated.report.commitSha, path, digest)).toBe(false);
+    expect(acceptedArtifactAlreadyIndexed({ ...source, validationReport: { ...source.validationReport, commitSha: "b".repeat(40) } }, validated.report.commitSha, path, digest)).toBe(false);
+  });
   it("creates only the session purpose and inventory/checksum companions that validate as a source", async () => {
     const files = sourceFiles();
     const sessionId = crypto.randomUUID(), answerId = crypto.randomUUID();

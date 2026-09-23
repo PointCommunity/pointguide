@@ -5,10 +5,16 @@ import { spawn } from "node:child_process";
 import { allowedRepositoryPath, allowedSourceRepository, contentDigest } from "./proposals";
 import { parseManifest } from "@/lib/evidence/corpus";
 import { z } from "zod";
+import type { SourceRepositoryRecord } from "@/lib/sources/types";
 
 export interface ApprovedProposal { id: string; state: "APPROVED"; targetRepository: string; baseCommit: string; targetPath: string; proposedContent: string; digest: string; rationale: string }
 export type CommandRunner = (command: string, args: string[], cwd: string) => Promise<string>;
 type PublicationFiles = Record<string, string | Uint8Array>;
+
+export function acceptedArtifactAlreadyIndexed(source: Pick<SourceRepositoryRecord, "indexedCommit" | "validationReport">, commit: string, path: string, digest: string): boolean {
+  return source.indexedCommit === commit && source.validationReport.complete === true && source.validationReport.commitSha === commit
+    && source.validationReport.acceptedArtifacts?.some(item => item.path === path && item.digest === digest) === true;
+}
 
 export const runCommand: CommandRunner = (command, args, cwd) => new Promise((resolvePromise, reject) => {
   const child = spawn(command, args, { cwd, shell: false, stdio: ["ignore", "pipe", "pipe"] });
