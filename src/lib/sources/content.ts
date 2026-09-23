@@ -8,6 +8,11 @@ import type { SourceInventoryItem } from "./contract";
 interface HtmlNode { textContent: string; getAttribute(name: string): string | undefined; querySelectorAll(selector: string): HtmlNode[]; querySelector(selector: string): HtmlNode | null; remove(): void }
 // Next already ships this inert parser. Never evaluate scripts or load HTML resources.
 const { parse } = createRequire(import.meta.url)("next/dist/compiled/node-html-parser") as { parse(html: string): HtmlNode };
+export function extractHtmlText(markup: string): string {
+  const document = parse(markup);
+  document.querySelectorAll("head,script,style,nav,noscript,iframe,object,embed").forEach(node => node.remove());
+  return document.textContent.replace(/\s+/gu, " ").trim();
+}
 const inventorySchema = z.object({ sources: z.array(z.object({ id: z.string(), title: z.string().optional(), authority: z.string(), publisher: z.string().optional(), versionOrDate: z.string().optional(), capturedAt: z.string().optional(), textPath: z.string().optional(), textPaths: z.array(z.string()).optional(), pages: z.number().int().positive().optional() })), pageMap: z.string().optional() });
 const pageSchema = z.array(z.object({ evidenceId: z.string(), pdfPage: z.number().int().positive(), path: z.string(), textSha256: z.string() }));
 export const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");

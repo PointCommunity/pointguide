@@ -1,4 +1,5 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -20,6 +21,23 @@ describe("governed Git worker", () => {
     expect(result.report.acceptedArtifacts).toEqual([{ path, digest: contentDigest(content) }]);
     expect(result.chunks.map(chunk => chunk.path)).toEqual(["docs/setup.txt"]);
     expect(() => acceptedPublicationCompanions({ id: sessionId, targetRepository: "PointCommunity/test", baseCommit: "b".repeat(40), targetPath: path, proposedContent: content, digest: contentDigest(content) }, files["source-inventory.json"], files["checksums.sha256"])).toThrow(/already|conflict/i);
+  });
+  it("publishes byte-identical trainer originals beside extracted provenance without breaking the source contract", async () => {
+    const files = sourceFiles();
+    const sessionId = crypto.randomUUID(), answerId = crypto.randomUUID(), sourceId = crypto.randomUUID();
+    const folder = `research/pointguide-training/${sessionId}`;
+    const path = `${folder}/${answerId}.json`;
+    const originalPath = `${folder}/originals/${sourceId}.pdf`, extractedPath = `${folder}/sources/${sourceId}.md`;
+    const original = new Uint8Array([37, 80, 68, 70, 45]), extracted = "# Trainer document\n\nExtracted source text.\n";
+    const hash = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex");
+    const content = JSON.stringify({ schemaVersion: 2, kind: "pointguide-accepted-training", sessionId, answerId, targetRepository: "PointCommunity/test", answer: { directAnswer: "Check cable." }, trainerSources: [{ id: sourceId, originalPath, originalDigest: hash(original), extractedPath, extractedDigest: hash(extracted) }] }) + "\n";
+    const sourceBundle = { [originalPath]: original, [extractedPath]: extracted };
+    const companions = acceptedPublicationCompanions({ id: sessionId, targetRepository: "PointCommunity/test", baseCommit: "b".repeat(40), targetPath: path, proposedContent: content, digest: contentDigest(content) }, files["source-inventory.json"], files["checksums.sha256"], sourceBundle);
+    expect(Object.keys(companions).sort()).toEqual(["checksums.sha256", `${folder}/README.md`, `${folder}/originals/README.md`, originalPath, `${folder}/sources/README.md`, extractedPath, "source-inventory.json"].sort());
+    Object.assign(files, companions, { [path]: content, [originalPath]: "binary placeholder for the test fetcher" });
+    const result = await validateSourceRepository("https://github.com/PointCommunity/test", { fetcher: upstream(files) });
+    expect(result.report.acceptedArtifacts).toContainEqual({ path, digest: contentDigest(content) });
+    expect(result.chunks.map(chunk => chunk.path)).not.toContain(extractedPath);
   });
   it("merges only the exact accepted training artifact after path and head verification", async () => {
     const checkout = await mkdtemp(join(tmpdir(), "pointguide-accepted-"));

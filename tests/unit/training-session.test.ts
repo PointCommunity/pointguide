@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryTrainingSessionStore } from "@/lib/training/store";
 import type { SourceRepositoryRecord } from "@/lib/sources/types";
+import { prepareTrainingSource } from "@/lib/training/sources";
 
 afterEach(() => vi.useRealTimers());
 
@@ -41,6 +42,17 @@ describe("organic training workflow", () => {
     expect(retry).toMatchObject({ state: "PUBLISHING", acceptedDigest: accepted.acceptedDigest, acceptedContent: accepted.acceptedContent });
     await expect(store.retryPublication(session.id, "trainer", source)).rejects.toThrow();
     await expect(store.listTurns(session.id, "other-trainer")).rejects.toThrow("not found");
+  });
+
+  it("blocks acceptance until trainer material is ready and records its immutable publication paths", async () => {
+    const store = new MemoryTrainingSessionStore();
+    const sourceRepository = { id: crypto.randomUUID(), fullName: "PointCommunity/pointaudio", status: "ACTIVE", indexedCommit: "a".repeat(40), version: 1 } as SourceRepositoryRecord;
+    const started = await store.create({ trainerAccountId: "trainer", conversationId: "conversation", targetRepository: sourceRepository.fullName, originalQuestion: "How do I route a channel?" }, false, [{ kind: "FILE", originalName: "routing.txt", mediaType: "text/plain", originalBytes: Buffer.from("Route channel 1 to bus 2.") }]);
+    const answerId = crypto.randomUUID(); const answered = await store.saveAnswer(started.id, "trainer", { id: answerId, directAnswer: "Route channel 1 to bus 2.", evidence: [] });
+    await expect(store.acceptAnswer(started.id, "trainer", answered.version, answerId, sourceRepository)).rejects.toThrow(/prepar/i);
+    await store.saveSource(await prepareTrainingSource((await store.listSourceContents(started.id, "trainer"))[0], { describeImage: async () => "unused" }));
+    const accepted = await store.acceptAnswer(started.id, "trainer", answered.version, answerId, sourceRepository);
+    expect(JSON.parse(accepted.acceptedContent!)).toMatchObject({ trainerSources: [{ originalName: "routing.txt", originalPath: expect.stringMatching(/\/originals\/.*\.txt$/u), extractedPath: expect.stringMatching(/\/sources\/.*\.md$/u) }] });
   });
 
   it("requires response feedback, an accepted report, then an explicit outcome", async () => {

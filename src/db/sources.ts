@@ -36,9 +36,17 @@ export class PostgresSourceRepositoryStore implements SourceRepositoryStore {
   async refresh(actorId: string, expected: SourceRepositoryRecord, source: ValidatedSource) {
     return this.database.transaction(async transaction => {
       const [current] = await transaction.select().from(sourceRepositories).where(eq(sourceRepositories.id, expected.id)).for("update");
-      assertRefresh(current ? fromRow(current) : undefined, expected, source);
       const old = await transaction.select().from(sourceChunks).where(eq(sourceChunks.repositoryId, expected.id));
-      const outcome = snapshotMatches(fromRow(current!), old.map(chunk => fromChunk(chunk)), source) ? "current" : "updated";
+      const currentRecord = current ? fromRow(current) : undefined; const currentChunks = old.map(chunk => fromChunk(chunk));
+      if (currentRecord?.status === "ACTIVE" && currentRecord.fullName === source.fullName && currentRecord.version !== expected.version) {
+        assertAdmission(source);
+        if (snapshotMatches(currentRecord, currentChunks, source)) {
+          await transaction.insert(auditEvents).values({ id: randomUUID(), actorId, action: "source_repository.refreshed", targetType: "source_repository", targetId: expected.id, outcome: "SUCCEEDED", metadata: { previousCommit: expected.indexedCommit, commit: source.report.commitSha, result: "current", concurrent: true, chunks: source.chunks.length }, occurredAt: new Date() });
+          return { source: currentRecord, outcome: "current" } as const;
+        }
+      }
+      assertRefresh(currentRecord, expected, source);
+      const outcome = snapshotMatches(currentRecord!, currentChunks, source) ? "current" : "updated";
       const [row] = await transaction.update(sourceRepositories).set({ defaultBranch: source.report.defaultBranch, indexedCommit: source.report.commitSha, validationReport: source.report as unknown as Readonly<Record<string, unknown>>, updatedAt: new Date(), version: expected.version + 1 }).where(eq(sourceRepositories.id, expected.id)).returning();
       if (outcome === "updated") {
         await transaction.delete(sourceChunks).where(eq(sourceChunks.repositoryId, expected.id));

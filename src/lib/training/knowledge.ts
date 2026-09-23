@@ -6,10 +6,10 @@ import { z } from "zod";
 
 export interface AcceptedGuidance {
   id: string; repository: string; path: string; digest: string; sourceCommit: string; indexedCommit: string;
-  question: string; directAnswer: string; evidenceIds: string[]; acceptedAt: string; answer?: z.infer<typeof artifactSchema>["answer"];
+  question: string; directAnswer: string; evidenceIds: string[]; acceptedAt: string; answer?: z.infer<typeof artifactSchema>["answer"]; trainerSources?: z.infer<typeof artifactSchema>["trainerSources"];
 }
 
-const artifactSchema = z.object({ schemaVersion: z.literal(2), kind: z.literal("pointguide-accepted-training"), sessionId: z.uuid(), answerId: z.uuid(), targetRepository: z.string(), sourceCommit: z.string(), acceptedAt: z.string(), originalQuestion: z.string(), answer: z.object({ id: z.uuid(), directAnswer: z.string().min(1), steps: z.array(z.string()), safetyAndAssumptions: z.array(z.string()), confidence: z.enum(["CONFIRMED", "SUPPORTED", "TENTATIVE", "UNKNOWN"]), claims: z.array(z.object({ id: z.string(), text: z.string(), kind: z.enum(["FACTUAL", "ACTIONABLE", "SAFETY", "UNKNOWN"]).optional(), status: z.enum(["SUPPORTED", "UNKNOWN", "REJECTED"]), evidenceIds: z.array(z.string()) })), evidence: z.array(z.object({ id: z.string() })) }) });
+const artifactSchema = z.object({ schemaVersion: z.literal(2), kind: z.literal("pointguide-accepted-training"), sessionId: z.uuid(), answerId: z.uuid(), targetRepository: z.string(), sourceCommit: z.string(), acceptedAt: z.string(), originalQuestion: z.string(), answer: z.object({ id: z.uuid(), directAnswer: z.string().min(1), steps: z.array(z.string()), safetyAndAssumptions: z.array(z.string()), confidence: z.enum(["CONFIRMED", "SUPPORTED", "TENTATIVE", "UNKNOWN"]), claims: z.array(z.object({ id: z.string(), text: z.string(), kind: z.enum(["FACTUAL", "ACTIONABLE", "SAFETY", "UNKNOWN"]).optional(), status: z.enum(["SUPPORTED", "UNKNOWN", "REJECTED"]), evidenceIds: z.array(z.string()) })), evidence: z.array(z.object({ id: z.string() }).passthrough()) }), trainerSources: z.array(z.object({ id: z.uuid(), kind: z.enum(["FILE", "URL"]), originalName: z.string(), mediaType: z.string(), sourceUrl: z.string().nullable(), finalUrl: z.string().nullable(), capturedAt: z.string(), originalPath: z.string(), originalDigest: z.string(), extractedPath: z.string(), extractedDigest: z.string() })).default([]) });
 
 export function hasVerifiedAcceptedArtifact(source: Pick<SourceRepositoryRecord, "indexedCommit" | "validationReport">, path: string, digest: string): boolean {
   return source.validationReport?.valid === true && source.validationReport.complete === true && source.validationReport.commitSha === source.indexedCommit && source.validationReport.acceptedArtifacts?.some(item => item.path === path && item.digest === digest) === true;
@@ -20,7 +20,7 @@ export function acceptedGuidanceFromSession(session: TrainingSessionRecord, sour
   try {
     const artifact = artifactSchema.parse(JSON.parse(session.acceptedContent));
     if (artifact.sessionId !== session.id || artifact.targetRepository !== source.fullName || artifact.answer.id !== artifact.answerId || session.acceptedPath !== `research/pointguide-training/${session.id}/${artifact.answerId}.json` || !/^[a-f0-9]{40}$/u.test(artifact.sourceCommit)) return null;
-    return { id: `training:${session.acceptedDigest}`, repository: source.fullName, path: session.acceptedPath, digest: session.acceptedDigest, sourceCommit: artifact.sourceCommit, indexedCommit: source.indexedCommit, question: artifact.originalQuestion, directAnswer: artifact.answer.directAnswer, evidenceIds: artifact.answer.evidence.map(item => item.id), acceptedAt: artifact.acceptedAt, answer: artifact.answer };
+    return { id: `training:${session.acceptedDigest}`, repository: source.fullName, path: session.acceptedPath, digest: session.acceptedDigest, sourceCommit: artifact.sourceCommit, indexedCommit: source.indexedCommit, question: artifact.originalQuestion, directAnswer: artifact.answer.directAnswer, evidenceIds: artifact.answer.evidence.map(item => item.id), acceptedAt: artifact.acceptedAt, answer: artifact.answer, trainerSources: artifact.trainerSources };
   } catch { return null; }
 }
 

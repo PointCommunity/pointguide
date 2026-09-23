@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { validateSourceRepository } from "@/lib/sources/validator";
-import { MemorySourceRepositoryStore } from "@/lib/sources/store";
+import { MemorySourceRepositoryStore, SourceStoreError } from "@/lib/sources/store";
 import { commit, digest, seal, sourceFiles, upstream as sourceUpstream } from "../fixtures/source-contract";
 
 function upstream(files: Record<string, string>, overrides: { truncated?: boolean } = {}) {
@@ -48,6 +48,7 @@ describe("knowledge refresh contract", () => {
     const source = await store.link("owner", initial);
     await store.refresh("owner", source, replacement);
     expect((await store.snapshot()).chunks.map(chunk => chunk.text).join(" ")).toContain("new evidence");
+    await expect(store.refresh("owner", source, replacement)).resolves.toMatchObject({ outcome: "current", source: { indexedCommit: replacement.report.commitSha } });
     await expect(store.refresh("owner", source, initial)).rejects.toThrow(/changed/i);
     const current = (await store.list())[0];
     await store.archive("owner", current.id, current.fullName);
@@ -64,15 +65,28 @@ it("publishes per-repository results, keeps failed knowledge, and skips archives
   const b = await store.link("owner", { ...first, fullName: "PointCommunity/second", url: "https://github.com/PointCommunity/second" });
   const c = await store.link("owner", { ...first, fullName: "PointCommunity/archived" });
   await store.archive("owner", c.id, c.fullName);
-  const validate = vi.fn(async (url: string) => { if (url === b.url) throw new Error("private upstream error"); return first; });
+  const validate = vi.fn(async (url: string) => { if (url === b.url) throw new SourceStoreError("SOURCE_CHANGED", "Repository changed during refresh. Pull latest knowledge again."); return first; });
   const emit = vi.fn(); const audit = vi.spyOn(store, "refreshFailed");
   await refreshKnowledge("owner", store, validate, emit, new AbortController().signal);
   expect(validate).toHaveBeenCalledTimes(2);
   expect(emit.mock.calls.map(([event]) => event)).toContainEqual(expect.objectContaining({ id: a.id, outcome: "current" }));
   expect(emit.mock.calls.map(([event]) => event)).toContainEqual(expect.objectContaining({ id: b.id, outcome: "failed" }));
-  expect(JSON.stringify(emit.mock.calls)).not.toContain("private upstream error");
-  expect(audit).toHaveBeenCalledWith("owner", b.id, "REFRESH_FAILED");
+  expect(emit.mock.calls.map(([event]) => event)).toContainEqual(expect.objectContaining({ id: b.id, outcome: "failed", message: "Repository changed during refresh. Pull latest knowledge again." }));
+  expect(audit).toHaveBeenCalledWith("owner", b.id, "SOURCE_CHANGED");
   expect((await store.list()).find(source => source.id === b.id)?.version).toBe(1);
+});
+
+it("revalidates once against the latest registry version when another refresh wins the race", async () => {
+  const { refreshKnowledge } = await import("@/lib/sources/refresh");
+  const validated = await validateSourceRepository("https://github.com/PointCommunity/test", { fetcher: upstream(files()) });
+  const source = { id: crypto.randomUUID(), fullName: validated.fullName, url: validated.url, status: "ACTIVE" as const, defaultBranch: "published", indexedCommit: "a".repeat(40), validationReport: validated.report, linkedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: 1 };
+  const latest = { ...source, indexedCommit: "b".repeat(40), version: 2 };
+  const list = vi.fn().mockResolvedValueOnce([source]).mockResolvedValueOnce([latest]);
+  const refresh = vi.fn().mockRejectedValueOnce(new SourceStoreError("SOURCE_CHANGED", "Repository changed during refresh. Pull latest knowledge again.")).mockResolvedValueOnce({ source: latest, outcome: "current" });
+  const refreshFailed = vi.fn(); const validate = vi.fn().mockResolvedValue(validated); const emit = vi.fn();
+  await refreshKnowledge("owner", { list, refresh, refreshFailed } as never, validate, emit, new AbortController().signal);
+  expect(validate).toHaveBeenCalledTimes(2); expect(refresh).toHaveBeenCalledTimes(2); expect(refreshFailed).not.toHaveBeenCalled();
+  expect(emit.mock.calls.map(([event]) => event)).toContainEqual(expect.objectContaining({ id: source.id, outcome: "current" }));
 });
 
 it("repairs same-commit missing chunks and never mixes refreshed PointAudio with bootstrap evidence", async () => {

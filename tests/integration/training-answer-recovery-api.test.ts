@@ -3,6 +3,7 @@ import { MemoryAccountStore } from "@/lib/auth/memory-store";
 import { MemoryTrainingSessionStore } from "@/lib/training/store";
 import { PATCH } from "@/app/api/training/sessions/[id]/route";
 import { POST } from "@/app/api/training/sessions/route";
+import { DELETE as DELETE_SOURCE, POST as POST_SOURCE } from "@/app/api/training/sessions/[id]/sources/route";
 import { getRuntimeSessionDependencies } from "@/lib/auth/runtime";
 import { getRuntimeTrainingStore } from "@/lib/training/runtime";
 import { getRuntimeProviderDependencies } from "@/lib/providers/runtime";
@@ -120,4 +121,27 @@ it("returns saved live sessions and feedback before the provider runs", async ()
   expect(revised.status).toBe(202);
   expect(await revised.json()).toMatchObject({ session: { state: "REVISING", answerError: null }, turns: [{ kind: "ANSWER" }, { kind: "FEEDBACK" }] });
   expect(answerQuestion).not.toHaveBeenCalled();
+});
+
+it("uses uploaded trainer material immediately and republishes the answer when material changes", async () => {
+  const sourceRepository = { id: "audio", fullName: "PointCommunity/pointaudio", status: "ACTIVE" };
+  vi.mocked(getRuntimeSourceStore).mockReturnValue({ snapshot: async () => ({ sources: [sourceRepository], chunks: [] }) } as unknown as ReturnType<typeof getRuntimeSourceStore>);
+  vi.mocked(getRuntimeLearningRepository).mockReturnValue({ createConversation: async () => ({ id: crypto.randomUUID() }) } as unknown as ReturnType<typeof getRuntimeLearningRepository>);
+  vi.mocked(answerQuestion).mockResolvedValue({ answer: { id: crypto.randomUUID(), directAnswer: "Use the trainer-provided routing note." } } as Awaited<ReturnType<typeof answerQuestion>>);
+  const form = new FormData(); form.set("question", "How do I route this channel?"); form.set("targetRepository", sourceRepository.fullName); form.set("sources", new File(["Route channel 1 to bus 2."], "routing.txt", { type: "text/plain" }));
+  const created = await POST(new Request("http://localhost/api/training/sessions", { method: "POST", headers: { "x-pointguide-fixture-subject": "owner", "x-pointguide-fixture-email": "owner@example.com" }, body: form }));
+  expect(created.status).toBe(201);
+  const initial = await created.json();
+  expect(initial).toMatchObject({ session: { state: "ACTIVE", targetRepository: sourceRepository.fullName }, sources: [{ originalName: "routing.txt", status: "READY" }] });
+  expect(vi.mocked(answerQuestion).mock.calls[0]?.[0].sessionEvidence).toEqual([expect.objectContaining({ kind: "TRAINER_SOURCE", title: "routing.txt" })]);
+
+  const add = new FormData(); add.set("expectedVersion", String(initial.session.version)); add.set("sources", new File(["Keep the channel muted until patched."], "safety.md", { type: "text/markdown" }));
+  const added = await POST_SOURCE(new Request(`http://localhost/api/training/sessions/${initial.session.id}/sources`, { method: "POST", headers: { "x-pointguide-fixture-subject": "owner", "x-pointguide-fixture-email": "owner@example.com" }, body: add }), { params: Promise.resolve({ id: initial.session.id }) });
+  expect(added.status).toBe(200);
+  const revised = await added.json();
+  expect(revised.sources).toEqual(expect.arrayContaining([expect.objectContaining({ originalName: "routing.txt", status: "READY" }), expect.objectContaining({ originalName: "safety.md", status: "READY" })]));
+
+  const removed = await DELETE_SOURCE(new Request(`http://localhost/api/training/sessions/${initial.session.id}/sources`, { method: "DELETE", headers, body: JSON.stringify({ sourceId: revised.sources[1].id, expectedVersion: revised.session.version }) }), { params: Promise.resolve({ id: initial.session.id }) });
+  expect(removed.status).toBe(200);
+  expect((await removed.json()).sources).toEqual([expect.objectContaining({ originalName: "routing.txt" })]);
 });

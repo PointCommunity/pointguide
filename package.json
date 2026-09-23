@@ -32,10 +32,13 @@
     "jose": "6.2.12",
     "next": "16.3.4",
     "pdf-lib": "1.17.1",
+    "pdfjs-dist": "6.3.289",
     "postgres": "3.4.9",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "sharp": "0.35.4",
     "tsx": "4.23.13",
+    "word-extractor": "1.0.4",
     "yaml": "2.9.0",
     "zod": "4.5.4"
   },

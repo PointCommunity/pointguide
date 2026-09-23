@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const evidenceItemSchema = z.object({
   id: z.string().min(1),
-  kind: z.enum(["REPOSITORY", "ACCEPTED_TRAINING", "PRIMARY_WEB", "SECONDARY_WEB"]),
+  kind: z.enum(["REPOSITORY", "ACCEPTED_TRAINING", "TRAINER_SOURCE", "PRIMARY_WEB", "SECONDARY_WEB"]),
   sourceId: z.string().min(1).optional(),
   title: z.string().min(1),
   path: z.string().min(1).optional(),

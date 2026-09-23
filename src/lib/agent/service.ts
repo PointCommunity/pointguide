@@ -21,7 +21,7 @@ function evidenceDraft(question: string, evidence: EvidenceItem[]): AnswerDraft 
   ] };
 }
 
-export async function answerQuestion(input: { actor: Account; conversationId: string; question: string; deepResearch: boolean; providers: ProviderConfigurationStore; learning: LearningRepository; modelRuntime?: ModelRuntime; fixture: boolean; chunks?: IndexedChunk[]; navigation?: Record<string, SourceNavigation>; maxTurns?: number; training?: boolean; trainingHistory?: ConversationMessage[]; guidance?: AcceptedGuidance[] }) {
+export async function answerQuestion(input: { actor: Account; conversationId: string; question: string; deepResearch: boolean; providers: ProviderConfigurationStore; learning: LearningRepository; modelRuntime?: ModelRuntime; fixture: boolean; chunks?: IndexedChunk[]; navigation?: Record<string, SourceNavigation>; maxTurns?: number; training?: boolean; trainingHistory?: ConversationMessage[]; guidance?: AcceptedGuidance[]; sessionEvidence?: EvidenceItem[] }) {
   if (!await input.learning.ownsConversation(input.conversationId, input.actor.id)) throw new Error("CONVERSATION_NOT_FOUND");
   const maxTurns = input.training ? 2_147_483_647 : input.maxTurns ?? 6;
   const turnNumber = await input.learning.reserveTurn(input.conversationId, input.actor.id, maxTurns);
@@ -47,14 +47,14 @@ export async function answerQuestion(input: { actor: Account; conversationId: st
     const purpose = repository && folder && input.navigation?.[repository]?.[folder];
     return purpose ? [[`${repository}/${folder}`, { repository: repository!, folder: folder!, ...purpose }] as const] : [];
   })).values()];
-  const evidence = [...guidance.map(trainingEvidence), ...sourceEvidence];
+  const evidence = [...(input.sessionEvidence ?? []), ...guidance.map(trainingEvidence), ...sourceEvidence];
   const mode: ReviewMode = input.deepResearch ? "DEEP_RESEARCH" : "NONE";
   const answer = await orchestrateAnswer({
     evidence, mode,
     primary: async () => {
-      if (plan.coverage === "COMPLETE" && guidance.length === 1) return trainingDraft(guidance[0]);
-      const draft = input.fixture && guidance.length ? trainingDraft(guidance[0]) : !evidence.length || !primaryProfile || !input.modelRuntime ? evidenceDraft(input.question, sourceEvidence) : await generateAnswer(primaryProfile, input.question, evidence, input.modelRuntime, history, guidance, navigation);
-      if (plan.coverage === "CONFLICT" || plan.unresolvedContext || (plan.coverage === "PARTIAL" && !sourceEvidence.length)) return { ...draft, clarifyingQuestion: plan.unresolvedContext ?? draft.clarifyingQuestion, confidence: draft.confidence === "UNKNOWN" ? "UNKNOWN" as const : "TENTATIVE" as const, claims: [...draft.claims, { id: "training-unresolved", text: plan.unresolvedContext || (plan.coverage === "CONFLICT" ? "Accepted training conflicts; the applicable answer is not fully resolved." : `Accepted training does not establish: ${plan.missing.join("; ") || "the remaining question"}.`), kind: "UNKNOWN" as const, status: "UNKNOWN" as const, evidenceIds: [] }] };
+      if (plan.coverage === "COMPLETE" && guidance.length === 1 && !input.sessionEvidence?.length) return trainingDraft(guidance[0]);
+      const draft = input.fixture && guidance.length && !input.sessionEvidence?.length ? trainingDraft(guidance[0]) : !evidence.length || !primaryProfile || !input.modelRuntime ? evidenceDraft(input.question, evidence) : await generateAnswer(primaryProfile, input.question, evidence, input.modelRuntime, history, guidance, navigation);
+      if (plan.coverage === "CONFLICT" || plan.unresolvedContext || (plan.coverage === "PARTIAL" && !sourceEvidence.length && !input.sessionEvidence?.length)) return { ...draft, clarifyingQuestion: plan.unresolvedContext ?? draft.clarifyingQuestion, confidence: draft.confidence === "UNKNOWN" ? "UNKNOWN" as const : "TENTATIVE" as const, claims: [...draft.claims, { id: "training-unresolved", text: plan.unresolvedContext || (plan.coverage === "CONFLICT" ? "Accepted training conflicts; the applicable answer is not fully resolved." : `Accepted training does not establish: ${plan.missing.join("; ") || "the remaining question"}.`), kind: "UNKNOWN" as const, status: "UNKNOWN" as const, evidenceIds: [] }] };
       return draft;
     },
     reviewer: (draft, items) => items.length && (reviewerProfile ?? primaryProfile) && input.modelRuntime

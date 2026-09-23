@@ -13,6 +13,10 @@ export class MemorySourceRepositoryStore implements SourceRepositoryStore {
   async snapshot() { return { sources: [...this.records.values()].map(copy), chunks: [...this.records.values()].filter(record => record.status === "ACTIVE").flatMap(record => this.chunks.get(record.id) ?? []).map(item => ({ ...item })) }; }
   async refresh(_actorId: string, expected: SourceRepositoryRecord, source: ValidatedSource) {
     const current = this.records.get(expected.id);
+    if (current?.status === "ACTIVE" && current.fullName === source.fullName && current.version !== expected.version) {
+      assertAdmission(source);
+      if (snapshotMatches(current, this.chunks.get(expected.id) ?? [], source)) return { source: copy(current), outcome: "current" } as const;
+    }
     assertRefresh(current, expected, source);
     const outcome = snapshotMatches(current!, this.chunks.get(expected.id) ?? [], source) ? "current" : "updated";
     const updated = { ...current!, indexedCommit: source.report.commitSha, defaultBranch: source.report.defaultBranch, validationReport: source.report, updatedAt: new Date().toISOString(), version: current!.version + 1 };

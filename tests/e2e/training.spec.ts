@@ -67,27 +67,84 @@ test("revises an answer with feedback and preserves ordered turns after resume",
   await expect(page.getByText("Rate this response")).toHaveCount(0);
 });
 
-test("routes a clear training topic without repository setup and asks only when source area is ambiguous", async ({ page }, testInfo) => {
+test("makes the accepted destination explicit when more than one source area is available", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "mobile-320", "One focused viewport covers destination clarification.");
   const sources = [{ id: "audio", fullName: "PointCommunity/pointaudio", status: "ACTIVE" }, { id: "planning", fullName: "PointCommunity/pointplanning", status: "ACTIVE" }];
   await page.route("**/api/knowledge/sources", route => route.fulfill({ json: { sources } }));
   const id = "00000000-0000-4000-8000-000000000088";
   await page.route("**/api/training/sessions", route => {
     if (route.request().method() !== "POST") return route.continue();
-    const body = route.request().postDataJSON() as { question: string; targetRepository?: string };
-    if (!body.targetRepository) return route.fulfill({ status: 409, json: { error: { code: "SOURCE_AREA_REQUIRED", message: "Which area is your question about?" } } });
-    expect(body.targetRepository).toBe("PointCommunity/pointplanning");
-    return route.fulfill({ status: 202, json: { session: { id, originalQuestion: body.question, targetRepository: body.targetRepository, state: "ACTIVE", version: 1, currentAnswer: null }, error: { code: "ANSWER_FAILED", message: "The first answer is saved for retry." } } });
+    const body = route.request().postData() ?? "";
+    expect(body).toContain("PointCommunity/pointplanning");
+    expect(body).toContain("How do schedules work?");
+    return route.fulfill({ status: 202, json: { session: { id, originalQuestion: "How do schedules work?", targetRepository: "PointCommunity/pointplanning", state: "ACTIVE", version: 1, currentAnswer: null }, error: { code: "ANSWER_FAILED", message: "The first answer is saved for retry." } } });
   });
   await page.route(`**/api/training/sessions/${id}`, route => route.fulfill({ json: { session: { id, originalQuestion: "How do schedules work?", targetRepository: "PointCommunity/pointplanning", state: "ACTIVE", version: 1, currentAnswer: null }, turns: [] } }));
   await page.goto("/training");
-  await expect(page.getByLabel("Which area is this about?")).toHaveCount(0);
-  await page.getByLabel("Question").fill("How do schedules work?");
-  await page.getByRole("button", { name: "Start training" }).click();
   await expect(page.getByLabel("Which area is this about?")).toBeVisible();
+  await expect(page.getByText("Your selection determines the repository used when this training is accepted.")).toBeVisible();
+  await page.getByLabel("Question").fill("How do schedules work?");
+  await expect(page.getByRole("button", { name: "Start training" })).toBeDisabled();
   await page.getByLabel("Which area is this about?").selectOption("PointCommunity/pointplanning");
   await page.getByRole("button", { name: "Start training" }).click();
   await expect(page.getByText("Area: Planning Center")).toBeVisible();
+});
+
+test("uploads trainer material and shows truthful processing before the session starts", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile-320", "One narrow viewport covers upload and processing feedback.");
+  const id = "00000000-0000-4000-8000-000000000087";
+  const sources = [{ id: "audio", fullName: "PointCommunity/pointaudio", status: "ACTIVE" }, { id: "planning", fullName: "PointCommunity/pointplanning", status: "ACTIVE" }];
+  await page.route("**/api/knowledge/sources", route => route.fulfill({ json: { sources } }));
+  let finishRequest!: () => void;
+  const requestHeld = new Promise<void>(resolve => { finishRequest = resolve; });
+  await page.route("**/api/training/sessions", async route => {
+    if (route.request().method() !== "POST") return route.continue();
+    const body = route.request().postData() ?? "";
+    expect(body).toContain("https://example.com/m32-routing");
+    expect(body).toContain("routing-notes.md");
+    expect(body).toContain("PointCommunity/pointaudio");
+    await requestHeld;
+    return route.fulfill({ status: 202, json: { session: { id, originalQuestion: "How do I route the M32?", targetRepository: "PointCommunity/pointaudio", state: "GENERATING", version: 1, currentAnswer: null } } });
+  });
+  await page.route(`**/api/training/sessions/${id}`, route => route.fulfill({ json: { session: { id, originalQuestion: "How do I route the M32?", targetRepository: "PointCommunity/pointaudio", state: "GENERATING", version: 1, currentAnswer: null }, turns: [], sources: [] } }));
+  await page.goto("/training");
+  await page.getByLabel("Question").fill("How do I route the M32?");
+  await page.getByLabel("Which area is this about?").selectOption("PointCommunity/pointaudio");
+  await page.getByLabel("Website URLs").fill("https://example.com/m32-routing");
+  await page.getByLabel("Documents or images").setInputFiles({ name: "routing-notes.md", mimeType: "text/markdown", buffer: Buffer.from("# Routing\nUse the M32 routing page.") });
+  await page.getByRole("button", { name: "Start training" }).click();
+  await expect(page.getByRole("button", { name: "Preparing answer…" })).toBeDisabled();
+  await expect(page.getByRole("status")).toContainText("checking sources and preparing the first answer");
+  finishRequest();
+  await expect(page.getByText("Your question is saved", { exact: false })).toBeVisible();
+});
+
+test("adds supporting material to an active session with visible progress and a ready result", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile-320", "One narrow viewport covers active source updates.");
+  const id = "00000000-0000-4000-8000-000000000086";
+  const answer = { id: "00000000-0000-4000-8000-000000000085", directAnswer: "Use the documented routing page.", evidence: [], claims: [] };
+  let session = { id, originalQuestion: "How do I route the M32?", targetRepository: "PointCommunity/pointaudio", state: "ACTIVE", version: 2, currentAnswer: answer };
+  let sourceItems: Record<string, unknown>[] = [];
+  await page.route("**/api/knowledge/sources", route => route.fulfill({ json: { sources: [{ id: "audio", fullName: "PointCommunity/pointaudio", status: "ACTIVE" }] } }));
+  await page.route(`**/api/training/sessions/${id}`, route => route.fulfill({ json: { session, turns: [], sources: sourceItems } }));
+  let finishRequest!: () => void;
+  const requestHeld = new Promise<void>(resolve => { finishRequest = resolve; });
+  await page.route(`**/api/training/sessions/${id}/sources`, async route => {
+    if (route.request().method() !== "POST") return route.continue();
+    expect(route.request().postData()).toContain("https://example.com/m32-routing");
+    await requestHeld;
+    session = { ...session, version: 3 };
+    sourceItems = [{ id: "00000000-0000-4000-8000-000000000084", sessionId: id, kind: "URL", originalName: "m32-routing", mediaType: "text/html", sourceUrl: "https://example.com/m32-routing", finalUrl: "https://example.com/m32-routing", originalSize: 100, originalDigest: "a".repeat(64), extractedDigest: "b".repeat(64), status: "READY", error: null, capturedAt: "2026-09-22T00:00:00.000Z", createdAt: "2026-09-22T00:00:00.000Z", updatedAt: "2026-09-22T00:00:00.000Z" }];
+    return route.fulfill({ json: { session, turns: [], sources: sourceItems } });
+  });
+  await page.goto(`/training/sessions/${id}`);
+  await page.locator(".training-sources").getByLabel("Website URLs").fill("https://example.com/m32-routing");
+  await page.getByRole("button", { name: "Add material and update answer" }).click();
+  await expect(page.getByRole("button", { name: "Updating answer…" })).toBeDisabled();
+  await expect(page.locator(".training-sources").getByRole("status")).toContainText("Saving source material and preparing an updated answer");
+  finishRequest();
+  await expect(page.locator(".training-sources")).toContainText("m32-routing");
+  await expect(page.locator(".training-sources").getByRole("status")).toContainText("The updated answer is ready");
 });
 
 test("keeps accumulated training in a searchable sessions subpage", async ({ page }, testInfo) => {
@@ -124,8 +181,8 @@ test("explains first-answer failure and shows a saved-question recovery path", a
   });
   await page.route("**/api/training/sessions", async route => {
     if (route.request().method() !== "POST") return route.continue();
-    const { targetRepository } = route.request().postDataJSON() as { targetRepository: string };
-    session = { id, originalQuestion: question, targetRepository, state: "ACTIVE", currentAnswer: null, version: 1 };
+    expect(route.request().postData()).toContain("PointCommunity/pointaudio");
+    session = { id, originalQuestion: question, targetRepository: "PointCommunity/pointaudio", state: "ACTIVE", currentAnswer: null, version: 1 };
     return route.fulfill({ status: 202, json: { session, error: { code: "ANSWER_FAILED", message: "The first answer failed. Your question is saved." } } });
   });
   await page.goto("/training");

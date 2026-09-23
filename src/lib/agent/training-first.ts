@@ -36,7 +36,8 @@ export async function planAcceptedTraining(question: string, records: AcceptedGu
 
 export function trainingEvidence(record: AcceptedGuidance): EvidenceItem {
   if (!record.answer || !/^research\/pointguide-training\/[a-f0-9-]{36}\/[a-f0-9-]{36}\.json$/u.test(record.path) || !/^[a-f0-9]{64}$/u.test(record.digest)) throw new Error("The accepted training artifact is incomplete or unverified.");
-  const excerpt = JSON.stringify({ question: record.question, answer: record.answer, supportingEvidenceIds: record.evidenceIds });
+  const answer = record.answer ? { ...record.answer, evidence: record.answer.evidence.map(item => { const reference = { ...item } as Partial<EvidenceItem>; delete reference.excerpt; return reference; }) } : undefined;
+  const excerpt = JSON.stringify({ question: record.question, answer, trainerSources: record.trainerSources ?? [], supportingEvidenceIds: record.evidenceIds });
   if (excerpt.length > 64_000) throw new Error("Accepted training exceeds the evidence context limit; it was not truncated.");
   return { id: record.id, kind: "ACCEPTED_TRAINING", sourceId: record.repository, title: `Accepted training: ${record.question}`, path: record.path, locator: `${record.repository}@${record.indexedCommit}; accepted from ${record.sourceCommit}`, authority: "Trainer-accepted primary knowledge; not independent manufacturer verification", capturedAt: record.acceptedAt, excerpt, digest: record.digest };
 }

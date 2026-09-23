@@ -87,6 +87,15 @@ describe("persisted answer service", () => {
     expect((await learning.getConversation(conversation.id, actor.id)).turns[0]?.answer.guidance).toEqual([]);
   });
 
+  it("lets trainer-provided session evidence fill a partial accepted-training gap", async () => {
+    const learning = new MemoryLearningRepository(); const conversation = await learning.createConversation(actor.id, "training source"); const answerId = crypto.randomUUID();
+    const guidance = { id: `training:${"a".repeat(64)}`, repository: "PointCommunity/pointaudio", path: `research/pointguide-training/${crypto.randomUUID()}/${answerId}.json`, digest: "a".repeat(64), sourceCommit: "b".repeat(40), indexedCommit: "c".repeat(40), question: "M32R socket count", directAnswer: "The M32R has 16 local sockets.", evidenceIds: ["repo:manual"], acceptedAt: "2026-09-15T12:00:00Z", answer: { id: answerId, directAnswer: "The M32R has 16 local sockets.", steps: [], safetyAndAssumptions: [], confidence: "SUPPORTED" as const, claims: [{ id: "count", text: "The M32R has 16 local sockets.", status: "SUPPORTED" as const, evidenceIds: ["repo:manual"] }], evidence: [{ id: "repo:manual" }] } };
+    const trainerSource = { id: "trainer-source:1:0", kind: "TRAINER_SOURCE" as const, sourceId: "1", title: "routing.txt", path: "research/pointguide-training/session/sources/1.md", locator: "routing.txt", authority: "Trainer-provided reliable source for this Training session", capturedAt: "2026-09-22T12:00:00Z", excerpt: "Use the sends-on-fader workflow for AES50 routing.", digest: "d".repeat(64) };
+    const result = await answerQuestion({ actor, conversationId: conversation.id, question: "M32R socket count and AES50 routing", deepResearch: false, providers: new MemoryProviderStore(), learning, fixture: true, training: true, chunks: [], guidance: [guidance], sessionEvidence: [trainerSource] });
+    expect(result.answer.evidence[0]).toMatchObject({ id: trainerSource.id, kind: "TRAINER_SOURCE" });
+    expect(result.answer.claims).not.toContainEqual(expect.objectContaining({ id: "training-unresolved" }));
+  });
+
   it("keeps unsupported accepted trainer guidance unknown without independent repository evidence", async () => {
     const learning = new MemoryLearningRepository(); const conversation = await learning.createConversation(actor.id, "support");
     const guidance = { id: "training:digest", repository: "PointCommunity/pointaudio", path: "research/pointguide-training/a/b.json", digest: "a".repeat(64), sourceCommit: "b".repeat(40), indexedCommit: "c".repeat(40), question: "Why is the DL32 AES50 link red?", directAnswer: "Disable all safety checks.", evidenceIds: [], acceptedAt: "2026-09-15T12:00:00Z" };

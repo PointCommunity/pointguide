@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import postgres from "postgres";
 import { contentDigest } from "../src/lib/git/proposals";
-import { mergeAcceptedArtifact, openProposalPullRequest, publishAcceptedArtifact, runCommand, type ApprovedProposal } from "../src/lib/git/worker";
+import { mergeAcceptedArtifact, openProposalPullRequest, publishAcceptedArtifact, runCommand, verifyPublicationFiles, type ApprovedProposal } from "../src/lib/git/worker";
 import { PostgresSourceRepositoryStore } from "../src/db/sources";
 import { PostgresTrainingSessionStore } from "../src/db/training";
 import { PostgresAccountStore } from "../src/db/accounts";
@@ -15,8 +15,10 @@ import { parseEnvironment } from "../src/lib/config/env";
 import { getRuntimeProviderDependencies, getRuntimeModelRuntime } from "../src/lib/providers/runtime";
 import { knowledgeSnapshot } from "../src/lib/sources/retrieval";
 import { answerQuestion } from "../src/lib/agent/service";
+import { generateTrainingImageSource } from "../src/lib/agent/models";
 import { trainingHistory } from "../src/lib/training/context";
 import { answerFailureDiagnostic, answerFailureMessage } from "../src/lib/training/answer-error";
+import { assertPreparedTrainingSourceCapacity, prepareTrainingSource, trainingSourceEvidence, trainingSourcePublicationFiles } from "../src/lib/training/sources";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is required.");
@@ -33,9 +35,29 @@ async function generateTrainingAnswer(sessionId: string, version: number) {
   const actor = await new PostgresAccountStore(database).getAccount(session.trainerAccountId);
   if (!actor || actor.status !== "APPROVED" || !["TRAINER", "ADMIN", "OWNER"].includes(actor.role)) throw new Error("TRAINER_NOT_AUTHORIZED");
   const environment = parseEnvironment(process.env);
+  const providerDependencies = getRuntimeProviderDependencies();
+  const profile = await providerDependencies.store.getExecutionProfile("PRIMARY");
+  const modelRuntime = environment.AUTH_MODE === "fixture" ? undefined : getRuntimeModelRuntime();
+  const sourceRecords = await store.listSourceContents(sessionId, actor.id);
+  for (const source of sourceRecords.filter(item => item.status !== "READY")) {
+    try {
+      const prepared = await prepareTrainingSource(source, { describeImage: async (bytes, mediaType) => {
+        if (!profile || !modelRuntime) throw new Error("PRIMARY_NOT_CONFIGURED");
+        return generateTrainingImageSource(profile, bytes, mediaType, modelRuntime);
+      } });
+      assertPreparedTrainingSourceCapacity(await store.listSourceContents(sessionId, actor.id), prepared);
+      await store.saveSource(prepared);
+    } catch (error) {
+      console.warn("training-source-failed", { sourceId: source.id, type: source.kind, detail: error instanceof Error ? error.message.slice(0, 200) : "unknown" });
+      await store.failSource(source.id, sessionId, "This source could not be prepared. Check its type, size, or availability, then retry.");
+      throw new Error("TRAINING_SOURCE_FAILED");
+    }
+  }
+  const preparedSources = await store.listSourceContents(sessionId, actor.id);
   const { chunks, navigation } = await knowledgeSnapshot(new PostgresSourceRepositoryStore(database), environment);
   const fixture = environment.AUTH_MODE === "fixture";
-  const result = await answerQuestion({ actor, conversationId: session.conversationId, question: session.originalQuestion, deepResearch: false, providers: getRuntimeProviderDependencies().store, learning: new PostgresLearningRepository(database), fixture, modelRuntime: fixture ? undefined : getRuntimeModelRuntime(), chunks, navigation, training: true, trainingHistory: trainingHistory(session, await store.listTurns(sessionId, actor.id)), guidance: await store.activeGuidance() });
+  const history = trainingHistory(session, await store.listTurns(sessionId, actor.id));
+  const result = await answerQuestion({ actor, conversationId: session.conversationId, question: session.originalQuestion, deepResearch: false, providers: providerDependencies.store, learning: new PostgresLearningRepository(database), fixture, modelRuntime, chunks, navigation, training: true, trainingHistory: history, guidance: await store.activeGuidance(), sessionEvidence: trainingSourceEvidence([session.originalQuestion, ...history.map(item => item.content)].join("\n"), preparedSources) });
   await store.saveAnswer(sessionId, actor.id, result.answer as unknown as Readonly<Record<string, unknown>>, undefined, version);
 }
 
@@ -44,6 +66,8 @@ async function acceptedTraining(sessionId: string) {
   const [session] = await sql`SELECT * FROM training_sessions WHERE id=${sessionId}`;
   if (!session || !["PUBLISHING", "ACTIVATING", "FAILED"].includes(session.state) || !session.accepted_content || !session.accepted_digest || !session.accepted_path) throw new Error("ACCEPTED_TRAINING_NOT_READY");
   if (contentDigest(session.accepted_content) !== session.accepted_digest) throw new Error("ACCEPTED_TRAINING_DIGEST_CHANGED");
+  const trainingStore = new PostgresTrainingSessionStore(getDatabase(databaseUrl!));
+  const sourceFiles = trainingSourcePublicationFiles(session.id, await trainingStore.listSourceContents(session.id, session.trainer_account_id));
   const [source] = await sql`SELECT * FROM source_repositories WHERE full_name=${session.target_repository}`;
   if (!source || source.status !== "ACTIVE" || (!session.published_commit && source.version !== session.accepted_source_version)) throw new Error("ACCEPTED_SOURCE_CHANGED");
   const temporaryRoot = await mkdtemp(join(tmpdir(), "pointguide-accepted-"));
@@ -65,6 +89,7 @@ async function acceptedTraining(sessionId: string) {
       const existing = await runCommand("git", ["show", `${latest}:${session.accepted_path}`], checkout).catch(() => null);
       if (existing !== null) {
         if (contentDigest(existing) !== session.accepted_digest) throw new Error("ACCEPTED_ARTIFACT_PATH_CONFLICT");
+        await verifyPublicationFiles(latest, sourceFiles, checkout);
         publishedCommit = latest;
       } else {
         const branch = `pointguide/accepted-${session.id}`;
@@ -75,8 +100,8 @@ async function acceptedTraining(sessionId: string) {
           if (!/^[a-f0-9]{40}$/u.test(existingHead.headRefOid)) throw new Error("ACCEPTED_PUBLICATION_HEAD_UNKNOWN");
           await runCommand("git", ["fetch", "origin", "--prune"], checkout);
           const proposedBase = (await runCommand("git", ["rev-parse", `${existingHead.headRefOid}^`], checkout)).trim();
-          publishedCommit = await mergeAcceptedArtifact({ ...artifact, baseCommit: proposedBase }, open[0].url, checkout, validateHead, runCommand, existingHead.headRefOid);
-        } else publishedCommit = (await publishAcceptedArtifact(artifact, checkout, validateHead)).publishedCommit;
+          publishedCommit = await mergeAcceptedArtifact({ ...artifact, baseCommit: proposedBase }, open[0].url, checkout, validateHead, runCommand, existingHead.headRefOid, sourceFiles);
+        } else publishedCommit = (await publishAcceptedArtifact(artifact, checkout, validateHead, runCommand, sourceFiles)).publishedCommit;
       }
       await sql`UPDATE training_sessions SET state='ACTIVATING',published_commit=${publishedCommit},publication_error=NULL,updated_at=now(),version=version+1 WHERE id=${session.id} AND state IN ('PUBLISHING','FAILED')`;
     }
@@ -84,6 +109,7 @@ async function acceptedTraining(sessionId: string) {
     const current = (await runCommand("git", ["rev-parse", `origin/${source.default_branch}`], checkout)).trim();
     const persisted = await runCommand("git", ["show", `${current}:${session.accepted_path}`], checkout);
     if (contentDigest(persisted) !== session.accepted_digest) throw new Error("ACCEPTED_ARTIFACT_CHANGED_AFTER_MERGE");
+    await verifyPublicationFiles(current, sourceFiles, checkout);
     const currentSource = (await new PostgresSourceRepositoryStore(getDatabase(databaseUrl!)).list()).find(item => item.id === source.id && item.status === "ACTIVE");
     if (!currentSource) throw new Error("ACCEPTED_SOURCE_ARCHIVED");
     const validated = await validateSourceRepository(currentSource.url, validationOptions);

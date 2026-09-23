@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import type { SourceRepositoryRecord } from "@/lib/sources/types";
-import type { TrainingSessionRecord, TrainingTurn } from "@/lib/training/types";
+import { trainingSourceAccept, type TrainingSessionRecord, type TrainingSourceRecord, type TrainingTurn } from "@/lib/training/types";
 import type { EvidenceItem, AnswerClaim } from "@/lib/agent/schema";
 import type { AcceptedGuidance } from "@/lib/training/knowledge";
 import { trainingRetryLabel, trainingStateLabel, trainingStateSummary } from "@/lib/training/presentation";
@@ -17,12 +17,14 @@ export function TrainingWorkspace({ resumeSessionId }: { resumeSessionId?: strin
   const router = useRouter();
   const [sources, setSources] = useState<SourceRepositoryRecord[]>([]);
   const [session, setSession] = useState<TrainingSessionRecord | null>(null);
+  const [trainingSources, setTrainingSources] = useState<TrainingSourceRecord[]>([]);
   const [turns, setTurns] = useState<TrainingTurn[]>([]);
   const [question, setQuestion] = useState(""); const [targetRepository, setTargetRepository] = useState(""); const [feedback, setFeedback] = useState(""); const [clarification, setClarification] = useState("");
   const [needsArea, setNeedsArea] = useState(false);
   const [status, setStatus] = useState("Loading training workspace…"); const [busy, setBusy] = useState(false);
   const [feedbackAction, setFeedbackAction] = useState<"FEEDBACK" | "CLARIFY" | null>(null);
   const [uncertainAction, setUncertainAction] = useState(false);
+  const [sourceStatus, setSourceStatus] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -30,11 +32,11 @@ export function TrainingWorkspace({ resumeSessionId }: { resumeSessionId?: strin
       .then(async ([sourcesResponse, sessionResponse]) => {
         if (!sourcesResponse.ok || (sessionResponse && !sessionResponse.ok)) throw new Error();
         const sourcePayload = await sourcesResponse.json() as { sources: SourceRepositoryRecord[] };
-        const sessionPayload = sessionResponse ? await sessionResponse.json() as { session: TrainingSessionRecord; turns: TrainingTurn[] } : null;
+        const sessionPayload = sessionResponse ? await sessionResponse.json() as { session: TrainingSessionRecord; turns: TrainingTurn[]; sources: TrainingSourceRecord[] } : null;
         if (!active) return;
         const activeSources = sourcePayload.sources.filter(source => source.status === "ACTIVE");
         setSources(activeSources); setTargetRepository(activeSources.length === 1 ? activeSources[0].fullName : "");
-        setSession(sessionPayload?.session ?? null); setTurns(sessionPayload?.turns ?? []); setStatus("");
+        setSession(sessionPayload?.session ?? null); setTurns(sessionPayload?.turns ?? []); setTrainingSources(sessionPayload?.sources ?? []); setStatus("");
       }).catch(() => { if (active) setStatus(resumeSessionId ? "Training session could not be loaded." : "Training workspace could not be loaded."); });
     return () => { active = false; };
   }, [resumeSessionId]);
@@ -43,20 +45,47 @@ export function TrainingWorkspace({ resumeSessionId }: { resumeSessionId?: strin
   useEffect(() => {
     if (!pollingSessionId || !pollingState || !["GENERATING", "REVISING", "PUBLISHING", "ACTIVATING"].includes(pollingState) || (pollingState === "REVISING" && pollingAnswerError)) return;
     const timer = window.setInterval(() => {
-      void fetch(`/api/training/sessions/${pollingSessionId}`, { cache: "no-store" }).then(response => response.ok ? response.json() as Promise<{ session: TrainingSessionRecord; turns: TrainingTurn[] }> : null).then(payload => { if (payload) { setSession(payload.session); setTurns(payload.turns); setStatus(""); } else setStatus("Status check unavailable. Progress is unknown. Reload to check saved work."); }).catch(() => setStatus("Status check unavailable. Progress is unknown. Reload to check saved work."));
+      void fetch(`/api/training/sessions/${pollingSessionId}`, { cache: "no-store" }).then(response => response.ok ? response.json() as Promise<{ session: TrainingSessionRecord; turns: TrainingTurn[]; sources?: TrainingSourceRecord[] }> : null).then(payload => { if (payload) { setSession(payload.session); setTurns(payload.turns); setTrainingSources(payload.sources ?? []); setStatus(""); if (payload.session.state === "ACTIVE") setSourceStatus(""); } else setStatus("Status check unavailable. Progress is unknown. Reload to check saved work."); }).catch(() => setStatus("Status check unavailable. Progress is unknown. Reload to check saved work."));
     }, 2_000);
     return () => window.clearInterval(timer);
   }, [pollingSessionId, pollingState, pollingAnswerError]);
 
-  async function start(event: FormEvent) {
+  async function start(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setStatus("PointGuide is checking sources and preparing the first answer…");
     try {
-      const response = await fetch("/api/training/sessions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ question, ...(targetRepository ? { targetRepository } : {}) }) });
+      const form = new FormData(event.currentTarget);
+      const response = await fetch("/api/training/sessions", { method: "POST", body: form });
       const payload = await response.json() as { session?: TrainingSessionRecord; error?: { code?: string; message?: string } };
       if (payload.error?.code === "SOURCE_AREA_REQUIRED") { setNeedsArea(true); setStatus(payload.error.message ?? "Choose the subject area for this question."); return; }
       if (!response.ok || !payload.session) { setStatus(payload.error?.message ?? "Training session could not be started."); return; }
       router.replace(`/training/sessions/${payload.session.id}`);
     } catch { setStatus("The start response is unavailable. Check Training Sessions for a saved question before trying again."); }
+    finally { setBusy(false); }
+  }
+
+  async function addSourceMaterial(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); if (!session) return;
+    const formElement = event.currentTarget; const form = new FormData(formElement); form.set("expectedVersion", String(session.version));
+    setBusy(true); setSourceStatus("Saving source material and preparing an updated answer…");
+    try {
+      const response = await fetch(`/api/training/sessions/${session.id}/sources`, { method: "POST", body: form });
+      const payload = await response.json() as { session?: TrainingSessionRecord; turns?: TrainingTurn[]; sources?: TrainingSourceRecord[]; error?: { message?: string } };
+      if (!response.ok || !payload.session) { setSourceStatus(payload.error?.message ?? "Source material could not be added."); return; }
+      setSession(payload.session); if (payload.turns) setTurns(payload.turns); if (payload.sources) setTrainingSources(payload.sources); formElement.reset();
+      setSourceStatus(payload.session.state === "ACTIVE" ? "Source material saved. The updated answer is ready." : "Source material saved. PointGuide is extracting it and preparing the updated answer.");
+    } catch { setSourceStatus("The response is unavailable. Reload this session to check whether the source material was saved before trying again."); }
+    finally { setBusy(false); }
+  }
+
+  async function removeSourceMaterial(sourceId: string) {
+    if (!session) return; setBusy(true); setSourceStatus("Removing source material and preparing an updated answer…");
+    try {
+      const response = await fetch(`/api/training/sessions/${session.id}/sources`, { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ sourceId, expectedVersion: session.version }) });
+      const payload = await response.json() as { session?: TrainingSessionRecord; turns?: TrainingTurn[]; sources?: TrainingSourceRecord[]; error?: { message?: string } };
+      if (!response.ok || !payload.session) { setSourceStatus(payload.error?.message ?? "Source material could not be removed."); return; }
+      setSession(payload.session); if (payload.turns) setTurns(payload.turns); if (payload.sources) setTrainingSources(payload.sources);
+      setSourceStatus(payload.session.state === "ACTIVE" ? "Source material removed. The updated answer is ready." : "Source material removed. PointGuide is preparing the updated answer.");
+    } catch { setSourceStatus("The response is unavailable. Reload this session to confirm whether the source was removed."); }
     finally { setBusy(false); }
   }
 
@@ -108,14 +137,18 @@ export function TrainingWorkspace({ resumeSessionId }: { resumeSessionId?: strin
     {status && !session ? <p className={`training-status${busy ? " training-progress" : ""}`} role="status">{busy ? <span aria-hidden="true" /> : null}{status}</p> : null}
     {!session ? <form className="training-session-card compact-card" onSubmit={start}>
       <h2>Start a training session</h2>
-      <label>Question<textarea required maxLength={8000} value={question} onChange={event => setQuestion(event.target.value)} placeholder="Ask the question you want PointGuide to answer" /></label>
-      {needsArea ? <label>Which area is this about?<select required value={targetRepository} onChange={event => setTargetRepository(event.target.value)}><option value="">Choose an area</option>{sources.map(source => <option key={source.id} value={source.fullName}>{sourceAreaLabel(source.fullName)}</option>)}</select><span className="field-hint">This helps keep accepted guidance with the right knowledge.</span></label> : null}
-      <button type="submit" disabled={busy || !question.trim() || (needsArea && !targetRepository) || !sources.length}>{busy ? "Preparing answer…" : "Start training"}</button>
+      <label>Question<textarea name="question" required maxLength={8000} value={question} onChange={event => setQuestion(event.target.value)} placeholder="Ask the question you want PointGuide to answer" /></label>
+      {needsArea || sources.length > 1 ? <label>Which area is this about?<select name="targetRepository" required value={targetRepository} onChange={event => setTargetRepository(event.target.value)}><option value="">Choose an area</option>{sources.map(source => <option key={source.id} value={source.fullName}>{sourceAreaLabel(source.fullName)}</option>)}</select><span className="field-hint">Your selection determines the repository used when this training is accepted.</span></label> : <input type="hidden" name="targetRepository" value={targetRepository} />}
+      <fieldset className="training-source-fields"><legend>Supporting material <span>Optional</span></legend><p>Use reliable material you already have. PointGuide uses it for this session now and adds it to the selected area only after you accept the answer.</p><label>Website URLs<textarea name="urls" rows={3} placeholder="One public webpage URL per line" /></label><label>Documents or images<input name="sources" type="file" multiple accept={trainingSourceAccept} /></label><small>Markdown, text, RTF, PDF, Word, saved HTML, JPEG, PNG, WebP, or SVG. Up to 10 items, 15 MiB each, 30 MiB total.</small></fieldset>
+      <button type="submit" disabled={busy || !question.trim() || ((needsArea || sources.length > 1) && !targetRepository) || !sources.length}>{busy ? "Preparing answer…" : "Start training"}</button>
     </form> : <section className="training-session" aria-label="Training session">
       <header className="training-session-header"><div><p className="eyebrow">Original question</p><h2>{session.originalQuestion}</h2><p>Area: {sourceAreaLabel(session.targetRepository)}</p></div><span>{session.state === "ACTIVE" && answer ? "Draft saved" : trainingStateLabel(session)}</span></header>
+      <section className="training-sources compact-card" aria-labelledby="training-sources-heading"><div><h3 id="training-sources-heading">Supporting material</h3><p>Reliable for this session now. It becomes source material for {sourceAreaLabel(session.targetRepository)} only after you accept the completed answer.</p></div>{trainingSources.length ? <ul>{trainingSources.map(source => <li key={source.id}><span><strong>{source.originalName}</strong><small>{source.kind === "URL" ? source.finalUrl ?? source.sourceUrl : source.mediaType} · {source.status === "READY" ? "Ready" : source.status === "FAILED" ? `Needs attention: ${source.error}` : "Preparing"}</small></span>{session.state === "ACTIVE" || session.state === "REVISING" && Boolean(session.answerError) && source.status === "FAILED" ? <button type="button" disabled={busy} onClick={() => void removeSourceMaterial(source.id)}>Remove</button> : null}</li>)}</ul> : <p className="field-hint">No supporting material added.</p>}{session.state === "ACTIVE" ? <form onSubmit={addSourceMaterial}><label>Website URLs<textarea name="urls" rows={2} placeholder="One public webpage URL per line" /></label><label>Documents or images<input name="sources" type="file" multiple accept={trainingSourceAccept} /></label><button type="submit" disabled={busy}>{busy && sourceStatus ? "Updating answer…" : "Add material and update answer"}</button></form> : null}{sourceStatus ? <p className={busy ? "training-progress" : undefined} role="status">{busy ? <span aria-hidden="true" /> : null}{sourceStatus}</p> : null}</section>
       {earlierTurns.length ? <section className="training-history" aria-label="Conversation so far"><h3>Conversation so far</h3><ol>{earlierTurns.map(turn => {
         if (turn.kind === "FEEDBACK") return <li key={turn.ordinal}><strong>Your feedback:</strong> {String(turn.content.feedback ?? "")}</li>;
         if (turn.kind === "CLARIFICATION") return <li key={turn.ordinal}><strong>Your clarification:</strong> {String(turn.content.response ?? "")} <small>In response to: {String(turn.content.question ?? "")}</small></li>;
+        if (turn.kind === "SOURCE") return <li key={turn.ordinal}><strong>Supporting material added.</strong></li>;
+        if (turn.kind === "SOURCE_REMOVED") return <li key={turn.ordinal}><strong>Supporting material removed.</strong></li>;
         if (turn.kind !== "ANSWER") return <li key={turn.ordinal}><strong>{turn.kind}:</strong> Earlier session record</li>;
         const earlier = turn.content.answer as TrainingAnswer | undefined;
         return <li className="training-history-answer" key={turn.ordinal}><details><summary>Earlier PointGuide answer</summary><div><p>{earlier?.directAnswer}</p>{earlier?.safetyAndAssumptions?.length ? <><small>Safety and assumptions</small><ul>{earlier.safetyAndAssumptions.map(item => <li key={item}>{item}</li>)}</ul></> : null}{earlier?.steps?.length ? <><small>Steps</small><ol>{earlier.steps.map(item => <li key={item}>{item}</li>)}</ol></> : null}</div></details></li>;
@@ -125,7 +158,7 @@ export function TrainingWorkspace({ resumeSessionId }: { resumeSessionId?: strin
         {answer.safetyAndAssumptions?.length ? <aside className="safety-note"><strong>Before changing anything</strong><ul>{answer.safetyAndAssumptions.map(item => <li key={item}>{item}</li>)}</ul></aside> : null}
         {answer.steps?.length ? <ol>{answer.steps.map(step => <li key={step}>{step}</li>)}</ol> : null}
         <details className="evidence-section evidence-accordion"><summary><strong>Sources</strong><span>{(answer.evidence?.length ?? 0) + (answer.guidance?.filter(item => !answer.evidence?.some(evidence => evidence.id === item.id)).length ?? 0)} sources</span></summary><div className="evidence-list">
-          {answer.evidence?.map(item => <div key={item.id}><strong>{item.kind === "ACCEPTED_TRAINING" ? "Accepted training · " : "Supplemental source · "}{item.title}</strong><p>{item.excerpt}</p><small>{item.locator ?? item.path ?? item.url} · {item.authority}</small>{repositoryEvidenceUrl(item) ? <p><a href={repositoryEvidenceUrl(item)!} target="_blank" rel="noopener noreferrer">Exact repository artifact and revision</a></p> : null}</div>)}
+          {answer.evidence?.map(item => <div key={item.id}><strong>{item.kind === "ACCEPTED_TRAINING" ? "Accepted training · " : item.kind === "TRAINER_SOURCE" ? "Trainer-provided source · " : "Supplemental source · "}{item.title}</strong><p>{item.excerpt}</p><small>{item.locator ?? item.path ?? item.url} · {item.authority}</small>{repositoryEvidenceUrl(item) ? <p><a href={repositoryEvidenceUrl(item)!} target="_blank" rel="noopener noreferrer">Exact repository artifact and revision</a></p> : null}</div>)}
           {answer.guidance?.filter(item => !answer.evidence?.some(evidence => evidence.id === item.id)).map(item => <article key={item.id}><strong>Historical accepted guidance</strong><p>{item.directAnswer}</p><p>This earlier response was saved as guidance; its cited source status is shown separately.</p><a href={`https://github.com/${item.repository}/blob/${item.indexedCommit}/${item.path}`} target="_blank" rel="noopener noreferrer">Repository artifact and revision</a></article>)}
           {answer.claims?.length ? <section aria-label="Claim check"><h3>Claim check</h3><ul>{answer.claims.map(claim => <li key={claim.id}>{claim.status}: {claim.text} ({claim.evidenceIds.join(", ") || "no supporting source"})</li>)}</ul></section> : null}
         </div></details>

@@ -20,7 +20,8 @@ it("never presents unvalidated training chunks as repository evidence", () => {
 });
 
 it("excludes inactive, archived, and superseded accepted sessions", () => {
-  const session = { id: crypto.randomUUID(), trainerAccountId: "trainer", conversationId: "conversation", targetRepository: "PointCommunity/pointaudio", originalQuestion: guidance.question, state: "ACTIVE_KNOWLEDGE", currentAnswer: { id: crypto.randomUUID(), directAnswer: guidance.directAnswer, evidence: [{ id: "repo:dl32" }] }, currentReport: null, proposalId: null, createdAt: guidance.acceptedAt, updatedAt: guidance.acceptedAt, version: 2 } satisfies TrainingSessionRecord;
+  const evidence = { id: "repo:dl32", kind: "REPOSITORY", title: "DL32 manual", path: "docs/dl32.txt", locator: "page 1", authority: "Manufacturer manual", capturedAt: "2026-09-15T12:00:00.000Z", excerpt: "Inspect cable and clock safely.", digest: "d".repeat(64) };
+  const session = { id: crypto.randomUUID(), trainerAccountId: "trainer", conversationId: "conversation", targetRepository: "PointCommunity/pointaudio", originalQuestion: guidance.question, state: "ACTIVE_KNOWLEDGE", currentAnswer: { id: crypto.randomUUID(), directAnswer: guidance.directAnswer, evidence: [evidence] }, currentReport: null, proposalId: null, createdAt: guidance.acceptedAt, updatedAt: guidance.acceptedAt, version: 2 } satisfies TrainingSessionRecord;
   const artifact = acceptedTrainingArtifact(session, "trainer", "a".repeat(40), guidance.acceptedAt);
   const active = { ...session, acceptedContent: artifact.content, acceptedDigest: artifact.digest, acceptedPath: artifact.path, indexedCommit: "b".repeat(40) } satisfies TrainingSessionRecord;
   const source = { fullName: session.targetRepository, status: "ACTIVE", indexedCommit: "b".repeat(40), validationReport: { valid: true, complete: true, commitSha: "b".repeat(40), acceptedArtifacts: [{ path: artifact.path, digest: artifact.digest }] } } as SourceRepositoryRecord;

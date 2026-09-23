@@ -21,7 +21,7 @@ databaseTest("queues first answers and revisions atomically, with saved feedback
   const actor = await new PostgresAccountStore(database).provisionAccount({ issuer: "https://pointguide.test", subject: "queued-owner", email: "queued@example.com", displayName: "Owner" });
   const conversation = await new PostgresLearningRepository(database).createConversation(actor.id, "Queued training test");
   const store = new PostgresTrainingSessionStore(database);
-  const started = await store.create({ trainerAccountId: actor.id, conversationId: conversation.id, targetRepository: "PointCommunity/pointaudio", originalQuestion: "How do I route a channel?" }, true);
+  const started = await store.create({ trainerAccountId: actor.id, conversationId: conversation.id, targetRepository: "PointCommunity/pointaudio", originalQuestion: "How do I route a channel?" }, true, [{ kind: "FILE", originalName: "routing.txt", mediaType: "text/plain", originalBytes: Buffer.from("Route channel 1 to bus 2.") }]);
   expect(started).toMatchObject({ state: "GENERATING", currentAnswer: null, answerError: null });
   const [firstJob] = await database.execute(sql`select payload from jobs where kind='GENERATE_TRAINING_ANSWER' and payload->>'sessionId'=${started.id}`);
   expect(firstJob.payload).toMatchObject({ sessionId: started.id, version: started.version });
@@ -39,7 +39,12 @@ databaseTest("queues first answers and revisions atomically, with saved feedback
   const queued = await database.execute(sql`select payload from jobs where kind='GENERATE_TRAINING_ANSWER' and payload->>'sessionId'=${started.id} order by created_at desc limit 1`);
   expect(queued[0].payload).toMatchObject({ version: revising.version });
   await store.failAnswer(started.id, revising.version, "The revision failed. Your feedback is saved. Retry this revision.");
-  expect(await store.get(started.id, actor.id)).toMatchObject({ state: "REVISING", answerError: expect.stringContaining("Retry this revision") });
+  const failedRevision = await store.get(started.id, actor.id);
+  expect(failedRevision).toMatchObject({ state: "REVISING", answerError: expect.stringContaining("Retry this revision") });
+  const [failedSource] = await store.listSources(started.id, actor.id);
+  await store.failSource(failedSource.id, started.id, "This source could not be prepared.");
+  await expect(store.removeSource(started.id, actor.id, failedRevision.version, failedSource.id)).resolves.toMatchObject({ state: "REVISING", answerError: null });
+  expect(await store.listSources(started.id, actor.id)).toEqual([]);
 });
 
 databaseTest("worker completes a queued answer without holding the start request open", async () => {
@@ -50,10 +55,11 @@ databaseTest("worker completes a queued answer without holding the start request
   const actor = await new PostgresAccountStore(database).provisionAccount({ issuer: "https://pointguide.test", subject: "worker-owner", email: "worker@example.com", displayName: "Owner" });
   const conversation = await new PostgresLearningRepository(database).createConversation(actor.id, "Worker training test");
   const store = new PostgresTrainingSessionStore(database);
-  const pending = await store.create({ trainerAccountId: actor.id, conversationId: conversation.id, targetRepository: "PointCommunity/pointaudio", originalQuestion: "Which bus is this?" }, true);
+  const pending = await store.create({ trainerAccountId: actor.id, conversationId: conversation.id, targetRepository: "PointCommunity/pointaudio", originalQuestion: "Which bus is this?" }, true, [{ kind: "FILE", originalName: "routing.txt", mediaType: "text/plain", originalBytes: Buffer.from("Route channel 1 to bus 2 using sends on fader.") }]);
   execFileSync(process.execPath, ["./node_modules/tsx/dist/cli.mjs", "scripts/worker.ts"], { env: { ...process.env, DATABASE_URL: url, WORKER_ONCE: "true", AUTH_MODE: "fixture", NODE_ENV: "test" }, timeout: 30_000 });
   const completed = await store.get(pending.id, actor.id);
-  expect(completed).toMatchObject({ state: "ACTIVE", answerError: null, currentAnswer: { confidence: "UNKNOWN" } });
+  expect(completed).toMatchObject({ state: "ACTIVE", answerError: null, currentAnswer: { confidence: "UNKNOWN", evidence: [expect.objectContaining({ kind: "TRAINER_SOURCE", title: "routing.txt" })] } });
+  expect(await store.listSources(pending.id, actor.id)).toEqual([expect.objectContaining({ originalName: "routing.txt", status: "READY", extractedDigest: expect.stringMatching(/^[a-f0-9]{64}$/u) })]);
   expect((await store.listTurns(pending.id, actor.id)).map(turn => turn.kind)).toEqual(["ANSWER"]);
   const [job] = await database.execute(sql`select status from jobs where payload->>'sessionId'=${pending.id}`);
   expect(job.status).toBe("SUCCEEDED");
@@ -125,6 +131,18 @@ databaseTest("round-trips source applicability, purpose navigation and provenanc
   expect(searchCorpus("M32R local sockets", snapshot.chunks)[0]).toMatchObject({ sourceId: "M32R-LOCAL-INPUTS", product: "M32R", verifiedAt: "2026-09-18" });
 });
 
+databaseTest("coalesces concurrent identical refreshes without overwriting a different snapshot", async () => {
+  const database = getDatabase(disposableDatabaseUrl(testDatabaseUrl as string));
+  await database.execute(sql`truncate table accounts cascade`); await database.execute(sql`delete from source_repositories`);
+  const actor = await new PostgresAccountStore(database).provisionAccount({ issuer: "https://pointguide.test", subject: "refresh-race-owner", email: "refresh@example.com", displayName: "Owner" });
+  const validated = await validateSourceRepository("https://github.com/PointCommunity/test", { fetcher: upstream(sourceFiles()) });
+  const store = new PostgresSourceRepositoryStore(database); const linked = await store.link(actor.id, validated);
+  const results = await Promise.all([store.refresh(actor.id, linked, validated), store.refresh(actor.id, linked, validated)]);
+  expect(results.map(result => result.outcome)).toEqual(["current", "current"]);
+  const [current] = await store.list(); expect(current.version).toBe(linked.version + 1);
+  await expect(store.refresh(actor.id, linked, { ...validated, report: { ...validated.report, commitSha: "b".repeat(40) } })).rejects.toThrow(/changed during refresh/i);
+});
+
 databaseTest("serializes feedback and exact-answer acceptance, then activates only indexed committed guidance", async () => {
   const database = getDatabase(disposableDatabaseUrl(testDatabaseUrl as string));
   await database.execute(sql`truncate table accounts cascade`);
@@ -137,7 +155,8 @@ databaseTest("serializes feedback and exact-answer acceptance, then activates on
   const training = new PostgresTrainingSessionStore(database);
   const started = await training.create({ trainerAccountId: actor.id, conversationId: conversation.id, targetRepository: source.fullName, originalQuestion: "Why is the DL32 AES50 link red?" });
   const answerId = "00000000-0000-4000-8000-000000000012";
-  const completed = await training.saveAnswer(started.id, actor.id, { id: answerId, directAnswer: "Check the AES50 cable.", evidence: [{ id: "manual:1" }], claims: [{ id: "claim:1", text: "Check the AES50 cable.", status: "SUPPORTED", evidenceIds: ["manual:1"] }] });
+  const manualEvidence = { id: "manual:1", kind: "REPOSITORY", title: "DL32", path: "docs/dl32.txt", locator: "1-10", authority: "Manual", capturedAt: "2026-09-22T00:00:00.000Z", excerpt: "Check the AES50 cable.", digest: "a".repeat(64) };
+  const completed = await training.saveAnswer(started.id, actor.id, { id: answerId, directAnswer: "Check the AES50 cable.", evidence: [manualEvidence], claims: [{ id: "claim:1", text: "Check the AES50 cable.", status: "SUPPORTED", evidenceIds: ["manual:1"] }] });
   const actions = await Promise.allSettled([
     training.saveFeedback(started.id, actor.id, completed.version, answerId, "Check the connection first."),
     training.acceptAnswer(started.id, actor.id, completed.version, answerId, source),
@@ -146,7 +165,7 @@ databaseTest("serializes feedback and exact-answer acceptance, then activates on
   const current = await training.get(started.id, actor.id);
   expect((await training.listTurns(started.id, actor.id)).map(turn => turn.kind)).toEqual(["ANSWER", current.state === "REVISING" ? "FEEDBACK" : "ACCEPT_ANSWER"]);
   if (current.state === "REVISING") {
-    const revised = await training.saveAnswer(started.id, actor.id, { id: "00000000-0000-4000-8000-000000000013", directAnswer: "Check the connection first.", evidence: [{ id: "manual:1" }] });
+    const revised = await training.saveAnswer(started.id, actor.id, { id: "00000000-0000-4000-8000-000000000013", directAnswer: "Check the connection first.", evidence: [manualEvidence] });
     await training.acceptAnswer(started.id, actor.id, revised.version, String(revised.currentAnswer?.id), source);
   }
   const accepted = await training.get(started.id, actor.id);
@@ -174,7 +193,7 @@ databaseTest("serializes feedback and exact-answer acceptance, then activates on
   const secondConversation = await new PostgresLearningRepository(database).createConversation(actor.id, "Training again");
   const second = await training.create({ trainerAccountId: actor.id, conversationId: secondConversation.id, targetRepository: source.fullName, originalQuestion: started.originalQuestion });
   const secondAnswerId = "00000000-0000-4000-8000-000000000014";
-  const secondAnswer = await training.saveAnswer(second.id, actor.id, { id: secondAnswerId, directAnswer: "Inspect both AES50 connectors.", evidence: [{ id: "manual:1" }] });
+  const secondAnswer = await training.saveAnswer(second.id, actor.id, { id: secondAnswerId, directAnswer: "Inspect both AES50 connectors.", evidence: [manualEvidence] });
   const secondAccepted = await training.acceptAnswer(second.id, actor.id, secondAnswer.version, secondAnswerId, unrelated.source);
   await database.execute(sql`update training_sessions set state='ACTIVATING',published_commit=${"b".repeat(40)} where id=${second.id}`);
   const secondRenewed = await sourceStore.refresh(actor.id, unrelated.source, { fullName: source.fullName, url: source.url,
@@ -210,7 +229,7 @@ databaseTest("atomically refreshes large snapshots, rolls back failed inserts, a
   await expect(store.refresh(actor.id, initial, source)).rejects.toThrow(/changed/i);
   const current = (await store.list())[0];
   const races = await Promise.allSettled([store.refresh(actor.id, current, replacement), store.refresh(actor.id, current, replacement)]);
-  expect(races.filter(result => result.status === "fulfilled")).toHaveLength(1);
+  expect(races.filter(result => result.status === "fulfilled")).toHaveLength(2);
   const latest = (await store.list())[0];
   await store.archive(actor.id, latest.id, latest.fullName);
   await expect(store.refresh(actor.id, latest, replacement)).rejects.toThrow(/changed/i);
