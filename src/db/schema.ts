@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  customType,
   foreignKey,
   index,
   integer,
@@ -23,6 +24,7 @@ export const accountStatus = pgEnum("account_status", accountStatuses);
 export const providerKind = pgEnum("provider_kind", providerIds);
 export const providerConnectionStatus = pgEnum("provider_connection_status", providerStatuses);
 export const agentProfileRole = pgEnum("agent_profile_role", profileRoles);
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea", toDriver: value => value, fromDriver: value => Buffer.from(value) });
 
 export const accounts = pgTable("accounts", {
   id: uuid("id").primaryKey(),
@@ -263,6 +265,7 @@ export const trainingSessions = pgTable("training_sessions", {
   publishedCommit: text("published_commit"),
   indexedCommit: text("indexed_commit"),
   publicationError: text("publication_error"),
+  answerError: text("answer_error"),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull(),
   version: integer("version").notNull().default(1),
@@ -277,6 +280,22 @@ export const trainingTurns = pgTable("training_turns", {
   content: jsonb("content").$type<Readonly<Record<string, unknown>>>().notNull(),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
 }, (table) => [unique("training_turns_session_ordinal_unique").on(table.sessionId, table.ordinal)]);
+
+export const trainingSources = pgTable("training_sources", {
+  id: uuid("id").primaryKey(),
+  sessionId: uuid("session_id").notNull().references(() => trainingSessions.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull(), originalName: text("original_name").notNull(), mediaType: text("media_type").notNull(),
+  sourceUrl: text("source_url"), finalUrl: text("final_url"), originalSize: integer("original_size"), originalDigest: text("original_digest"),
+  originalBytes: bytea("original_bytes"), extractedText: text("extracted_text"), extractedDigest: text("extracted_digest"),
+  status: text("status").notNull().default("PENDING"), error: text("error"), capturedAt: timestamp("captured_at", { withTimezone: true, mode: "date" }),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(), updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull(),
+}, (table) => [
+  index("training_sources_session_idx").on(table.sessionId, table.createdAt),
+  check("training_sources_kind_check", sql`${table.kind} IN ('FILE','URL')`),
+  check("training_sources_status_check", sql`${table.status} IN ('PENDING','READY','FAILED')`),
+  check("training_sources_size_check", sql`${table.originalSize} IS NULL OR (${table.originalSize} > 0 AND ${table.originalSize} <= 15728640)`),
+  check("training_sources_text_check", sql`${table.extractedText} IS NULL OR char_length(${table.extractedText}) <= 1000000`),
+]);
 
 export const webFindings = pgTable("web_findings", {
   id: uuid("id").primaryKey(),

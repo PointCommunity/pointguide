@@ -10,10 +10,21 @@ export async function refreshKnowledge(actorId: string, store: SourceRepositoryS
     signal.throwIfAborted();
     emit({ type: "checking", id: source.id, fullName: source.fullName });
     try {
-      const validated = await validate(source.url);
-      signal.throwIfAborted();
-      const result = await store.refresh(actorId, source, validated);
-      emit({ type: "result", id: source.id, fullName: source.fullName, ...result });
+      let expected = source;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const validated = await validate(expected.url);
+        signal.throwIfAborted();
+        try {
+          const result = await store.refresh(actorId, expected, validated);
+          emit({ type: "result", id: source.id, fullName: source.fullName, ...result });
+          break;
+        } catch (error) {
+          if (!(error instanceof SourceStoreError && error.code === "SOURCE_CHANGED" && attempt === 0)) throw error;
+          const latest = (await store.list()).find(item => item.id === source.id && item.status === "ACTIVE");
+          if (!latest) throw error;
+          expected = latest;
+        }
+      }
     } catch (error) {
       const known = error instanceof SourceValidationError || error instanceof SourceStoreError;
       const message = known ? error.message : "Refresh failed. Previous knowledge remains available; try again.";

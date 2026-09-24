@@ -1,5 +1,6 @@
 import { parseManifest } from "@/lib/evidence/corpus";
 import { indexContents, safePath, sha256 } from "./content";
+import { contractDownloadPaths, requiredSourcePaths, validateSourceContract } from "./contract";
 import { z } from "zod";
 import type { SourceValidationReport, ValidatedSource } from "./types";
 
@@ -49,12 +50,12 @@ export async function validateSourceRepository(value: string, options: { fetcher
     const paths = new Set(blobs.map(item => safePath(item.path)));
     if (paths.size !== blobs.length) throw new Error("Duplicate repository paths.");
     const manifests = [...paths].filter(path => /(?:^|\/)checksums\.sha256$/u.test(path));
-    const candidates = blobs.filter(item => evidenceRoot.test(item.path) && supportedExtension.test(item.path));
-    const requirements = { agentsFile: paths.has("AGENTS.md"), evidenceContent: candidates.length > 0, integrityManifest: paths.has("pointguide-source.yaml") || manifests.length > 0 };
-    const errors = [!requirements.agentsFile ? "Missing root AGENTS.md with source-handling instructions." : "", !requirements.evidenceContent ? "No supported evidence files were found under data/, docs/, research/, or skills/." : "", !requirements.integrityManifest ? "Missing pointguide-source.yaml or a checksums.sha256 integrity manifest." : ""].filter(Boolean);
+    const candidates = blobs.filter(item => evidenceRoot.test(item.path) && supportedExtension.test(item.path) && !/(?:^|\/)README\.md$/u.test(item.path) && !/(?:^|\/)(?:source-inventory\.json|checksums\.sha256)$/u.test(item.path) && !item.path.startsWith("research/pointguide-training/"));
+    const requirements = { agentsFile: paths.has("AGENTS.md"), evidenceContent: candidates.length > 0, integrityManifest: paths.has("pointguide-source.yaml") && paths.has("source-inventory.json") && paths.has("checksums.sha256") };
+    const errors = [...requiredSourcePaths(paths), !requirements.evidenceContent ? "No supported evidence files were found under data/, docs/, research/, or skills/." : ""].filter(Boolean);
     const report: SourceValidationReport = { valid: !errors.length, checkedAt: new Date().toISOString(), commitSha: commit, defaultBranch: repo.default_branch, errors, warnings: [], filesReviewed: tree.tree.length, filesIndexed: candidates.length, chunksIndexed: 0, requirements };
-    if (errors.length) throw new SourceValidationError("SOURCE_INVALID", "The repository does not meet the PointGuide source contract.", report);
-    const downloadPaths = [...new Set([...candidates.map(item => item.path), ...manifests])];
+    if (errors.length) throw new SourceValidationError("SOURCE_INVALID", errors[0], report);
+    const downloadPaths = [...new Set([...candidates.map(item => item.path), ...manifests, ...contractDownloadPaths(paths)])];
     if (downloadPaths.length > 1000) throw new Error("Repository exceeds the 1000 text file limit.");
     const contents = new Map<string, string>();
     let totalBytes = 0;
@@ -83,9 +84,11 @@ export async function validateSourceRepository(value: string, options: { fetcher
       checksumsVerified++;
     }
     signal.throwIfAborted();
-    const chunks = indexContents(fullName, commit, report.checkedAt, contents, candidates.map(item => item.path));
+    const contract = validateSourceContract(fullName, repo.default_branch, paths, contents);
+    const chunks = indexContents(fullName, commit, report.checkedAt, contents, contract.activePaths, contract.items);
     if (!chunks.length) throw new Error("Repository contains no searchable evidence.");
-    return { fullName, url: parsed.url, chunks, report: { ...report, complete: true, bytesIndexed: totalBytes, checksumsVerified, files: candidates.map(item => item.path), chunksIndexed: chunks.length, warnings: excluded ? [`${excluded} non-text manifest entries retained upstream; not indexed or downloaded.`] : [] } };
+    const acceptedArtifacts = parseManifest(contents.get("checksums.sha256")!).filter(entry => /^research\/pointguide-training\/[a-f0-9-]{36}\/[a-f0-9-]{36}\.json$/u.test(entry.path)).map(({ path, digest }) => ({ path, digest }));
+    return { fullName, url: parsed.url, chunks, report: { ...report, complete: true, bytesIndexed: totalBytes, checksumsVerified, filesIndexed: contract.activePaths.length, files: contract.activePaths, inventoryItems: contract.items, navigation: contract.navigation, acceptedArtifacts, chunksIndexed: chunks.length, warnings: excluded ? [`${excluded} non-text manifest entries retained upstream; not indexed or downloaded.`] : [] } };
   } catch (error) {
     controller.abort();
     if (error instanceof SourceValidationError) throw error;

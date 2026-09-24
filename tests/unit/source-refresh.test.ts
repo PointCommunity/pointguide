@@ -1,21 +1,22 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { validateSourceRepository } from "@/lib/sources/validator";
-import { MemorySourceRepositoryStore } from "@/lib/sources/store";
+import { MemorySourceRepositoryStore, SourceStoreError } from "@/lib/sources/store";
+import { commit, digest, seal, sourceFiles, upstream as sourceUpstream } from "../fixtures/source-contract";
 
-const commit = "b".repeat(40);
 function upstream(files: Record<string, string>, overrides: { truncated?: boolean } = {}) {
-  const all = { "AGENTS.md": "Source instructions are not executable.", ...files };
-  return vi.fn(async (url: string) => {
-    if (url.endsWith("/repos/PointCommunity/test")) return Response.json({ full_name: "PointCommunity/test", default_branch: "published", html_url: "https://github.com/PointCommunity/test", pushed_at: "2026-09-14T00:00:00Z" });
-    if (url.endsWith("/commits/published") || url.endsWith(`/commits/${commit}`)) return Response.json({ sha: commit });
-    if (url.includes("/git/trees/")) return Response.json({ sha: "c".repeat(40), truncated: overrides.truncated ?? false, tree: Object.entries(all).map(([path, content]) => ({ path, type: "blob", mode: "100644", size: Buffer.byteLength(content) })) });
-    const path = decodeURIComponent(url.split(`/${commit}/`)[1] ?? "");
-    return path in all ? new Response(all[path as keyof typeof all]) : new Response(null, { status: 404 });
-  });
+  return sourceUpstream(files, "PointCommunity/test", "published", overrides);
 }
 function files(text = "Validated sermon source") {
-  return { "docs/recording.txt": text, "checksums.sha256": `${createHash("sha256").update(text).digest("hex")}  docs/recording.txt\n` };
+  const result = sourceFiles("PointCommunity/test", text);
+  result["docs/recording.txt"] = text;
+  delete result["docs/setup.txt"];
+  result["pointguide-source.yaml"] = result["pointguide-source.yaml"].replace("default_branch: main", "default_branch: published");
+  const inventory = JSON.parse(result["source-inventory.json"]);
+  inventory.items[0].path = "docs/recording.txt";
+  inventory.items[0].digest = digest(text);
+  result["source-inventory.json"] = JSON.stringify(inventory);
+  return seal(result);
 }
 
 describe("knowledge refresh contract", () => {
@@ -47,6 +48,7 @@ describe("knowledge refresh contract", () => {
     const source = await store.link("owner", initial);
     await store.refresh("owner", source, replacement);
     expect((await store.snapshot()).chunks.map(chunk => chunk.text).join(" ")).toContain("new evidence");
+    await expect(store.refresh("owner", source, replacement)).resolves.toMatchObject({ outcome: "current", source: { indexedCommit: replacement.report.commitSha } });
     await expect(store.refresh("owner", source, initial)).rejects.toThrow(/changed/i);
     const current = (await store.list())[0];
     await store.archive("owner", current.id, current.fullName);
@@ -63,27 +65,43 @@ it("publishes per-repository results, keeps failed knowledge, and skips archives
   const b = await store.link("owner", { ...first, fullName: "PointCommunity/second", url: "https://github.com/PointCommunity/second" });
   const c = await store.link("owner", { ...first, fullName: "PointCommunity/archived" });
   await store.archive("owner", c.id, c.fullName);
-  const validate = vi.fn(async (url: string) => { if (url === b.url) throw new Error("private upstream error"); return first; });
+  const validate = vi.fn(async (url: string) => { if (url === b.url) throw new SourceStoreError("SOURCE_CHANGED", "Repository changed during refresh. Pull latest knowledge again."); return first; });
   const emit = vi.fn(); const audit = vi.spyOn(store, "refreshFailed");
   await refreshKnowledge("owner", store, validate, emit, new AbortController().signal);
   expect(validate).toHaveBeenCalledTimes(2);
   expect(emit.mock.calls.map(([event]) => event)).toContainEqual(expect.objectContaining({ id: a.id, outcome: "current" }));
   expect(emit.mock.calls.map(([event]) => event)).toContainEqual(expect.objectContaining({ id: b.id, outcome: "failed" }));
-  expect(JSON.stringify(emit.mock.calls)).not.toContain("private upstream error");
-  expect(audit).toHaveBeenCalledWith("owner", b.id, "REFRESH_FAILED");
+  expect(emit.mock.calls.map(([event]) => event)).toContainEqual(expect.objectContaining({ id: b.id, outcome: "failed", message: "Repository changed during refresh. Pull latest knowledge again." }));
+  expect(audit).toHaveBeenCalledWith("owner", b.id, "SOURCE_CHANGED");
   expect((await store.list()).find(source => source.id === b.id)?.version).toBe(1);
+});
+
+it("revalidates once against the latest registry version when another refresh wins the race", async () => {
+  const { refreshKnowledge } = await import("@/lib/sources/refresh");
+  const validated = await validateSourceRepository("https://github.com/PointCommunity/test", { fetcher: upstream(files()) });
+  const source = { id: crypto.randomUUID(), fullName: validated.fullName, url: validated.url, status: "ACTIVE" as const, defaultBranch: "published", indexedCommit: "a".repeat(40), validationReport: validated.report, linkedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), version: 1 };
+  const latest = { ...source, indexedCommit: "b".repeat(40), version: 2 };
+  const list = vi.fn().mockResolvedValueOnce([source]).mockResolvedValueOnce([latest]);
+  const refresh = vi.fn().mockRejectedValueOnce(new SourceStoreError("SOURCE_CHANGED", "Repository changed during refresh. Pull latest knowledge again.")).mockResolvedValueOnce({ source: latest, outcome: "current" });
+  const refreshFailed = vi.fn(); const validate = vi.fn().mockResolvedValue(validated); const emit = vi.fn();
+  await refreshKnowledge("owner", { list, refresh, refreshFailed } as never, validate, emit, new AbortController().signal);
+  expect(validate).toHaveBeenCalledTimes(2); expect(refresh).toHaveBeenCalledTimes(2); expect(refreshFailed).not.toHaveBeenCalled();
+  expect(emit.mock.calls.map(([event]) => event)).toContainEqual(expect.objectContaining({ id: source.id, outcome: "current" }));
 });
 
 it("repairs same-commit missing chunks and never mixes refreshed PointAudio with bootstrap evidence", async () => {
   const { knowledgeSnapshot } = await import("@/lib/sources/retrieval");
   const { parseEnvironment } = await import("@/lib/config/env");
-  const source = await validateSourceRepository("https://github.com/PointCommunity/test", { fetcher: upstream(files()) });
-  const store = new MemorySourceRepositoryStore(false);
-  const initial = await store.link("owner", { ...source, fullName: "PointCommunity/pointaudio", chunks: [], report: { ...source.report, complete: false } });
+  const audio = files();
+  audio["pointguide-source.yaml"] = audio["pointguide-source.yaml"].replace("PointCommunity/test", "PointCommunity/pointaudio");
+  audio["source-inventory.json"] = audio["source-inventory.json"].replace("PointCommunity/test", "PointCommunity/pointaudio");
+  const source = await validateSourceRepository("https://github.com/PointCommunity/pointaudio", { fetcher: sourceUpstream(seal(audio), "PointCommunity/pointaudio", "published") });
+  const store = new MemorySourceRepositoryStore();
+  const initial = (await store.list())[0];
   const builtin = vi.fn().mockResolvedValue([{ text: "stale M32" }]);
   const environment = parseEnvironment({ AUTH_MODE: "cloudflare" });
   expect((await knowledgeSnapshot(store, environment, builtin)).chunks).toHaveLength(1);
-  const result = await store.refresh("owner", initial, { ...source, fullName: initial.fullName });
+  const result = await store.refresh("owner", initial, source);
   expect(result.outcome).toBe("updated");
   builtin.mockClear();
   const snapshot = await knowledgeSnapshot(store, environment, builtin);
@@ -139,8 +157,8 @@ it("enforces actual streamed byte limits, file count, and manifest target safety
   await expect(validateSourceRepository("https://github.com/PointCommunity/test", { fetcher: upstream({ ...files(), ...Object.fromEntries(Array.from({ length: 1001 }, (_, i) => [`docs/${i}.txt`, "text"])) }) })).rejects.toThrow(/1000/);
   await expect(validateSourceRepository("https://github.com/PointCommunity/test", { fetcher: upstream({ ...files(), "checksums.sha256": `${"a".repeat(64)}  docs/missing.txt` }) })).rejects.toThrow(/target missing/);
   const original = files();
-  const result = await validateSourceRepository("https://github.com/PointCommunity/test", { fetcher: upstream({ ...original, "original.pdf": "binary", "README.md": "readme", "checksums.sha256": `${original["checksums.sha256"]}${"a".repeat(64)}  original.pdf\n${createHash("sha256").update("readme").digest("hex")}  README.md\n` }) });
-  expect(result.report.checksumsVerified).toBe(2); expect(result.report.warnings).toHaveLength(1);
+  const result = await validateSourceRepository("https://github.com/PointCommunity/test", { fetcher: upstream({ ...original, "original.pdf": "binary", "checksums.sha256": `${original["checksums.sha256"]}${"a".repeat(64)}  original.pdf\n` }) });
+  expect(result.report.checksumsVerified).toBe(Object.keys(original).length - 1); expect(result.report.warnings).toHaveLength(1);
 });
 
 it("retains generic HTML, M32 page boundaries, and detects missing inventory pages", async () => {
@@ -155,4 +173,26 @@ it("retains generic HTML, M32 page boundaries, and detects missing inventory pag
   expect(chunks.filter(chunk => chunk.locator.includes("PDF page"))).toHaveLength(2);
   contents.delete("research/manual/manual.txt");
   expect(() => indexContents("PointCommunity/test", commit, new Date().toISOString(), contents, ["docs/page.html"])).toThrow(/Inventory text missing/);
+});
+
+it("does not treat captured-source catalogs as text-to-page inventories", async () => {
+  const { indexContents } = await import("@/lib/sources/content");
+  const contents = new Map([
+    ["docs/support.txt", "Vendor-supported audio setup."],
+    ["research/capture/source-inventory.json", JSON.stringify({ sources: [{ url: "https://example.org/manual", authority: "primary", purpose: "Provenance only" }] })],
+  ]);
+  expect(indexContents("PointCommunity/test", commit, new Date().toISOString(), contents, ["docs/support.txt"])).toHaveLength(1);
+});
+
+it("keeps a structured article's procedure, prerequisites and warnings in one bounded evidence block", async () => {
+  const { indexContents } = await import("@/lib/sources/content");
+  const path = "data/knowledge/services-01.json";
+  const contents = new Map([[path, JSON.stringify({ records: [{ articleId: "pc-42", title: "Respond to a schedule", canonicalUrl: "https://help.planningcenter.com/example", applicability: ["services"], sourceExcerpt: "Respond to a request", synthesis: { prerequisites: ["Confirm the right church"], procedure: ["Accept the request"], warnings: ["Do not change someone else's schedule"], recovery: ["Contact the scheduler"] } }] })]]);
+  const chunks = indexContents("PointCommunity/pointplanning", commit, new Date().toISOString(), contents, [path]);
+  expect(chunks).toHaveLength(2);
+  expect(chunks[0]).toMatchObject({ title: "Respond to a schedule", locator: expect.stringContaining("pc-42") });
+  expect(chunks[0].text).toContain("Confirm the right church");
+  expect(chunks[0].text).toContain("Accept the request");
+  expect(chunks[0].text).toContain("Do not change someone else's schedule");
+  expect(chunks[1].text).toContain("Contact the scheduler");
 });

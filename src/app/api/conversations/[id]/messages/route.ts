@@ -36,8 +36,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         const environment = parseEnvironment(process.env);
         if (parsed.data.deepResearch) controller.enqueue(event("status", { stage: "review", message: "Reviewer checking and organizing grounded data" }));
         const fixture = environment.AUTH_MODE === "fixture";
-        const { chunks } = await knowledgeSnapshot(getRuntimeSourceStore(), environment);
-        const result = await answerQuestion({ actor, conversationId: id, question: parsed.data.question, deepResearch: parsed.data.deepResearch, providers: getRuntimeProviderDependencies().store, learning: getRuntimeLearningRepository(), fixture, chunks, modelRuntime: fixture ? undefined : getRuntimeModelRuntime(), guidance: await getRuntimeTrainingStore().activeGuidance() });
+        const { chunks, navigation } = await knowledgeSnapshot(getRuntimeSourceStore(), environment);
+        const result = await answerQuestion({ actor, conversationId: id, question: parsed.data.question, deepResearch: parsed.data.deepResearch, providers: getRuntimeProviderDependencies().store, learning: getRuntimeLearningRepository(), fixture, chunks, navigation, modelRuntime: fixture ? undefined : getRuntimeModelRuntime(), guidance: await getRuntimeTrainingStore().activeGuidance() });
         controller.enqueue(event("answer", result));
         controller.enqueue(event("done", {}));
       } catch (error) {

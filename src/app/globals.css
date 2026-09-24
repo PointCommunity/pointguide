@@ -317,7 +317,7 @@ h2 { font-size: clamp(1.45rem, 5vw, 2.15rem); }
 .sessions-section { margin-top: var(--space-6); }
 .sessions-section .section-heading h2 { font-size: 1.25rem; }
 .session-loading { display: flex; min-height: 5rem; align-items: center; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--line); color: var(--muted); }
-.session-loading > span { width: 1rem; height: 1rem; border: 2px solid var(--line-strong); border-top-color: var(--mint); border-radius: 50%; animation: working-orbit .9s linear infinite; }
+.session-loading > span, .training-progress > span { width: 1rem; height: 1rem; border: 2px solid var(--line-strong); border-top-color: var(--mint); border-radius: 50%; animation: working-orbit .9s linear infinite; }
 .session-list { display: grid; gap: var(--space-3); }
 .session-card { display: grid; gap: var(--space-2); min-width: 0; padding: var(--space-4); border: 1px solid var(--line); background: var(--panel); }
 .session-card-meta, .session-card > div:last-child { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); color: var(--muted); font-size: .72rem; }
@@ -357,10 +357,10 @@ h2 { font-size: clamp(1.45rem, 5vw, 2.15rem); }
 .source-add-form, .training-session-card, .training-answer, .training-feedback, .learning-report, .training-finalize { display: grid; gap: var(--space-3); border: 1px solid var(--line); background: var(--panel); }
 .source-add-form h2, .training-session-card h2 { font-size: 1.2rem; }
 .source-add-form p, .training-session-card p, .training-finalize p, .training-answer small { margin: .2rem 0 0; color: var(--muted); font-size: .82rem; }
-.source-add-form label, .training-session-card label, .training-feedback label, .learning-report label, .confirmation-dialog label { display: grid; gap: var(--space-2); color: var(--muted); font-size: .75rem; font-weight: 750; }
-.source-add-form input, .training-session-card textarea, .training-session-card select, .training-feedback textarea, .learning-report textarea, .confirmation-dialog input { width: 100%; min-width: 0; min-height: 44px; padding: var(--space-2) var(--space-3); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--night-soft); color: var(--ink); }
+.source-add-form label, .training-session-card label, .training-sources label, .training-feedback label, .learning-report label, .confirmation-dialog label { display: grid; gap: var(--space-2); color: var(--muted); font-size: .75rem; font-weight: 750; }
+.source-add-form input, .training-session-card textarea, .training-session-card select, .training-session-card input, .training-sources textarea, .training-sources input, .training-feedback textarea, .learning-report textarea, .confirmation-dialog input { width: 100%; min-width: 0; min-height: 44px; padding: var(--space-2) var(--space-3); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--night-soft); color: var(--ink); }
 .training-session-card textarea, .training-feedback textarea, .learning-report textarea { min-height: 6rem; resize: vertical; }
-.sources-section > .section-heading > button, .source-add-form button, .training-session-card button, .training-feedback > button, .learning-report button, .training-finalize button, .source-actions button, .confirmation-dialog button { min-height: 44px; padding: var(--space-2) var(--space-3); border: 1px solid var(--mint); border-radius: var(--radius-sm); background: var(--mint); color: var(--night); font-weight: 800; cursor: pointer; }
+.sources-section > .section-heading > button, .source-add-form button, .training-session-card button, .training-sources button, .training-feedback > button, .learning-report button, .training-finalize button, .source-actions button, .confirmation-dialog button { min-height: 44px; padding: var(--space-2) var(--space-3); border: 1px solid var(--mint); border-radius: var(--radius-sm); background: var(--mint); color: var(--night); font-weight: 800; cursor: pointer; }
 .source-add-form > a { display: inline-flex; min-height: 44px; align-items: center; color: var(--mint); font-size: .82rem; }
 .sources-section { margin-top: var(--space-6); }
 .source-list { display: grid; gap: var(--space-3); }
@@ -385,6 +385,12 @@ h2 { font-size: clamp(1.45rem, 5vw, 2.15rem); }
 .confirmation-dialog > div { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); margin-top: var(--space-4); }
 .confirmation-dialog > div button:first-child { border-color: var(--line-strong); background: transparent; color: var(--ink); }
 .training-session { display: grid; gap: var(--space-3); }
+.training-steps { margin-bottom: var(--space-4); }
+.training-steps ol { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.training-steps li { min-width: 0; border-top: 2px solid var(--line-strong); color: var(--muted); }
+.training-steps li.complete, .training-steps li:has([aria-current="step"]) { border-color: var(--mint); color: var(--ink); }
+.training-steps span { display: flex; min-height: 44px; align-items: center; gap: var(--space-2); font-size: .85rem; font-weight: 750; }
+.training-steps small { color: var(--mint); font-size: .72rem; }
 .training-history { border-top: 1px solid var(--line); padding-top: var(--space-3); }
 .training-history h3 { margin: 0 0 var(--space-2); font-size: 1rem; }
 .training-history ol { display: grid; gap: var(--space-2); margin: 0; padding-left: var(--space-5); overflow-wrap: anywhere; }
@@ -393,20 +399,42 @@ h2 { font-size: clamp(1.45rem, 5vw, 2.15rem); }
 .training-history-answer p, .training-history-answer ul, .training-history-answer ol { margin: 0; }
 .training-history-answer small, .field-hint, .training-guidance { color: var(--muted); font-size: .75rem; font-weight: 500; }
 .training-status button { min-height: 44px; margin-top: var(--space-2); padding: var(--space-2) var(--space-3); border: 1px solid var(--mint); background: var(--mint); color: var(--night); font-weight: 800; cursor: pointer; }
-.training-session-header { display: flex; align-items: start; justify-content: space-between; gap: var(--space-3); padding-bottom: var(--space-3); border-bottom: 1px solid var(--line); }
+.training-session-header { display: flex; flex-wrap: wrap; align-items: start; justify-content: space-between; gap: var(--space-3); padding-bottom: var(--space-3); border-bottom: 1px solid var(--line); }
 .training-session-header > div { min-width: 0; overflow-wrap: anywhere; }
 .training-session-header h2 { max-width: 38rem; font-size: 1.2rem; overflow-wrap: anywhere; }
-.training-session-header > span { flex: 0 1 auto; overflow-wrap: anywhere; padding: .2rem .45rem; border: 1px solid var(--line-strong); color: var(--mint); font-size: .62rem; }
+.training-session-header > span { flex: none; padding: .2rem .45rem; border: 1px solid var(--line-strong); color: var(--mint); font-size: .62rem; white-space: nowrap; }
 .training-answer header { display: flex; justify-content: space-between; gap: var(--space-3); }
+.training-answer header h3 { margin: 0; font-size: 1rem; }
 .training-answer p { margin: 0; }
 .training-answer ol { margin: 0; padding-left: var(--space-5); color: var(--muted); }
-.training-feedback h3, .learning-report h3, .training-finalize h3 { margin: 0; font-size: 1rem; }
+.training-clarification { display: grid; gap: var(--space-2); border: 1px solid var(--amber); background: var(--panel); }
+.training-clarification h3, .training-clarification p { margin: 0; }
+.training-clarification form, .training-clarification label { display: grid; gap: var(--space-2); }
+.training-clarification input { width: 100%; min-width: 0; min-height: 44px; padding: var(--space-2) var(--space-3); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--night-soft); color: var(--ink); }
+.training-clarification button { min-height: 44px; padding: var(--space-2) var(--space-3); border: 1px solid var(--mint); border-radius: var(--radius-sm); background: var(--mint); color: var(--night); font-weight: 800; }
+.training-feedback h3, .training-accept h3, .learning-report h3, .training-finalize h3 { margin: 0; font-size: 1rem; }
 .training-feedback form, .training-accept { display: grid; gap: var(--space-2); }
-.training-feedback button { min-height: 44px; padding: var(--space-2) var(--space-3); border: 1px solid var(--mint); border-radius: var(--radius-sm); background: var(--mint); color: var(--night); font-weight: 800; cursor: pointer; }
+.training-feedback button, .training-accept button { min-height: 44px; padding: var(--space-2) var(--space-3); border: 1px solid var(--mint); border-radius: var(--radius-sm); background: var(--mint); color: var(--night); font-weight: 800; cursor: pointer; }
 .training-feedback .secondary-button { border-color: var(--line-strong); background: transparent; color: var(--mint); }
 .training-guidance, .training-accept p, .training-inline-status { margin: 0; }
-.training-accept { padding-top: var(--space-3); border-top: 1px solid var(--line); }
+.training-accept { border: 1px solid var(--line-strong); background: var(--panel); }
 .training-inline-status { padding: var(--space-2) var(--space-3); border-left: 2px solid var(--amber); background: var(--night-soft); color: var(--muted); }
+.training-progress { display: flex; align-items: center; gap: var(--space-2); }
+.training-progress > span { flex: none; }
+.training-source-fields { display: grid; gap: var(--space-3); margin: 0; padding: var(--space-3); border: 1px solid var(--line-strong); }
+.training-source-fields legend { padding-inline: var(--space-1); font-size: .85rem; font-weight: 800; }
+.training-source-fields legend span { margin-left: var(--space-1); color: var(--muted); font-size: .68rem; font-weight: 600; text-transform: uppercase; }
+.training-source-fields p, .training-source-fields small { margin: 0; color: var(--muted); font-size: .75rem; }
+.training-sources { display: grid; gap: var(--space-3); border: 1px solid var(--line); background: var(--panel); }
+.training-sources h3, .training-sources p { margin: 0; }
+.training-sources > div > p { margin-top: var(--space-1); color: var(--muted); font-size: .78rem; }
+.training-sources ul { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.training-sources li { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-2); border: 1px solid var(--line); background: var(--night-soft); }
+.training-sources li > span { display: grid; min-width: 0; gap: .2rem; overflow-wrap: anywhere; }
+.training-sources li small { color: var(--muted); font-size: .7rem; }
+.training-sources form { display: grid; gap: var(--space-2); }
+.training-sources textarea { resize: vertical; }
+.training-sources li button { flex: none; border-color: var(--line-strong); background: transparent; color: var(--muted); }
 .rating-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
 .rating-buttons button { min-height: 44px; border: 1px solid var(--line-strong); background: transparent; color: var(--ink); }
 .rating-buttons button.selected { border-color: var(--mint); background: var(--panel-raised); color: var(--mint); }

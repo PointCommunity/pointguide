@@ -4,22 +4,72 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import postgres from "postgres";
 import { contentDigest } from "../src/lib/git/proposals";
-import { mergeAcceptedArtifact, openProposalPullRequest, publishAcceptedArtifact, runCommand, type ApprovedProposal } from "../src/lib/git/worker";
+import { acceptedArtifactAlreadyIndexed, mergeAcceptedArtifact, openProposalPullRequest, publishAcceptedArtifact, runCommand, verifyPublicationFiles, type ApprovedProposal } from "../src/lib/git/worker";
 import { PostgresSourceRepositoryStore } from "../src/db/sources";
 import { PostgresTrainingSessionStore } from "../src/db/training";
+import { PostgresAccountStore } from "../src/db/accounts";
+import { PostgresLearningRepository } from "../src/lib/learning/store";
 import { getDatabase } from "../src/db/client";
 import { validateSourceRepository } from "../src/lib/sources/validator";
+import { parseEnvironment } from "../src/lib/config/env";
+import { getRuntimeProviderDependencies, getRuntimeModelRuntime } from "../src/lib/providers/runtime";
+import { knowledgeSnapshot } from "../src/lib/sources/retrieval";
+import { answerQuestion } from "../src/lib/agent/service";
+import { generateTrainingImageSource } from "../src/lib/agent/models";
+import { trainingHistory } from "../src/lib/training/context";
+import { answerFailureDiagnostic, answerFailureMessage } from "../src/lib/training/answer-error";
+import { assertPreparedTrainingSourceCapacity, prepareTrainingSource, trainingSourceEvidence, trainingSourcePublicationFiles } from "../src/lib/training/sources";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is required.");
 const sql = postgres(databaseUrl, { max: 1 });
 const owner = `worker-${randomUUID()}`;
 
+async function generateTrainingAnswer(sessionId: string, version: number) {
+  const database = getDatabase(databaseUrl!);
+  const store = new PostgresTrainingSessionStore(database);
+  const [record] = await sql`SELECT trainer_account_id FROM training_sessions WHERE id=${sessionId}`;
+  if (!record) return;
+  const session = await store.get(sessionId, record.trainer_account_id);
+  if (session.version !== version || !["GENERATING", "REVISING"].includes(session.state) || session.answerError) return;
+  const actor = await new PostgresAccountStore(database).getAccount(session.trainerAccountId);
+  if (!actor || actor.status !== "APPROVED" || !["TRAINER", "ADMIN", "OWNER"].includes(actor.role)) throw new Error("TRAINER_NOT_AUTHORIZED");
+  const environment = parseEnvironment(process.env);
+  const providerDependencies = getRuntimeProviderDependencies();
+  const profile = await providerDependencies.store.getExecutionProfile("PRIMARY");
+  const modelRuntime = environment.AUTH_MODE === "fixture" ? undefined : getRuntimeModelRuntime();
+  const sourceRecords = await store.listSourceContents(sessionId, actor.id);
+  let sourceFailed = false;
+  for (const source of sourceRecords.filter(item => item.status !== "READY")) {
+    try {
+      const prepared = await prepareTrainingSource(source, { describeImage: async (bytes, mediaType) => {
+        if (!profile || !modelRuntime) throw new Error("PRIMARY_NOT_CONFIGURED");
+        return generateTrainingImageSource(profile, bytes, mediaType, modelRuntime);
+      } });
+      assertPreparedTrainingSourceCapacity(await store.listSourceContents(sessionId, actor.id), prepared);
+      await store.saveSource(prepared);
+    } catch (error) {
+      console.warn("training-source-failed", { sourceId: source.id, type: source.kind, detail: error instanceof Error ? error.message.slice(0, 200) : "unknown" });
+      await store.failSource(source.id, sessionId, "This source could not be prepared. Check its type, size, or availability, then retry.");
+      sourceFailed = true;
+    }
+  }
+  if (sourceFailed) throw new Error("TRAINING_SOURCE_FAILED");
+  const preparedSources = await store.listSourceContents(sessionId, actor.id);
+  const { chunks, navigation } = await knowledgeSnapshot(new PostgresSourceRepositoryStore(database), environment);
+  const fixture = environment.AUTH_MODE === "fixture";
+  const history = trainingHistory(session, await store.listTurns(sessionId, actor.id));
+  const result = await answerQuestion({ actor, conversationId: session.conversationId, question: session.originalQuestion, deepResearch: false, providers: providerDependencies.store, learning: new PostgresLearningRepository(database), fixture, modelRuntime, chunks, navigation, training: true, trainingHistory: history, guidance: await store.activeGuidance(), sessionEvidence: trainingSourceEvidence([session.originalQuestion, ...history.map(item => item.content)].join("\n"), preparedSources) });
+  await store.saveAnswer(sessionId, actor.id, result.answer as unknown as Readonly<Record<string, unknown>>, undefined, version);
+}
+
 async function acceptedTraining(sessionId: string) {
   if (process.env.GIT_WRITES_ENABLED !== "true") throw new Error("GIT_WRITES_DISABLED");
   const [session] = await sql`SELECT * FROM training_sessions WHERE id=${sessionId}`;
   if (!session || !["PUBLISHING", "ACTIVATING", "FAILED"].includes(session.state) || !session.accepted_content || !session.accepted_digest || !session.accepted_path) throw new Error("ACCEPTED_TRAINING_NOT_READY");
   if (contentDigest(session.accepted_content) !== session.accepted_digest) throw new Error("ACCEPTED_TRAINING_DIGEST_CHANGED");
+  const trainingStore = new PostgresTrainingSessionStore(getDatabase(databaseUrl!));
+  const sourceFiles = trainingSourcePublicationFiles(session.id, await trainingStore.listSourceContents(session.id, session.trainer_account_id));
   const [source] = await sql`SELECT * FROM source_repositories WHERE full_name=${session.target_repository}`;
   if (!source || source.status !== "ACTIVE" || (!session.published_commit && source.version !== session.accepted_source_version)) throw new Error("ACCEPTED_SOURCE_CHANGED");
   const temporaryRoot = await mkdtemp(join(tmpdir(), "pointguide-accepted-"));
@@ -34,18 +84,26 @@ async function acceptedTraining(sessionId: string) {
     const validationOptions = { token: process.env.GITHUB_TOKEN, allowedOwners: (process.env.POINTGUIDE_SOURCE_OWNERS ?? "PointCommunity").split(",").map(value => value.trim()).filter(Boolean) };
     const validateHead = async (head: string) => {
       const proposed = await validateSourceRepository(source.url, { ...validationOptions, ref: head });
-      if (!proposed.report.complete || proposed.report.commitSha !== head || !proposed.report.files?.includes(session.accepted_path) || !proposed.chunks.some(chunk => chunk.path === session.accepted_path)) throw new Error("ACCEPTED_PROPOSED_SOURCE_INVALID");
+      if (!proposed.report.complete || proposed.report.commitSha !== head || !proposed.report.acceptedArtifacts?.some(item => item.path === session.accepted_path && item.digest === session.accepted_digest)) throw new Error("ACCEPTED_PROPOSED_SOURCE_INVALID");
     };
     let publishedCommit = session.published_commit as string | null;
     if (!publishedCommit) {
       const existing = await runCommand("git", ["show", `${latest}:${session.accepted_path}`], checkout).catch(() => null);
       if (existing !== null) {
         if (contentDigest(existing) !== session.accepted_digest) throw new Error("ACCEPTED_ARTIFACT_PATH_CONFLICT");
+        await verifyPublicationFiles(latest, sourceFiles, checkout);
         publishedCommit = latest;
       } else {
         const branch = `pointguide/accepted-${session.id}`;
         const open = JSON.parse(await runCommand("gh", ["pr", "list", "--repo", source.full_name, "--state", "open", "--head", branch, "--json", "url"], checkout)) as Array<{ url: string }>;
-        publishedCommit = open.length ? await mergeAcceptedArtifact(artifact, open[0].url, checkout, validateHead) : (await publishAcceptedArtifact(artifact, checkout, validateHead)).publishedCommit;
+        if (open.length > 1) throw new Error("ACCEPTED_PUBLICATION_PR_CONFLICT");
+        if (open.length) {
+          const existingHead = JSON.parse(await runCommand("gh", ["pr", "view", open[0].url, "--repo", source.full_name, "--json", "headRefOid"], checkout)) as { headRefOid: string };
+          if (!/^[a-f0-9]{40}$/u.test(existingHead.headRefOid)) throw new Error("ACCEPTED_PUBLICATION_HEAD_UNKNOWN");
+          await runCommand("git", ["fetch", "origin", "--prune"], checkout);
+          const proposedBase = (await runCommand("git", ["rev-parse", `${existingHead.headRefOid}^`], checkout)).trim();
+          publishedCommit = await mergeAcceptedArtifact({ ...artifact, baseCommit: proposedBase }, open[0].url, checkout, validateHead, runCommand, existingHead.headRefOid, sourceFiles);
+        } else publishedCommit = (await publishAcceptedArtifact(artifact, checkout, validateHead, runCommand, sourceFiles)).publishedCommit;
       }
       await sql`UPDATE training_sessions SET state='ACTIVATING',published_commit=${publishedCommit},publication_error=NULL,updated_at=now(),version=version+1 WHERE id=${session.id} AND state IN ('PUBLISHING','FAILED')`;
     }
@@ -53,28 +111,43 @@ async function acceptedTraining(sessionId: string) {
     const current = (await runCommand("git", ["rev-parse", `origin/${source.default_branch}`], checkout)).trim();
     const persisted = await runCommand("git", ["show", `${current}:${session.accepted_path}`], checkout);
     if (contentDigest(persisted) !== session.accepted_digest) throw new Error("ACCEPTED_ARTIFACT_CHANGED_AFTER_MERGE");
+    await verifyPublicationFiles(current, sourceFiles, checkout);
     const currentSource = (await new PostgresSourceRepositoryStore(getDatabase(databaseUrl!)).list()).find(item => item.id === source.id && item.status === "ACTIVE");
     if (!currentSource) throw new Error("ACCEPTED_SOURCE_ARCHIVED");
-    const validated = await validateSourceRepository(currentSource.url, validationOptions);
-    if (!validated.report.complete || !validated.report.files?.includes(session.accepted_path) || !validated.chunks.some(chunk => chunk.path === session.accepted_path)) throw new Error("ACCEPTED_ARTIFACT_NOT_INDEXED");
     const store = new PostgresSourceRepositoryStore(getDatabase(databaseUrl!));
-    const indexed = await store.refresh(session.trainer_account_id, currentSource, validated);
-    const readback = await store.snapshot();
-    if (readback.sources.find(item => item.id === source.id)?.indexedCommit !== indexed.source.indexedCommit || !readback.chunks.some(chunk => chunk.path === session.accepted_path)) throw new Error("ACCEPTED_ACTIVATION_READBACK_FAILED");
-    await new PostgresTrainingSessionStore(getDatabase(databaseUrl!)).activateKnowledge(session.id, session.accepted_digest, indexed.source.indexedCommit);
+    let indexed = currentSource;
+    if (!acceptedArtifactAlreadyIndexed(currentSource, current, session.accepted_path, session.accepted_digest)) {
+      const validated = await validateSourceRepository(currentSource.url, validationOptions);
+      if (!validated.report.complete || !validated.report.acceptedArtifacts?.some(item => item.path === session.accepted_path && item.digest === session.accepted_digest)) throw new Error("ACCEPTED_ARTIFACT_NOT_INDEXED");
+      indexed = (await store.refresh(session.trainer_account_id, currentSource, validated)).source;
+    }
+    const readback = (await store.list()).find(item => item.id === source.id);
+    if (readback?.status !== "ACTIVE" || !acceptedArtifactAlreadyIndexed(readback, indexed.indexedCommit, session.accepted_path, session.accepted_digest)) throw new Error("ACCEPTED_ACTIVATION_READBACK_FAILED");
+    await new PostgresTrainingSessionStore(getDatabase(databaseUrl!)).activateKnowledge(session.id, session.accepted_digest, indexed.indexedCommit);
   } finally { await rm(temporaryRoot, { recursive: true }); }
 }
 
 async function tick(): Promise<boolean> {
   const [job] = await sql.begin(async (transaction) => transaction`
     -- ponytail: 10-minute lease covers bounded GitHub validation and merge; add heartbeat renewals if source repositories outgrow this window.
-    UPDATE jobs SET status='LEASED', lease_owner=${owner}, lease_expires_at=now()+interval '10 minutes',
+    UPDATE jobs SET status='LEASED', lease_owner=${owner}, lease_expires_at=now()+CASE WHEN kind='GENERATE_TRAINING_ANSWER' THEN interval '2 minutes' ELSE interval '10 minutes' END,
       attempts=attempts+1, updated_at=now()
     WHERE id=(SELECT id FROM jobs WHERE (status='READY' OR (status='LEASED' AND lease_expires_at<now())) AND available_at<=now()
       ORDER BY available_at FOR UPDATE SKIP LOCKED LIMIT 1)
     RETURNING id,kind,payload`);
   if (!job) return false;
+  const heartbeat = job.kind === "GENERATE_TRAINING_ANSWER" ? setInterval(() => {
+    void sql`UPDATE jobs SET lease_expires_at=now()+interval '2 minutes' WHERE id=${job.id} AND lease_owner=${owner} AND status='LEASED'`.catch(() => console.warn("training-job-heartbeat-failed"));
+  }, 30_000) : null;
   try {
+    if (job.kind === "GENERATE_TRAINING_ANSWER") {
+      const sessionId = typeof job.payload?.sessionId === "string" ? job.payload.sessionId : "";
+      const version = job.payload?.version;
+      if (!sessionId || typeof version !== "number") throw new Error("INVALID_GENERATION_JOB");
+      await generateTrainingAnswer(sessionId, version);
+      await sql`UPDATE jobs SET status='SUCCEEDED',lease_owner=NULL,lease_expires_at=NULL,updated_at=now() WHERE id=${job.id} AND lease_owner=${owner}`;
+      return true;
+    }
     if (job.kind === "PUBLISH_ACCEPTED_TRAINING") {
       const sessionId = typeof job.payload?.sessionId === "string" ? job.payload.sessionId : "";
       await acceptedTraining(sessionId);
@@ -108,8 +181,21 @@ async function tick(): Promise<boolean> {
     } finally {
       if (temporaryRoot) await rm(temporaryRoot, { recursive: true, force: true });
     }
+    return true;
   } catch (error) {
     const message = error instanceof Error ? error.message : "WORKER_FAILED";
+    if (job.kind === "GENERATE_TRAINING_ANSWER") {
+      const diagnostic = answerFailureDiagnostic(error);
+      console.warn("training-answer-failed", { phase: "worker", ...diagnostic });
+      const sessionId = typeof job.payload?.sessionId === "string" ? job.payload.sessionId : "";
+      const version = job.payload?.version;
+      if (sessionId && typeof version === "number") {
+        const [session] = await sql`SELECT current_answer IS NOT NULL AS revision FROM training_sessions WHERE id=${sessionId}`;
+        await new PostgresTrainingSessionStore(getDatabase(databaseUrl!)).failAnswer(sessionId, version, answerFailureMessage(diagnostic.reason, Boolean(session?.revision)));
+      }
+      await sql`UPDATE jobs SET status='FAILED',lease_owner=NULL,lease_expires_at=NULL,last_error_code=${diagnostic.reason},last_error_message='Training answer generation failed.',updated_at=now() WHERE id=${job.id} AND lease_owner=${owner}`;
+      return true;
+    }
     if (job.kind === "PUBLISH_ACCEPTED_TRAINING") {
       const sessionId = typeof job.payload?.sessionId === "string" ? job.payload.sessionId : "";
       await sql.begin(async transaction => {
@@ -125,8 +211,8 @@ async function tick(): Promise<boolean> {
       if (proposalId) await transaction`UPDATE change_proposals SET state='FAILED',updated_at=now(),version=version+1
         WHERE id=${proposalId} AND state='QUEUED'`;
     });
-  }
-  return true;
+    return true;
+  } finally { if (heartbeat) clearInterval(heartbeat); }
 }
 
 try {

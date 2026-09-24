@@ -2,11 +2,12 @@ import { randomUUID } from "node:crypto";
 import { and, asc, eq, sql } from "drizzle-orm";
 import type { PointGuideDatabase } from "@/db/client";
 import { auditEvents, sourceChunks, sourceRepositories } from "@/db/schema";
-import { assertRefresh, snapshotMatches, SourceStoreError } from "@/lib/sources/store";
+import { assertAdmission, assertRefresh, snapshotMatches, SourceStoreError } from "@/lib/sources/store";
 import type { SourceRepositoryRecord, SourceRepositoryStore, ValidatedSource } from "@/lib/sources/types";
+import type { SourceInventoryItem } from "@/lib/sources/contract";
 
 function fromRow(row: typeof sourceRepositories.$inferSelect): SourceRepositoryRecord { return { id: row.id, fullName: row.fullName, url: row.url, status: row.status as SourceRepositoryRecord["status"], defaultBranch: row.defaultBranch, indexedCommit: row.indexedCommit, validationReport: row.validationReport as unknown as SourceRepositoryRecord["validationReport"], linkedAt: row.linkedAt.toISOString(), updatedAt: row.updatedAt.toISOString(), version: row.version }; }
-const fromChunk = (chunk: typeof sourceChunks.$inferSelect) => ({ chunkId: chunk.chunkId, sourceId: chunk.sourceId, title: chunk.title, path: chunk.path, locator: chunk.locator, authority: chunk.authority, capturedAt: chunk.capturedAt.toISOString(), digest: chunk.digest, text: chunk.content });
+const fromChunk = (chunk: typeof sourceChunks.$inferSelect, metadata?: SourceInventoryItem) => ({ chunkId: chunk.chunkId, sourceId: chunk.sourceId, title: chunk.title, path: chunk.path, locator: chunk.locator, authority: chunk.authority, capturedAt: chunk.capturedAt.toISOString(), digest: chunk.digest, text: chunk.content, metadata });
 type Transaction = Parameters<Parameters<PointGuideDatabase["transaction"]>[0]>[0];
 async function insertChunks(transaction: Transaction, id: string, source: ValidatedSource) {
   // PostgreSQL limits parameters per statement; each batch is well below that limit.
@@ -27,16 +28,25 @@ export class PostgresSourceRepositoryStore implements SourceRepositoryStore {
     return this.database.transaction(async transaction => {
       const sources = (await transaction.select().from(sourceRepositories).orderBy(asc(sourceRepositories.fullName))).map(fromRow);
       const rows = await transaction.select({ chunk: sourceChunks }).from(sourceChunks).innerJoin(sourceRepositories, eq(sourceChunks.repositoryId, sourceRepositories.id)).where(eq(sourceRepositories.status, "ACTIVE"));
-      return { sources, chunks: rows.map(({ chunk }) => fromChunk(chunk)) };
+      const inventories = new Map(sources.map(source => [source.id, new Map(source.validationReport.inventoryItems?.map(item => [item.path, item]) ?? [])]));
+      return { sources, chunks: rows.map(({ chunk }) => fromChunk(chunk, inventories.get(chunk.repositoryId)?.get(chunk.path))) };
     }, { isolationLevel: "repeatable read", accessMode: "read only" });
   }
   async activeChunks() { return (await this.snapshot()).chunks; }
   async refresh(actorId: string, expected: SourceRepositoryRecord, source: ValidatedSource) {
     return this.database.transaction(async transaction => {
       const [current] = await transaction.select().from(sourceRepositories).where(eq(sourceRepositories.id, expected.id)).for("update");
-      assertRefresh(current ? fromRow(current) : undefined, expected, source);
       const old = await transaction.select().from(sourceChunks).where(eq(sourceChunks.repositoryId, expected.id));
-      const outcome = snapshotMatches(fromRow(current!), old.map(fromChunk), source) ? "current" : "updated";
+      const currentRecord = current ? fromRow(current) : undefined; const currentChunks = old.map(chunk => fromChunk(chunk));
+      if (currentRecord?.status === "ACTIVE" && currentRecord.fullName === source.fullName && currentRecord.version !== expected.version) {
+        assertAdmission(source);
+        if (snapshotMatches(currentRecord, currentChunks, source)) {
+          await transaction.insert(auditEvents).values({ id: randomUUID(), actorId, action: "source_repository.refreshed", targetType: "source_repository", targetId: expected.id, outcome: "SUCCEEDED", metadata: { previousCommit: expected.indexedCommit, commit: source.report.commitSha, result: "current", concurrent: true, chunks: source.chunks.length }, occurredAt: new Date() });
+          return { source: currentRecord, outcome: "current" } as const;
+        }
+      }
+      assertRefresh(currentRecord, expected, source);
+      const outcome = snapshotMatches(currentRecord!, currentChunks, source) ? "current" : "updated";
       const [row] = await transaction.update(sourceRepositories).set({ defaultBranch: source.report.defaultBranch, indexedCommit: source.report.commitSha, validationReport: source.report as unknown as Readonly<Record<string, unknown>>, updatedAt: new Date(), version: expected.version + 1 }).where(eq(sourceRepositories.id, expected.id)).returning();
       if (outcome === "updated") {
         await transaction.delete(sourceChunks).where(eq(sourceChunks.repositoryId, expected.id));
@@ -48,6 +58,7 @@ export class PostgresSourceRepositoryStore implements SourceRepositoryStore {
   }
   async refreshFailed(actorId: string, id: string, reason: string) { await this.database.insert(auditEvents).values({ id: randomUUID(), actorId, action: "source_repository.refresh_failed", targetType: "source_repository", targetId: id, outcome: "FAILED", metadata: { reason }, occurredAt: new Date() }); }
   async link(actorId: string, source: ValidatedSource) {
+    assertAdmission(source);
     const existing = await this.database.select({ id: sourceRepositories.id }).from(sourceRepositories).where(eq(sourceRepositories.fullName, source.fullName)).limit(1);
     if (existing.length) throw new SourceStoreError("SOURCE_EXISTS", "That repository is already linked.");
     return this.database.transaction(async transaction => {

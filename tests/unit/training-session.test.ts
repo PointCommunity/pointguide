@@ -1,10 +1,26 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryTrainingSessionStore } from "@/lib/training/store";
 import type { SourceRepositoryRecord } from "@/lib/sources/types";
+import { prepareTrainingSource } from "@/lib/training/sources";
 
 afterEach(() => vi.useRealTimers());
 
 describe("organic training workflow", () => {
+  it("persists an essential clarification separately and refuses acceptance until a completed revision", async () => {
+    const store = new MemoryTrainingSessionStore();
+    const source = { id: crypto.randomUUID(), fullName: "PointCommunity/pointaudio", status: "ACTIVE", indexedCommit: "a".repeat(40), version: 1 } as SourceRepositoryRecord;
+    const session = await store.create({ trainerAccountId: "trainer", conversationId: "conversation", targetRepository: source.fullName, originalQuestion: "Which console inputs?" });
+    const firstId = crypto.randomUUID();
+    const pending = await store.saveAnswer(session.id, "trainer", { id: firstId, directAnswer: "The physical connector count depends on the model.", clarifyingQuestion: "Is the console an M32 or M32R?", evidence: [] });
+    await expect(store.acceptAnswer(session.id, "trainer", pending.version, firstId, source)).rejects.toThrow(/clarif|question/i);
+    await expect(store.saveClarification(session.id, "trainer", pending.version, firstId, "M32R")).resolves.toMatchObject({ state: "REVISING" });
+    const turns = await store.listTurns(session.id, "trainer");
+    expect(turns[1]).toMatchObject({ kind: "CLARIFICATION", content: { question: "Is the console an M32 or M32R?", response: "M32R" } });
+    const revisedId = crypto.randomUUID();
+    const revised = await store.saveAnswer(session.id, "trainer", { id: revisedId, directAnswer: "The M32R has 16 local microphone sockets.", evidence: [] });
+    expect((await store.acceptAnswer(session.id, "trainer", revised.version, revisedId, source)).state).toBe("PUBLISHING");
+    expect(JSON.parse((await store.get(session.id, "trainer")).acceptedContent!)).not.toHaveProperty("clarifyingQuestion");
+  });
   it("preserves ordered feedback and answers, and binds acceptance to the visible answer", async () => {
     const store = new MemoryTrainingSessionStore();
     const source = { id: "00000000-0000-4000-8000-000000000010", fullName: "PointCommunity/pointaudio", status: "ACTIVE", indexedCommit: "a".repeat(40), version: 1 } as SourceRepositoryRecord;
@@ -26,6 +42,17 @@ describe("organic training workflow", () => {
     expect(retry).toMatchObject({ state: "PUBLISHING", acceptedDigest: accepted.acceptedDigest, acceptedContent: accepted.acceptedContent });
     await expect(store.retryPublication(session.id, "trainer", source)).rejects.toThrow();
     await expect(store.listTurns(session.id, "other-trainer")).rejects.toThrow("not found");
+  });
+
+  it("blocks acceptance until trainer material is ready and records its immutable publication paths", async () => {
+    const store = new MemoryTrainingSessionStore();
+    const sourceRepository = { id: crypto.randomUUID(), fullName: "PointCommunity/pointaudio", status: "ACTIVE", indexedCommit: "a".repeat(40), version: 1 } as SourceRepositoryRecord;
+    const started = await store.create({ trainerAccountId: "trainer", conversationId: "conversation", targetRepository: sourceRepository.fullName, originalQuestion: "How do I route a channel?" }, false, [{ kind: "FILE", originalName: "routing.txt", mediaType: "text/plain", originalBytes: Buffer.from("Route channel 1 to bus 2.") }]);
+    const answerId = crypto.randomUUID(); const answered = await store.saveAnswer(started.id, "trainer", { id: answerId, directAnswer: "Route channel 1 to bus 2.", evidence: [] });
+    await expect(store.acceptAnswer(started.id, "trainer", answered.version, answerId, sourceRepository)).rejects.toThrow(/prepar/i);
+    await store.saveSource(await prepareTrainingSource((await store.listSourceContents(started.id, "trainer"))[0], { describeImage: async () => "unused" }));
+    const accepted = await store.acceptAnswer(started.id, "trainer", answered.version, answerId, sourceRepository);
+    expect(JSON.parse(accepted.acceptedContent!)).toMatchObject({ trainerSources: [{ originalName: "routing.txt", originalPath: expect.stringMatching(/\/originals\/.*\.txt$/u), extractedPath: expect.stringMatching(/\/sources\/.*\.md$/u) }] });
   });
 
   it("requires response feedback, an accepted report, then an explicit outcome", async () => {

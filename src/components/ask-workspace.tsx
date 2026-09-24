@@ -5,6 +5,7 @@ import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
 import type { AnswerClaim, EvidenceItem } from "@/lib/agent/schema";
 import type { SessionTurn } from "@/lib/learning/store";
 import type { AcceptedGuidance } from "@/lib/training/knowledge";
+import { repositoryEvidenceUrl } from "@/lib/evidence/provenance-link";
 
 interface PointGuideAnswer {
   id: string;
@@ -54,7 +55,8 @@ function rotatingStarters(seed: string | null) {
 
 function EvidenceCard({ item, claims }: { item: EvidenceItem; claims: AnswerClaim[] }) {
   const supportedClaims = claims.filter((claim) => claim.evidenceIds.includes(item.id));
-  const sourceLabel = item.kind === "REPOSITORY" ? "Repository" : item.kind === "PRIMARY_WEB" ? "Primary web" : "Web";
+  const sourceLabel = item.kind === "ACCEPTED_TRAINING" ? "Accepted training" : item.kind === "REPOSITORY" ? "Repository" : item.kind === "PRIMARY_WEB" ? "Primary web" : "Web";
+  const repositoryUrl = repositoryEvidenceUrl(item);
   return (
     <details className="evidence-card">
       <summary>
@@ -70,6 +72,7 @@ function EvidenceCard({ item, claims }: { item: EvidenceItem; claims: AnswerClai
           <div><dt>Captured</dt><dd>{new Date(item.capturedAt).toLocaleDateString("en-US", { dateStyle: "long" })}</dd></div>
           <div><dt>Source</dt><dd><code>{item.path ?? item.url ?? item.sourceId}</code></dd></div>
         </dl>
+        {repositoryUrl ? <a href={repositoryUrl} target="_blank" rel="noopener noreferrer">Exact repository artifact and revision</a> : null}
         {supportedClaims.length ? <p className="supports"><strong>Supports:</strong> {supportedClaims.map((claim) => claim.text).join(" ")}</p> : null}
       </div>
     </details>
@@ -101,9 +104,9 @@ function AnswerContent({ turn, feedback, onRate }: { turn: DisplayTurn; feedback
       {answer.safetyAndAssumptions.length ? <aside className="safety-note"><strong>Before you change anything</strong><ul>{answer.safetyAndAssumptions.map((item) => <li key={item}>{item}</li>)}</ul></aside> : null}
       {answer.steps.length ? <section><h4>Next checks</h4><ol className="answer-steps">{answer.steps.map((step) => <li key={step}>{step}</li>)}</ol></section> : null}
       <details className="evidence-section evidence-accordion">
-        <summary><span><strong>Sources</strong></span><span>{answer.evidence.length + (answer.guidance?.length ?? 0)} source{answer.evidence.length + (answer.guidance?.length ?? 0) === 1 ? "" : "s"} <i aria-hidden="true">⌄</i></span></summary>
+        <summary><span><strong>Sources</strong></span><span>{answer.evidence.length + (answer.guidance?.filter(item => !answer.evidence.some(evidence => evidence.id === item.id)).length ?? 0)} sources <i aria-hidden="true">⌄</i></span></summary>
         <div className="evidence-list">{answer.evidence.length ? answer.evidence.map((item) => <EvidenceCard key={item.id} item={item} claims={answer.claims} />) : <p className="empty-evidence">No current source establishes this. The answer is intentionally marked Unknown.</p>}
-          {answer.guidance?.map(item => <article className="evidence-card" key={item.id}><strong>Accepted training guidance</strong><p>{item.directAnswer}</p><p>Trainer acceptance guides the response; it does not prove factual claims.</p><a href={`https://github.com/${item.repository}/blob/${item.indexedCommit}/${item.path}`} target="_blank" rel="noopener noreferrer">Repository artifact and revision</a><small> · {item.digest.slice(0, 12)}</small></article>)}
+          {answer.guidance?.filter(item => !answer.evidence.some(evidence => evidence.id === item.id)).map(item => <article className="evidence-card" key={item.id}><strong>Historical accepted guidance</strong><p>{item.directAnswer}</p><p>This earlier guidance was saved separately from cited evidence.</p><a href={`https://github.com/${item.repository}/blob/${item.indexedCommit}/${item.path}`} target="_blank" rel="noopener noreferrer">Repository artifact and revision</a><small> · {item.digest.slice(0, 12)}</small></article>)}
           <section className="claim-ledger" aria-label="Claim check"><h4>Claim check</h4><ul>{answer.claims.map((claim) => <li key={claim.id}><span aria-hidden="true">{claim.status === "SUPPORTED" ? "✓" : "?"}</span><span><strong>{claim.status === "SUPPORTED" ? "Supported" : "Unknown"}</strong>{claim.text}</span></li>)}</ul></section>
         </div>
       </details>
