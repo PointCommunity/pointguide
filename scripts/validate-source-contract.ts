@@ -40,5 +40,5 @@ const validated = await validateSourceRepository(`https://github.com/${repositor
   const path = decodeURIComponent(url.split(`/${syntheticCommit}/`)[1] ?? "");
   return files.has(path) ? new Response(files.get(path)) : new Response(null, { status: 404 });
 } });
-if (validated.chunks.length !== chunks.length) throw new Error("Linked-source validation and local indexing disagree.");
-process.stdout.write(JSON.stringify({ repository, baseCommit: commit, workingTree: true, activeFiles: contract.activePaths.length, chunks: chunks.length, checkedBytes: bytes, linkedSourceValidation: "passed with local fetch fixture" }) + "\n");
+if (validated.chunks.filter(chunk => !chunk.path.startsWith("research/pointguide-training/")).length !== chunks.length) throw new Error("Linked-source validation and local indexing disagree.");
+process.stdout.write(JSON.stringify({ repository, baseCommit: commit, workingTree: true, activeFiles: validated.report.filesIndexed, chunks: validated.chunks.length, checkedBytes: bytes, linkedSourceValidation: "passed with local fetch fixture" }) + "\n");

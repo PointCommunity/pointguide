@@ -3,6 +3,8 @@ import { indexContents, safePath, sha256 } from "./content";
 import { contractDownloadPaths, requiredSourcePaths, validateSourceContract } from "./contract";
 import { z } from "zod";
 import type { SourceValidationReport, ValidatedSource } from "./types";
+import { acceptedGuidanceFromArtifact, parseAcceptedArtifact } from "@/lib/training/knowledge";
+import { trainingEvidence } from "@/lib/agent/training-first";
 
 type SourceFetch = (input: string, init?: RequestInit) => Promise<Response>;
 const repoSchema = z.object({ full_name: z.string(), default_branch: z.string(), html_url: z.string(), pushed_at: z.string().nullable() });
@@ -87,8 +89,29 @@ export async function validateSourceRepository(value: string, options: { fetcher
     const contract = validateSourceContract(fullName, repo.default_branch, paths, contents);
     const chunks = indexContents(fullName, commit, report.checkedAt, contents, contract.activePaths, contract.items);
     if (!chunks.length) throw new Error("Repository contains no searchable evidence.");
+    const rootChecksums = new Map(parseManifest(contents.get("checksums.sha256")!).map(entry => [entry.path, entry.digest]));
+    const trainingPaths: string[] = [];
+    for (const record of contract.acceptedTraining.filter(item => item.lifecycle === "active")) {
+      const text = contents.get(record.path)!;
+      const artifact = parseAcceptedArtifact(text, record.path, record.digest, fullName);
+      if (artifact.originalQuestion.trim() !== record.question) throw new Error(`Training question identity mismatch: ${record.path}`);
+      for (const source of artifact.trainerSources) {
+        const original = blobs.find(item => item.path === source.originalPath);
+        if (!original || original.mode === "120000" || rootChecksums.get(source.originalPath) !== source.originalDigest) throw new Error(`Invalid Training original: ${source.originalPath}`);
+        if (rootChecksums.get(source.extractedPath) !== source.extractedDigest || contents.get(source.extractedPath) === undefined || sha256(contents.get(source.extractedPath)!) !== source.extractedDigest) throw new Error(`Invalid Training extraction: ${source.extractedPath}`);
+      }
+      chunks.push({ chunkId: `${fullName}:training:${record.digest}`, sourceId: fullName, title: record.question, path: record.path, locator: `${fullName}@${commit}`, authority: "trainer-authorized knowledge", capturedAt: artifact.acceptedAt, digest: record.digest, text });
+      trainingPaths.push(record.path);
+    }
+    const indexedPaths = [...contract.activePaths, ...trainingPaths];
     const acceptedArtifacts = parseManifest(contents.get("checksums.sha256")!).filter(entry => /^research\/pointguide-training\/[a-f0-9-]{36}\/[a-f0-9-]{36}\.json$/u.test(entry.path)).map(({ path, digest }) => ({ path, digest }));
-    return { fullName, url: parsed.url, chunks, report: { ...report, complete: true, bytesIndexed: totalBytes, checksumsVerified, filesIndexed: contract.activePaths.length, files: contract.activePaths, inventoryItems: contract.items, navigation: contract.navigation, acceptedArtifacts, chunksIndexed: chunks.length, warnings: excluded ? [`${excluded} non-text manifest entries retained upstream; not indexed or downloaded.`] : [] } };
+    const completeReport = { ...report, complete: true, bytesIndexed: totalBytes, checksumsVerified, filesIndexed: indexedPaths.length, files: indexedPaths, inventoryItems: contract.items, navigation: contract.navigation, acceptedArtifacts, acceptedTraining: contract.acceptedTraining, chunksIndexed: chunks.length, warnings: excluded ? [`${excluded} non-text manifest entries retained upstream; not indexed or downloaded.`] : [] };
+    for (const record of contract.acceptedTraining.filter(item => item.lifecycle === "active")) {
+      const guidance = acceptedGuidanceFromArtifact(contents.get(record.path)!, record, { fullName, status: "ACTIVE", indexedCommit: commit, validationReport: completeReport });
+      if (!guidance) throw new Error(`Invalid accepted Training activation: ${record.path}`);
+      trainingEvidence(guidance);
+    }
+    return { fullName, url: parsed.url, chunks, report: completeReport };
   } catch (error) {
     controller.abort();
     if (error instanceof SourceValidationError) throw error;

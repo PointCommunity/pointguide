@@ -24,6 +24,19 @@ export function sourceFiles(repository = "PointCommunity/test", text = "The M32R
   return seal(files);
 }
 
+export function acceptedSourceFiles(repository = "PointCommunity/test") {
+  const files = sourceFiles(repository); const sessionId = crypto.randomUUID(); const answerId = crypto.randomUUID();
+  const folder = `research/pointguide-training/${sessionId}`; const path = `${folder}/${answerId}.json`;
+  const question = "How do I route a channel to an M32R bus?";
+  files[path] = JSON.stringify({ schemaVersion: 2, kind: "pointguide-accepted-training", sessionId, answerId, targetRepository: repository, sourceCommit: commit, acceptedAt: "2026-09-18T12:00:00Z", originalQuestion: question, answer: { id: answerId, directAnswer: "Select the channel and raise its bus send.", steps: ["Select the channel.", "Raise the bus send."], safetyAndAssumptions: ["Check the destination before raising the send."], confidence: "SUPPORTED", claims: [], evidence: [] }, trainerSources: [] });
+  files[`${folder}/README.md`] = purpose("training session");
+  const inventory = JSON.parse(files["source-inventory.json"]);
+  inventory.excluded = [{ path, reason: "Accepted Training is reserved knowledge, not general evidence." }];
+  inventory.acceptedTraining = [{ path, digest: digest(files[path]), question, lifecycle: "active" }];
+  files["source-inventory.json"] = JSON.stringify(inventory);
+  return { files: seal(files), path, question };
+}
+
 export function upstream(files: Record<string, string>, repository = "PointCommunity/test", branch = "main", overrides: { truncated?: boolean } = {}) {
   return vi.fn(async (url: string) => {
     if (url.endsWith(`/repos/${repository}`)) return Response.json({ full_name: repository, default_branch: branch, html_url: `https://github.com/${repository}`, pushed_at: null });
