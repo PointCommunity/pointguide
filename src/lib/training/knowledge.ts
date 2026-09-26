@@ -1,7 +1,6 @@
 import { terms } from "@/lib/evidence/search";
 import { contentDigest } from "@/lib/git/proposals";
 import type { SourceRepositoryRecord } from "@/lib/sources/types";
-import type { TrainingSessionRecord } from "./types";
 import { z } from "zod";
 import type { AcceptedTrainingRecord } from "@/lib/sources/contract";
 
@@ -34,15 +33,6 @@ export function acceptedGuidanceFromArtifact(content: string, record: AcceptedTr
     const artifact = parseAcceptedArtifact(content, record.path, record.digest, source.fullName);
     if (artifact.originalQuestion.trim() !== record.question.trim()) return null;
     return { id: `training:${record.digest}`, repository: source.fullName, path: record.path, digest: record.digest, sourceCommit: artifact.sourceCommit, indexedCommit: source.indexedCommit, question: artifact.originalQuestion, directAnswer: artifact.answer.directAnswer, evidenceIds: artifact.answer.evidence.map(item => item.id), acceptedAt: artifact.acceptedAt, answer: artifact.answer, trainerSources: artifact.trainerSources };
-  } catch { return null; }
-}
-
-export function acceptedGuidanceFromSession(session: TrainingSessionRecord, source: Pick<SourceRepositoryRecord, "fullName" | "status" | "indexedCommit" | "validationReport">): AcceptedGuidance | null {
-  if (session.state !== "ACTIVE_KNOWLEDGE" || source.status !== "ACTIVE" || source.fullName !== session.targetRepository || !session.acceptedContent || !session.acceptedDigest || !session.acceptedPath || !hasVerifiedAcceptedArtifact(source, session.acceptedPath, session.acceptedDigest) || contentDigest(session.acceptedContent) !== session.acceptedDigest) return null;
-  try {
-    const artifact = artifactSchema.parse(JSON.parse(session.acceptedContent));
-    if (artifact.sessionId !== session.id || artifact.targetRepository !== source.fullName || artifact.answer.id !== artifact.answerId || session.acceptedPath !== `research/pointguide-training/${session.id}/${artifact.answerId}.json` || !/^[a-f0-9]{40}$/u.test(artifact.sourceCommit)) return null;
-    return { id: `training:${session.acceptedDigest}`, repository: source.fullName, path: session.acceptedPath, digest: session.acceptedDigest, sourceCommit: artifact.sourceCommit, indexedCommit: source.indexedCommit, question: artifact.originalQuestion, directAnswer: artifact.answer.directAnswer, evidenceIds: artifact.answer.evidence.map(item => item.id), acceptedAt: artifact.acceptedAt, answer: artifact.answer, trainerSources: artifact.trainerSources };
   } catch { return null; }
 }
 
