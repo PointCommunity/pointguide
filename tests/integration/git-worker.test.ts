@@ -5,10 +5,29 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { contentDigest } from "@/lib/git/proposals";
 import { acceptedArtifactAlreadyIndexed, acceptedPublicationCompanions, mergeAcceptedArtifact, openProposalPullRequest, publishAcceptedArtifact, type CommandRunner } from "@/lib/git/worker";
-import { sourceFiles, upstream } from "../fixtures/source-contract";
+import { acceptedSourceFiles, sourceFiles, upstream } from "../fixtures/source-contract";
 import { validateSourceRepository } from "@/lib/sources/validator";
 
+function publicationContent(sessionId: string, answerId: string, targetRepository: string, trainerSources: Record<string, unknown>[] = []) {
+  const { files, path } = acceptedSourceFiles(targetRepository); const artifact = JSON.parse(files[path]);
+  return JSON.stringify({ ...artifact, sessionId, answerId, answer: { ...artifact.answer, id: answerId, directAnswer: "Check cable." }, trainerSources }) + "\n";
+}
+
 describe("governed Git worker", () => {
+  it("supersedes only the same source-owned question and preserves earlier accepted bytes", async () => {
+    const { files, path: oldPath, question } = acceptedSourceFiles(); const before = files[oldPath];
+    const inventory = JSON.parse(files["source-inventory.json"]);
+    const sessionId = crypto.randomUUID(), answerId = crypto.randomUUID(); const path = `research/pointguide-training/${sessionId}/${answerId}.json`;
+    const content = publicationContent(sessionId, answerId, "PointCommunity/test");
+    const input = { id: sessionId, targetRepository: "PointCommunity/test", baseCommit: "b".repeat(40), targetPath: path, proposedContent: content, digest: contentDigest(content) };
+    const companions = acceptedPublicationCompanions(input, files["source-inventory.json"], files["checksums.sha256"]);
+    expect(acceptedPublicationCompanions(input, files["source-inventory.json"], files["checksums.sha256"])).toEqual(companions);
+    Object.assign(files, companions, { [path]: content });
+    const result = await validateSourceRepository("https://github.com/PointCommunity/test", { fetcher: upstream(files) });
+    expect(result.report.acceptedTraining).toEqual(expect.arrayContaining([{ ...inventory.acceptedTraining[0], lifecycle: "superseded", supersededBy: path }, { path, digest: input.digest, question, lifecycle: "active" }]));
+    expect(result.chunks.filter(chunk => chunk.path.startsWith("research/pointguide-training/")).map(chunk => chunk.path)).toEqual([path]);
+    expect(files[oldPath]).toBe(before);
+  });
   it("reuses only an exact, complete, already-indexed accepted artifact on activation retry", async () => {
     const validated = await validateSourceRepository("https://github.com/PointCommunity/test", { fetcher: upstream(sourceFiles()) });
     const path = "research/pointguide-training/session/answer.json", digest = "a".repeat(64);
@@ -23,13 +42,14 @@ describe("governed Git worker", () => {
     const files = sourceFiles();
     const sessionId = crypto.randomUUID(), answerId = crypto.randomUUID();
     const path = `research/pointguide-training/${sessionId}/${answerId}.json`;
-    const content = JSON.stringify({ schemaVersion: 2, kind: "pointguide-accepted-training", sessionId, answerId, targetRepository: "PointCommunity/test", answer: { directAnswer: "Check cable." } }) + "\n";
+    const content = publicationContent(sessionId, answerId, "PointCommunity/test");
     const companions = acceptedPublicationCompanions({ id: sessionId, targetRepository: "PointCommunity/test", baseCommit: "b".repeat(40), targetPath: path, proposedContent: content, digest: contentDigest(content) }, files["source-inventory.json"], files["checksums.sha256"]);
     expect(Object.keys(companions).sort()).toEqual(["checksums.sha256", `research/pointguide-training/${sessionId}/README.md`, "source-inventory.json"].sort());
     Object.assign(files, companions, { [path]: content });
     const result = await validateSourceRepository("https://github.com/PointCommunity/test", { fetcher: upstream(files) });
     expect(result.report.acceptedArtifacts).toEqual([{ path, digest: contentDigest(content) }]);
-    expect(result.chunks.map(chunk => chunk.path)).toEqual(["docs/setup.txt"]);
+    expect(result.chunks.map(chunk => chunk.path)).toEqual(["docs/setup.txt", path]);
+    expect(result.report.acceptedTraining).toEqual([{ path, digest: contentDigest(content), question: JSON.parse(content).originalQuestion, lifecycle: "active" }]);
     expect(() => acceptedPublicationCompanions({ id: sessionId, targetRepository: "PointCommunity/test", baseCommit: "b".repeat(40), targetPath: path, proposedContent: content, digest: contentDigest(content) }, files["source-inventory.json"], files["checksums.sha256"])).toThrow(/already|conflict/i);
   });
   it("publishes byte-identical trainer originals beside extracted provenance without breaking the source contract", async () => {
@@ -40,7 +60,7 @@ describe("governed Git worker", () => {
     const originalPath = `${folder}/originals/${sourceId}.pdf`, extractedPath = `${folder}/sources/${sourceId}.md`;
     const original = new Uint8Array([37, 80, 68, 70, 45]), extracted = "# Trainer document\n\nExtracted source text.\n";
     const hash = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex");
-    const content = JSON.stringify({ schemaVersion: 2, kind: "pointguide-accepted-training", sessionId, answerId, targetRepository: "PointCommunity/test", answer: { directAnswer: "Check cable." }, trainerSources: [{ id: sourceId, originalPath, originalDigest: hash(original), extractedPath, extractedDigest: hash(extracted) }] }) + "\n";
+    const content = publicationContent(sessionId, answerId, "PointCommunity/test", [{ id: sourceId, kind: "FILE", originalName: "manual.pdf", mediaType: "application/pdf", sourceUrl: null, finalUrl: null, capturedAt: "2026-09-18T12:00:00Z", originalPath, originalDigest: hash(original), extractedPath, extractedDigest: hash(extracted) }]);
     const sourceBundle = { [originalPath]: original, [extractedPath]: extracted };
     const companions = acceptedPublicationCompanions({ id: sessionId, targetRepository: "PointCommunity/test", baseCommit: "b".repeat(40), targetPath: path, proposedContent: content, digest: contentDigest(content) }, files["source-inventory.json"], files["checksums.sha256"], sourceBundle);
     expect(Object.keys(companions).sort()).toEqual(["checksums.sha256", `${folder}/README.md`, `${folder}/originals/README.md`, originalPath, `${folder}/sources/README.md`, extractedPath, "source-inventory.json"].sort());
@@ -51,7 +71,7 @@ describe("governed Git worker", () => {
   });
   it("merges only the exact accepted training artifact after path and head verification", async () => {
     const checkout = await mkdtemp(join(tmpdir(), "pointguide-accepted-"));
-    const content = JSON.stringify({ schemaVersion: 2, kind: "pointguide-accepted-training", sessionId: "00000000-0000-4000-8000-000000000011", answerId: "00000000-0000-4000-8000-000000000012", targetRepository: "PointCommunity/pointaudio", answer: { directAnswer: "Check cable." } }) + "\n";
+    const content = publicationContent("00000000-0000-4000-8000-000000000011", "00000000-0000-4000-8000-000000000012", "PointCommunity/pointaudio");
     const path = "research/pointguide-training/00000000-0000-4000-8000-000000000011/00000000-0000-4000-8000-000000000012.json";
     const base = sourceFiles("PointCommunity/pointaudio");
     const input = { id: "00000000-0000-4000-8000-000000000011", targetRepository: "PointCommunity/pointaudio", baseCommit: "b".repeat(40), targetPath: path, proposedContent: content, digest: contentDigest(content) };
@@ -90,7 +110,7 @@ describe("governed Git worker", () => {
   it("does not merge when the proposed repository fails its full source contract", async () => {
     const sessionId = "00000000-0000-4000-8000-000000000011", answerId = "00000000-0000-4000-8000-000000000012";
     const path = `research/pointguide-training/${sessionId}/${answerId}.json`;
-    const content = JSON.stringify({ schemaVersion: 2, kind: "pointguide-accepted-training", sessionId, answerId, targetRepository: "PointCommunity/pointaudio", answer: { directAnswer: "Check cable." } });
+    const content = publicationContent(sessionId, answerId, "PointCommunity/pointaudio");
     const input = { id: sessionId, targetRepository: "PointCommunity/pointaudio", baseCommit: "b".repeat(40), targetPath: path, proposedContent: content, digest: contentDigest(content) };
     const base = sourceFiles("PointCommunity/pointaudio");
     const companions = acceptedPublicationCompanions(input, base["source-inventory.json"], base["checksums.sha256"]);
@@ -110,7 +130,7 @@ describe("governed Git worker", () => {
   it("refuses a changed purpose companion before validating or merging the accepted artifact", async () => {
     const sessionId = "00000000-0000-4000-8000-000000000011", answerId = "00000000-0000-4000-8000-000000000012";
     const path = `research/pointguide-training/${sessionId}/${answerId}.json`;
-    const content = JSON.stringify({ schemaVersion: 2, kind: "pointguide-accepted-training", sessionId, answerId, targetRepository: "PointCommunity/pointaudio", answer: { directAnswer: "Check cable." } });
+    const content = publicationContent(sessionId, answerId, "PointCommunity/pointaudio");
     const input = { id: sessionId, targetRepository: "PointCommunity/pointaudio", baseCommit: "b".repeat(40), targetPath: path, proposedContent: content, digest: contentDigest(content) };
     const base = sourceFiles("PointCommunity/pointaudio");
     const companions = acceptedPublicationCompanions(input, base["source-inventory.json"], base["checksums.sha256"]);
