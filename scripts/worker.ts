@@ -56,10 +56,10 @@ async function generateTrainingAnswer(sessionId: string, version: number) {
   }
   if (sourceFailed) throw new Error("TRAINING_SOURCE_FAILED");
   const preparedSources = await store.listSourceContents(sessionId, actor.id);
-  const { chunks, navigation } = await knowledgeSnapshot(new PostgresSourceRepositoryStore(database), environment);
+  const { chunks, navigation, guidance } = await knowledgeSnapshot(new PostgresSourceRepositoryStore(database), environment);
   const fixture = environment.AUTH_MODE === "fixture";
   const history = trainingHistory(session, await store.listTurns(sessionId, actor.id));
-  const result = await answerQuestion({ actor, conversationId: session.conversationId, question: session.originalQuestion, deepResearch: false, providers: providerDependencies.store, learning: new PostgresLearningRepository(database), fixture, modelRuntime, chunks, navigation, training: true, trainingHistory: history, guidance: await store.activeGuidance(), sessionEvidence: trainingSourceEvidence([session.originalQuestion, ...history.map(item => item.content)].join("\n"), preparedSources) });
+  const result = await answerQuestion({ actor, conversationId: session.conversationId, question: session.originalQuestion, deepResearch: false, providers: providerDependencies.store, learning: new PostgresLearningRepository(database), fixture, modelRuntime, chunks, navigation, training: true, trainingHistory: history, guidance, sessionEvidence: trainingSourceEvidence([session.originalQuestion, ...history.map(item => item.content)].join("\n"), preparedSources) });
   await store.saveAnswer(sessionId, actor.id, result.answer as unknown as Readonly<Record<string, unknown>>, undefined, version);
 }
 
