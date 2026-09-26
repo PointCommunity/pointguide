@@ -3,6 +3,7 @@ import { contentDigest } from "@/lib/git/proposals";
 import type { SourceRepositoryRecord } from "@/lib/sources/types";
 import type { TrainingSessionRecord } from "./types";
 import { z } from "zod";
+import type { AcceptedTrainingRecord } from "@/lib/sources/contract";
 
 export interface AcceptedGuidance {
   id: string; repository: string; path: string; digest: string; sourceCommit: string; indexedCommit: string;
@@ -13,6 +14,27 @@ const artifactSchema = z.object({ schemaVersion: z.literal(2), kind: z.literal("
 
 export function hasVerifiedAcceptedArtifact(source: Pick<SourceRepositoryRecord, "indexedCommit" | "validationReport">, path: string, digest: string): boolean {
   return source.validationReport?.valid === true && source.validationReport.complete === true && source.validationReport.commitSha === source.indexedCommit && source.validationReport.acceptedArtifacts?.some(item => item.path === path && item.digest === digest) === true;
+}
+
+export function parseAcceptedArtifact(content: string, path: string, digest: string, repository: string) {
+  const artifact = artifactSchema.parse(JSON.parse(content));
+  if (contentDigest(content) !== digest || artifact.targetRepository !== repository || artifact.answer.id !== artifact.answerId || path !== `research/pointguide-training/${artifact.sessionId}/${artifact.answerId}.json` || !/^[a-f0-9]{40}$/u.test(artifact.sourceCommit) || !artifact.originalQuestion.trim() || !Number.isFinite(Date.parse(artifact.acceptedAt))) throw new Error(`Invalid accepted Training artifact: ${path}`);
+  const folder = `research/pointguide-training/${artifact.sessionId}`; const sourceIds = new Set<string>();
+  for (const source of artifact.trainerSources) {
+    const originalPrefix = `${folder}/originals/${source.id}.`;
+    if (sourceIds.has(source.id) || !source.originalPath.startsWith(originalPrefix) || !/^[a-z0-9]+$/u.test(source.originalPath.slice(originalPrefix.length)) || source.extractedPath !== `${folder}/sources/${source.id}.md` || !/^[a-f0-9]{64}$/u.test(source.originalDigest) || !/^[a-f0-9]{64}$/u.test(source.extractedDigest) || !Number.isFinite(Date.parse(source.capturedAt))) throw new Error(`Invalid trainer-source provenance: ${path}`);
+    sourceIds.add(source.id);
+  }
+  return artifact;
+}
+
+export function acceptedGuidanceFromArtifact(content: string, record: AcceptedTrainingRecord, source: Pick<SourceRepositoryRecord, "fullName" | "status" | "indexedCommit" | "validationReport">): AcceptedGuidance | null {
+  if (source.status !== "ACTIVE" || record.lifecycle !== "active" || !hasVerifiedAcceptedArtifact(source, record.path, record.digest) || !source.validationReport.acceptedTraining?.some(item => item.path === record.path && item.digest === record.digest && item.question === record.question && item.lifecycle === "active")) return null;
+  try {
+    const artifact = parseAcceptedArtifact(content, record.path, record.digest, source.fullName);
+    if (artifact.originalQuestion.trim() !== record.question.trim()) return null;
+    return { id: `training:${record.digest}`, repository: source.fullName, path: record.path, digest: record.digest, sourceCommit: artifact.sourceCommit, indexedCommit: source.indexedCommit, question: artifact.originalQuestion, directAnswer: artifact.answer.directAnswer, evidenceIds: artifact.answer.evidence.map(item => item.id), acceptedAt: artifact.acceptedAt, answer: artifact.answer, trainerSources: artifact.trainerSources };
+  } catch { return null; }
 }
 
 export function acceptedGuidanceFromSession(session: TrainingSessionRecord, source: Pick<SourceRepositoryRecord, "fullName" | "status" | "indexedCommit" | "validationReport">): AcceptedGuidance | null {

@@ -3,8 +3,35 @@ import { validateSourceRepository } from "@/lib/sources/validator";
 import { digest, purpose, seal, sourceFiles, upstream } from "../fixtures/source-contract";
 import { sourceTemplate } from "@/lib/sources/template";
 import { searchCorpus } from "@/lib/evidence/search";
+import { validateSourceContract } from "@/lib/sources/contract";
 
 describe("mandatory source contract", () => {
+  it("retains explicit Training lifecycle without turning it into general evidence", () => {
+    const files = sourceFiles();
+    const path = `research/pointguide-training/${crypto.randomUUID()}/${crypto.randomUUID()}.json`;
+    files[path] = "{}"; files[path.slice(0, path.lastIndexOf("/")) + "/README.md"] = purpose("training session");
+    const record = { path, digest: digest(files[path]), question: "M32R inputs", lifecycle: "active" };
+    const inventory = JSON.parse(files["source-inventory.json"]); inventory.excluded = [{ path, reason: "Accepted Training only" }]; inventory.acceptedTraining = [record];
+    files["source-inventory.json"] = JSON.stringify(inventory); seal(files);
+    const result = validateSourceContract("PointCommunity/test", "main", new Set(Object.keys(files)), new Map(Object.entries(files)));
+    expect(result).toMatchObject({ acceptedTraining: [record], activePaths: ["docs/setup.txt"] });
+    inventory.acceptedTraining = [{ ...record, lifecycle: "superseded", supersededBy: path }];
+    files["source-inventory.json"] = JSON.stringify(inventory); seal(files);
+    expect(() => validateSourceContract("PointCommunity/test", "main", new Set(Object.keys(files)), new Map(Object.entries(files)))).toThrow(/supersession/i);
+  });
+
+  it.each(["digest", "path", "lifecycle", "replacement", "duplicate"])("rejects invalid Training %s metadata", invalid => {
+    const files = sourceFiles(); const path = `research/pointguide-training/${crypto.randomUUID()}/${crypto.randomUUID()}.json`;
+    files[path] = "{}"; files[path.slice(0, path.lastIndexOf("/")) + "/README.md"] = purpose("training session");
+    const record = { path, digest: digest(files[path]), question: "M32R inputs", lifecycle: "active", supersededBy: undefined as string | undefined };
+    if (invalid === "digest") record.digest = "a".repeat(64);
+    if (invalid === "path") record.path = "docs/setup.txt";
+    if (invalid === "lifecycle") record.lifecycle = "not-reviewed";
+    if (invalid === "replacement") { record.lifecycle = "superseded"; record.supersededBy = "missing"; }
+    const inventory = JSON.parse(files["source-inventory.json"]); inventory.excluded = [{ path, reason: "Accepted Training only" }]; inventory.acceptedTraining = invalid === "duplicate" ? [record, record] : [record];
+    files["source-inventory.json"] = JSON.stringify(inventory); seal(files);
+    expect(() => validateSourceContract("PointCommunity/test", "main", new Set(Object.keys(files)), new Map(Object.entries(files)))).toThrow(/acceptedTraining|Training|supersession/i);
+  });
   it("scaffolds every required folder without inventing evidence or admitting the empty scaffold", async () => {
     const template = sourceTemplate("PointCommunity/test");
     expect(Object.keys(template)).toContain("research/pointguide-training/README.md");
