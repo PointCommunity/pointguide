@@ -5,7 +5,7 @@ import { conversations, jobs, sourceChunks, sourceRepositories, trainingSessions
 import { TrainingStateError } from "@/lib/training/store";
 import { acceptedTrainingArtifact, hasEssentialClarification } from "@/lib/training/artifact";
 import { contentDigest } from "@/lib/git/proposals";
-import { acceptedGuidanceFromSession, acceptedGuidanceFromArtifact } from "@/lib/training/knowledge";
+import { acceptedGuidanceFromArtifact } from "@/lib/training/knowledge";
 import type { SourceRepositoryRecord } from "@/lib/sources/types";
 import type { TrainingReport, TrainingSessionRecord, TrainingSessionStore, TrainingSourceContent, TrainingSourceInput, TrainingSourceRecord, TrainingSourceStatus, TrainingState } from "@/lib/training/types";
 import { assertTrainingSourceCapacity, newTrainingSource } from "@/lib/training/sources";
@@ -25,12 +25,6 @@ export class PostgresTrainingSessionStore implements TrainingSessionStore {
       .limit(50)).map(fromRow);
   }
   async get(id: string, trainerAccountId: string) { const [row] = await this.database.select().from(trainingSessions).where(and(eq(trainingSessions.id, id), eq(trainingSessions.trainerAccountId, trainerAccountId))).limit(1); if (!row) throw new TrainingStateError("TRAINING_NOT_FOUND", "Training session was not found."); return fromRow(row); }
-  async activeGuidance() {
-    const rows = await this.database.select({ session: trainingSessions, source: sourceRepositories }).from(trainingSessions)
-      .innerJoin(sourceRepositories, eq(trainingSessions.targetRepository, sourceRepositories.fullName))
-      .where(and(eq(trainingSessions.state, "ACTIVE_KNOWLEDGE"), eq(sourceRepositories.status, "ACTIVE")));
-    return rows.flatMap(row => acceptedGuidanceFromSession(fromRow(row.session), { fullName: row.source.fullName, status: row.source.status as SourceRepositoryRecord["status"], indexedCommit: row.source.indexedCommit, validationReport: row.source.validationReport as unknown as SourceRepositoryRecord["validationReport"] }) ?? []);
-  }
   async listTurns(id: string, trainerAccountId: string) { await this.get(id, trainerAccountId); return (await this.database.select().from(trainingTurns).where(eq(trainingTurns.sessionId, id)).orderBy(asc(trainingTurns.ordinal))).map(row => ({ ordinal: row.ordinal, kind: row.kind, content: row.content, createdAt: row.createdAt.toISOString() })); }
   async listSourceContents(id: string, trainerAccountId: string) { await this.get(id, trainerAccountId); return (await this.database.select().from(trainingSources).where(eq(trainingSources.sessionId, id)).orderBy(asc(trainingSources.createdAt), asc(trainingSources.id))).map(fromSourceRow); }
   async listSources(id: string, trainerAccountId: string): Promise<TrainingSourceRecord[]> { return (await this.listSourceContents(id, trainerAccountId)).map(source => { const record = { ...source }; delete (record as Partial<TrainingSourceContent>).originalBytes; delete (record as Partial<TrainingSourceContent>).extractedText; return record; }); }

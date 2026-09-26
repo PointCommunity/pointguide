@@ -54,7 +54,7 @@ it("uses source-derived guidance for first answers, feedback, clarification, ret
   const snapshot = await actual.knowledgeSnapshot(sources, parseEnvironment({ AUTH_MODE: "fixture" }));
   vi.mocked(knowledgeSnapshot).mockResolvedValue(snapshot); vi.mocked(getRuntimeSourceStore).mockReturnValue(sources);
   vi.mocked(getRuntimeLearningRepository).mockReturnValue({ createConversation: async () => ({ id: crypto.randomUUID() }) } as unknown as ReturnType<typeof getRuntimeLearningRepository>);
-  const local = vi.spyOn(store, "activeGuidance").mockRejectedValue(new Error("Local Training is not source authority"));
+  const local = vi.fn().mockRejectedValue(new Error("Local Training is not source authority")); Object.assign(store, { activeGuidance: local });
   vi.mocked(answerQuestion).mockImplementation(async () => ({ answer: { id: crypto.randomUUID(), directAnswer: "Complete answer" } }) as Awaited<ReturnType<typeof answerQuestion>>);
   const created = await POST(new Request("http://localhost/api/training/sessions", { method: "POST", headers, body: JSON.stringify({ question, targetRepository: validated.fullName }) }));
   expect(created.status).toBe(201); let session = (await created.json()).session;
@@ -69,7 +69,7 @@ it("uses source-derived guidance for first answers, feedback, clarification, ret
   expect(answerQuestion).toHaveBeenCalledTimes(5);
   for (const [input] of vi.mocked(answerQuestion).mock.calls) expect(input.guidance).toEqual(snapshot.guidance);
   expect(vi.mocked(answerQuestion).mock.calls[4][0].sessionEvidence).toEqual([expect.objectContaining({ kind: "TRAINER_SOURCE", title: "safety.txt" })]);
-  expect(local).not.toHaveBeenCalled(); local.mockRestore();
+  expect(local).not.toHaveBeenCalled();
 });
 
 it("keeps the previous answer and feedback after revision failure, then retries the same history", async () => {

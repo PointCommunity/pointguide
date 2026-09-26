@@ -40,7 +40,6 @@ export interface TrainingSessionStore {
   retryAnswer(id: string, trainerAccountId: string, expectedVersion: number): Promise<TrainingSessionRecord>;
   acceptAnswer(id: string, trainerAccountId: string, expectedVersion: number, answerId: string, source: import("@/lib/sources/types").SourceRepositoryRecord): Promise<TrainingSessionRecord>;
   retryPublication(id: string, trainerAccountId: string, source: import("@/lib/sources/types").SourceRepositoryRecord): Promise<TrainingSessionRecord>;
-  activeGuidance(): Promise<import("./knowledge").AcceptedGuidance[]>;
   saveAnswer(id: string, trainerAccountId: string, answer: Readonly<Record<string, unknown>>, insight?: string): Promise<TrainingSessionRecord>;
   saveReport(id: string, trainerAccountId: string, rating: "HELPFUL" | "NOT_HELPFUL", explanation: string, report: TrainingReport): Promise<TrainingSessionRecord>;
   acceptReport(id: string, trainerAccountId: string): Promise<TrainingSessionRecord>;
