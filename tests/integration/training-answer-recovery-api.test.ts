@@ -39,7 +39,7 @@ beforeEach(async () => {
   vi.mocked(getRuntimeProviderDependencies).mockReturnValue({ store: {} } as ReturnType<typeof getRuntimeProviderDependencies>);
   vi.mocked(getRuntimeLearningRepository).mockReturnValue({} as ReturnType<typeof getRuntimeLearningRepository>);
   vi.mocked(getRuntimeSourceStore).mockReturnValue({} as ReturnType<typeof getRuntimeSourceStore>);
-  vi.mocked(knowledgeSnapshot).mockResolvedValue({ chunks: [], sources: [], navigation: {} });
+  vi.mocked(knowledgeSnapshot).mockResolvedValue({ chunks: [], sources: [], navigation: {}, guidance: [] });
 });
 afterEach(() => { vi.clearAllMocks(); vi.unstubAllEnvs(); });
 

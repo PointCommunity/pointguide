@@ -2,7 +2,9 @@ import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { validateSourceRepository } from "@/lib/sources/validator";
 import { MemorySourceRepositoryStore, SourceStoreError } from "@/lib/sources/store";
-import { commit, digest, seal, sourceFiles, upstream as sourceUpstream } from "../fixtures/source-contract";
+import { acceptedSourceFiles, commit, digest, seal, sourceFiles, upstream as sourceUpstream } from "../fixtures/source-contract";
+import { knowledgeSnapshot } from "@/lib/sources/retrieval";
+import { parseEnvironment } from "@/lib/config/env";
 
 function upstream(files: Record<string, string>, overrides: { truncated?: boolean } = {}) {
   return sourceUpstream(files, "PointCommunity/test", "published", overrides);
@@ -20,6 +22,33 @@ function files(text = "Validated sermon source") {
 }
 
 describe("knowledge refresh contract", () => {
+  it("derives guidance from one source snapshot without any local Training session", async () => {
+    const { files, path, question } = acceptedSourceFiles();
+    const source = await validateSourceRepository("https://github.com/PointCommunity/test", { fetcher: sourceUpstream(files) });
+    const store = new MemorySourceRepositoryStore(false); const linked = await store.link("owner", source);
+    const snapshot = vi.spyOn(store, "snapshot"); const environment = parseEnvironment({ AUTH_MODE: "fixture" });
+    const knowledge = await knowledgeSnapshot(store, environment);
+    expect(snapshot).toHaveBeenCalledTimes(1);
+    expect(knowledge).toMatchObject({ guidance: [{ path, question, indexedCommit: commit, answer: { steps: ["Select the channel.", "Raise the bus send."] } }], chunks: [{ path: "docs/setup.txt" }] });
+    const chunks = (store as unknown as { chunks: Map<string, typeof source.chunks> }).chunks;
+    chunks.set(linked.id, source.chunks.filter(chunk => chunk.path !== path));
+    expect((await knowledgeSnapshot(store, environment)).guidance).toEqual([]);
+    expect(await store.refresh("owner", linked, source)).toMatchObject({ outcome: "updated" });
+    expect((await knowledgeSnapshot(store, environment)).guidance).toHaveLength(1);
+    await store.archive("owner", linked.id, linked.fullName);
+    expect((await knowledgeSnapshot(store, environment)).guidance).toEqual([]);
+  });
+
+  it("repairs missing same-commit lifecycle metadata and rejects stale mismatched guidance", async () => {
+    const { files, path } = acceptedSourceFiles(); const source = await validateSourceRepository("https://github.com/PointCommunity/test", { fetcher: sourceUpstream(files) });
+    const store = new MemorySourceRepositoryStore(false); const old = { ...source, report: { ...source.report, acceptedTraining: [] } };
+    const linked = await store.link("owner", old);
+    const repaired = await store.refresh("owner", linked, source); expect(repaired.outcome).toBe("updated");
+    await expect(store.refresh("owner", linked, old)).rejects.toThrow(/changed/);
+    const chunks = (store as unknown as { chunks: Map<string, typeof source.chunks> }).chunks;
+    chunks.set(linked.id, source.chunks.map(chunk => chunk.path === path ? { ...chunk, text: chunk.text + "tampered" } : chunk));
+    expect((await knowledgeSnapshot(store, parseEnvironment({ AUTH_MODE: "fixture" }))).guidance).toEqual([]);
+  });
   it("pins file fetches and recorded provenance to the commit rather than a moving branch/tree", async () => {
     const fetcher = upstream(files());
     const result = await validateSourceRepository("https://github.com/PointCommunity/test", { fetcher });
@@ -98,7 +127,7 @@ it("repairs same-commit missing chunks and never mixes refreshed PointAudio with
   const source = await validateSourceRepository("https://github.com/PointCommunity/pointaudio", { fetcher: sourceUpstream(seal(audio), "PointCommunity/pointaudio", "published") });
   const store = new MemorySourceRepositoryStore();
   const initial = (await store.list())[0];
-  const builtin = vi.fn().mockResolvedValue([{ text: "stale M32" }]);
+  const builtin = vi.fn().mockResolvedValue([{ text: "stale M32", path: "docs/stale.txt" }]);
   const environment = parseEnvironment({ AUTH_MODE: "cloudflare" });
   expect((await knowledgeSnapshot(store, environment, builtin)).chunks).toHaveLength(1);
   const result = await store.refresh("owner", initial, source);

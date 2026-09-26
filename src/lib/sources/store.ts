@@ -67,5 +67,6 @@ export function assertAdmission(source: ValidatedSource) {
 
 export function snapshotMatches(current: SourceRepositoryRecord, chunks: IndexedChunk[], source: ValidatedSource) {
   const fingerprint = (items: IndexedChunk[]) => JSON.stringify(items.map(item => [item.chunkId, item.digest, item.text, item.locator, item.sourceId, item.title, item.authority]).sort((a, b) => a[0].localeCompare(b[0])));
-  return current.indexedCommit === source.report.commitSha && current.validationReport.complete === true && fingerprint(chunks) === fingerprint(source.chunks);
+  const lifecycle = (report: SourceRepositoryRecord["validationReport"]) => JSON.stringify([...(report.acceptedTraining ?? [])].sort((a, b) => a.path.localeCompare(b.path)));
+  return current.indexedCommit === source.report.commitSha && current.validationReport.complete === true && lifecycle(current.validationReport) === lifecycle(source.report) && fingerprint(chunks) === fingerprint(source.chunks);
 }

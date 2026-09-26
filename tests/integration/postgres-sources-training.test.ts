@@ -11,11 +11,37 @@ import { PostgresTrainingSessionStore } from "@/db/training";
 import { answerQuestion } from "@/lib/agent/service";
 import { MemoryProviderStore } from "@/lib/providers/memory-store";
 import { validateSourceRepository } from "@/lib/sources/validator";
-import { sourceFiles, upstream } from "../fixtures/source-contract";
+import { acceptedSourceFiles, sourceFiles, upstream } from "../fixtures/source-contract";
 import { searchCorpus } from "@/lib/evidence/search";
+import { knowledgeSnapshot } from "@/lib/sources/retrieval";
+import { parseEnvironment } from "@/lib/config/env";
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 const databaseTest = testDatabaseUrl ? it : it.skip;
+
+databaseTest("shares accepted Training after restart with no sessions and repairs its same-commit snapshot atomically", async () => {
+  const database = getDatabase(disposableDatabaseUrl(testDatabaseUrl as string));
+  await database.execute(sql`truncate table accounts cascade`); await database.execute(sql`delete from source_repositories`);
+  const actor = await new PostgresAccountStore(database).provisionAccount({ issuer: "https://pointguide.test", subject: "portable-owner", email: "portable@example.com", displayName: "Owner" });
+  const { files, path } = acceptedSourceFiles(); const source = await validateSourceRepository("https://github.com/PointCommunity/test", { fetcher: upstream(files) });
+  const store = new PostgresSourceRepositoryStore(database); const linked = await store.link(actor.id, source);
+  const environment = parseEnvironment({ AUTH_MODE: "fixture" });
+  const read = () => knowledgeSnapshot(new PostgresSourceRepositoryStore(database), environment);
+  expect((await database.execute(sql`select count(*)::int as count from training_sessions`))[0].count).toBe(0);
+  expect((await read()).guidance).toEqual([expect.objectContaining({ path, indexedCommit: source.report.commitSha })]);
+  expect((await read()).chunks?.map(chunk => chunk.path)).toEqual(["docs/setup.txt"]);
+  await database.execute(sql`delete from source_chunks where repository_id=${linked.id} and path=${path}`);
+  expect((await read()).guidance).toEqual([]);
+  const repaired = await store.refresh(actor.id, linked, source); expect(repaired.outcome).toBe("updated");
+  expect((await read()).guidance).toHaveLength(1);
+  const replacement = { ...source, report: { ...source.report, commitSha: "d".repeat(40) }, chunks: [...source.chunks, source.chunks[0]] };
+  await expect(store.refresh(actor.id, repaired.source, replacement)).rejects.toThrow();
+  expect((await read()).guidance[0].indexedCommit).toBe(source.report.commitSha);
+  const raced = await Promise.all([store.refresh(actor.id, repaired.source, source), store.refresh(actor.id, repaired.source, source)]);
+  expect(raced.map(item => item.outcome)).toEqual(["current", "current"]);
+  const current = (await store.list())[0]; await store.archive(actor.id, current.id, current.fullName);
+  expect((await read()).guidance).toEqual([]);
+});
 
 databaseTest("queues first answers and revisions atomically, with saved feedback and bounded retry", async () => {
   const database = getDatabase(disposableDatabaseUrl(testDatabaseUrl as string));
