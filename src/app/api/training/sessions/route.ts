@@ -40,14 +40,14 @@ export async function POST(request: Request) {
     const session = await trainingStore.create({ trainerAccountId: actor.id, conversationId: conversation.id, targetRepository: source.fullName, originalQuestion: parsed.data.question }, !fixture, sourceInputs);
     if (!fixture) return Response.json({ session }, { status: 202 });
     try {
-      const { chunks, navigation } = await knowledgeSnapshot(getRuntimeSourceStore(), environment);
+      const { chunks, navigation, guidance } = await knowledgeSnapshot(getRuntimeSourceStore(), environment);
       for (const item of await trainingStore.listSourceContents(session.id, actor.id)) {
         const prepared = await prepareTrainingSource(item, { describeImage: async () => "Visible trainer-provided image source." });
         assertPreparedTrainingSourceCapacity(await trainingStore.listSourceContents(session.id, actor.id), prepared);
         await trainingStore.saveSource(prepared);
       }
       const prepared = await trainingStore.listSourceContents(session.id, actor.id);
-      const result = await answerQuestion({ actor, conversationId: conversation.id, question: parsed.data.question, deepResearch: false, providers: getRuntimeProviderDependencies().store, learning, fixture, modelRuntime: fixture ? undefined : getRuntimeModelRuntime(), chunks, navigation, training: true, guidance: await trainingStore.activeGuidance(), sessionEvidence: trainingSourceEvidence(parsed.data.question, prepared) });
+      const result = await answerQuestion({ actor, conversationId: conversation.id, question: parsed.data.question, deepResearch: false, providers: getRuntimeProviderDependencies().store, learning, fixture, modelRuntime: fixture ? undefined : getRuntimeModelRuntime(), chunks, navigation, training: true, guidance, sessionEvidence: trainingSourceEvidence(parsed.data.question, prepared) });
       return Response.json({ session: await trainingStore.saveAnswer(session.id, actor.id, result.answer as unknown as Readonly<Record<string, unknown>>), sources: await trainingStore.listSources(session.id, actor.id) }, { status: 201 });
     } catch (error) {
       const diagnostic = answerFailureDiagnostic(error);

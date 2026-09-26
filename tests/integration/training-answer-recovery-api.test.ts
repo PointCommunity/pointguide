@@ -11,6 +11,10 @@ import { getRuntimeLearningRepository } from "@/lib/learning/runtime";
 import { getRuntimeSourceStore } from "@/lib/sources/runtime";
 import { knowledgeSnapshot } from "@/lib/sources/retrieval";
 import { answerQuestion } from "@/lib/agent/service";
+import { acceptedSourceFiles, upstream } from "../fixtures/source-contract";
+import { validateSourceRepository } from "@/lib/sources/validator";
+import { MemorySourceRepositoryStore } from "@/lib/sources/store";
+import { parseEnvironment } from "@/lib/config/env";
 
 vi.mock("@/lib/auth/runtime", () => ({ getRuntimeSessionDependencies: vi.fn() }));
 vi.mock("@/lib/training/runtime", () => ({ getRuntimeTrainingStore: vi.fn() }));
@@ -42,6 +46,31 @@ beforeEach(async () => {
   vi.mocked(knowledgeSnapshot).mockResolvedValue({ chunks: [], sources: [], navigation: {}, guidance: [] });
 });
 afterEach(() => { vi.clearAllMocks(); vi.unstubAllEnvs(); });
+
+it("uses source-derived guidance for first answers, feedback, clarification, retries and material revisions", async () => {
+  const { files, question } = acceptedSourceFiles(); const validated = await validateSourceRepository("https://github.com/PointCommunity/test", { fetcher: upstream(files) });
+  const sources = new MemorySourceRepositoryStore(false); await sources.link(actorId, validated);
+  const actual = await vi.importActual<typeof import("@/lib/sources/retrieval")>("@/lib/sources/retrieval");
+  const snapshot = await actual.knowledgeSnapshot(sources, parseEnvironment({ AUTH_MODE: "fixture" }));
+  vi.mocked(knowledgeSnapshot).mockResolvedValue(snapshot); vi.mocked(getRuntimeSourceStore).mockReturnValue(sources);
+  vi.mocked(getRuntimeLearningRepository).mockReturnValue({ createConversation: async () => ({ id: crypto.randomUUID() }) } as unknown as ReturnType<typeof getRuntimeLearningRepository>);
+  const local = vi.spyOn(store, "activeGuidance").mockRejectedValue(new Error("Local Training is not source authority"));
+  vi.mocked(answerQuestion).mockImplementation(async () => ({ answer: { id: crypto.randomUUID(), directAnswer: "Complete answer" } }) as Awaited<ReturnType<typeof answerQuestion>>);
+  const created = await POST(new Request("http://localhost/api/training/sessions", { method: "POST", headers, body: JSON.stringify({ question, targetRepository: validated.fullName }) }));
+  expect(created.status).toBe(201); let session = (await created.json()).session;
+  const feedback = await action(session.id, { action: "FEEDBACK", answerId: session.currentAnswer.id, expectedVersion: session.version, feedback: "Keep the warning." }); expect(feedback.status).toBe(200); session = (await feedback.json()).session;
+  session = await store.saveAnswer(session.id, actorId, { id: crypto.randomUUID(), directAnswer: "Clarification needed", clarifyingQuestion: "Which bus?" });
+  const clarified = await action(session.id, { action: "CLARIFY", answerId: session.currentAnswer.id, expectedVersion: session.version, response: "Bus 2" }); expect(clarified.status).toBe(200); session = (await clarified.json()).session;
+  session = await store.saveFeedback(session.id, actorId, session.version, session.currentAnswer.id, "Saved revision");
+  const retried = await action(session.id, { action: "RETRY", expectedVersion: session.version }); expect(retried.status).toBe(200); session = (await retried.json()).session;
+  const form = new FormData(); form.set("expectedVersion", String(session.version)); form.set("sources", new File(["Check the destination."], "safety.txt", { type: "text/plain" }));
+  const added = await POST_SOURCE(new Request(`http://localhost/api/training/sessions/${session.id}/sources`, { method: "POST", headers: { "x-pointguide-fixture-subject": "owner", "x-pointguide-fixture-email": "owner@example.com" }, body: form }), { params: Promise.resolve({ id: session.id }) });
+  expect(added.status).toBe(200);
+  expect(answerQuestion).toHaveBeenCalledTimes(5);
+  for (const [input] of vi.mocked(answerQuestion).mock.calls) expect(input.guidance).toEqual(snapshot.guidance);
+  expect(vi.mocked(answerQuestion).mock.calls[4][0].sessionEvidence).toEqual([expect.objectContaining({ kind: "TRAINER_SOURCE", title: "safety.txt" })]);
+  expect(local).not.toHaveBeenCalled(); local.mockRestore();
+});
 
 it("keeps the previous answer and feedback after revision failure, then retries the same history", async () => {
   const session = await store.create({ trainerAccountId: actorId, conversationId: crypto.randomUUID(), targetRepository: "PointCommunity/pointaudio", originalQuestion: "How do I check sync?" });

@@ -30,9 +30,9 @@ async function fixtureAnswer(id: string, actor: Awaited<ReturnType<typeof traine
     await store.saveSource(prepared);
   }
   const sources = await store.listSourceContents(id, actor.id); const environment = parseEnvironment(process.env);
-  const { chunks, navigation } = await knowledgeSnapshot(getRuntimeSourceStore(), environment);
+  const { chunks, navigation, guidance } = await knowledgeSnapshot(getRuntimeSourceStore(), environment);
   const history = trainingHistory(current, turns);
-  const result = await answerQuestion({ actor, conversationId: current.conversationId, question: current.originalQuestion, deepResearch: false, providers: getRuntimeProviderDependencies().store, learning: getRuntimeLearningRepository(), fixture: true, chunks, navigation, training: true, trainingHistory: history, guidance: await store.activeGuidance(), sessionEvidence: trainingSourceEvidence([current.originalQuestion, ...history.map(item => item.content)].join("\n"), sources) });
+  const result = await answerQuestion({ actor, conversationId: current.conversationId, question: current.originalQuestion, deepResearch: false, providers: getRuntimeProviderDependencies().store, learning: getRuntimeLearningRepository(), fixture: true, chunks, navigation, training: true, trainingHistory: history, guidance, sessionEvidence: trainingSourceEvidence([current.originalQuestion, ...history.map(item => item.content)].join("\n"), sources) });
   return Response.json({ session: await store.saveAnswer(id, actor.id, result.answer as unknown as Readonly<Record<string, unknown>>), turns: await store.listTurns(id, actor.id), sources: await store.listSources(id, actor.id) });
 }
 
