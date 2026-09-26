@@ -7,7 +7,6 @@ import { getRuntimeLearningRepository } from "@/lib/learning/runtime";
 import { getRuntimeModelRuntime, getRuntimeProviderDependencies } from "@/lib/providers/runtime";
 import { parseEnvironment } from "@/lib/config/env";
 import { answerQuestion } from "@/lib/agent/service";
-import { getRuntimeTrainingStore } from "@/lib/training/runtime";
 import { knowledgeSnapshot } from "@/lib/sources/retrieval";
 import { getRuntimeSourceStore } from "@/lib/sources/runtime";
 import { answerFailureDiagnostic } from "@/lib/training/answer-error";
@@ -36,8 +35,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         const environment = parseEnvironment(process.env);
         if (parsed.data.deepResearch) controller.enqueue(event("status", { stage: "review", message: "Reviewer checking and organizing grounded data" }));
         const fixture = environment.AUTH_MODE === "fixture";
-        const { chunks, navigation } = await knowledgeSnapshot(getRuntimeSourceStore(), environment);
-        const result = await answerQuestion({ actor, conversationId: id, question: parsed.data.question, deepResearch: parsed.data.deepResearch, providers: getRuntimeProviderDependencies().store, learning: getRuntimeLearningRepository(), fixture, chunks, navigation, modelRuntime: fixture ? undefined : getRuntimeModelRuntime(), guidance: await getRuntimeTrainingStore().activeGuidance() });
+        const { chunks, navigation, guidance } = await knowledgeSnapshot(getRuntimeSourceStore(), environment);
+        const result = await answerQuestion({ actor, conversationId: id, question: parsed.data.question, deepResearch: parsed.data.deepResearch, providers: getRuntimeProviderDependencies().store, learning: getRuntimeLearningRepository(), fixture, chunks, navigation, modelRuntime: fixture ? undefined : getRuntimeModelRuntime(), guidance });
         controller.enqueue(event("answer", result));
         controller.enqueue(event("done", {}));
       } catch (error) {
