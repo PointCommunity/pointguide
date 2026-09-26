@@ -29,14 +29,17 @@ describe("governed Git worker", () => {
     expect(files[oldPath]).toBe(before);
   });
   it("reuses only an exact, complete, already-indexed accepted artifact on activation retry", async () => {
-    const validated = await validateSourceRepository("https://github.com/PointCommunity/test", { fetcher: upstream(sourceFiles()) });
-    const path = "research/pointguide-training/session/answer.json", digest = "a".repeat(64);
-    const source = { indexedCommit: validated.report.commitSha, validationReport: { ...validated.report, acceptedArtifacts: [{ path, digest }] } };
+    const { files, path } = acceptedSourceFiles();
+    const validated = await validateSourceRepository("https://github.com/PointCommunity/test", { fetcher: upstream(files) });
+    const digest = contentDigest(files[path]);
+    const source = { indexedCommit: validated.report.commitSha, validationReport: validated.report };
     expect(acceptedArtifactAlreadyIndexed(source, validated.report.commitSha, path, digest)).toBe(true);
     expect(acceptedArtifactAlreadyIndexed(source, "b".repeat(40), path, digest)).toBe(false);
     expect(acceptedArtifactAlreadyIndexed(source, validated.report.commitSha, path, "b".repeat(64))).toBe(false);
     expect(acceptedArtifactAlreadyIndexed({ ...source, validationReport: { ...source.validationReport, complete: false } }, validated.report.commitSha, path, digest)).toBe(false);
     expect(acceptedArtifactAlreadyIndexed({ ...source, validationReport: { ...source.validationReport, commitSha: "b".repeat(40) } }, validated.report.commitSha, path, digest)).toBe(false);
+    expect(acceptedArtifactAlreadyIndexed({ ...source, validationReport: { ...source.validationReport, acceptedTraining: [] } }, validated.report.commitSha, path, digest)).toBe(false);
+    expect(acceptedArtifactAlreadyIndexed({ ...source, validationReport: { ...source.validationReport, files: ["docs/setup.txt"] } }, validated.report.commitSha, path, digest)).toBe(false);
   });
   it("creates only the session purpose and inventory/checksum companions that validate as a source", async () => {
     const files = sourceFiles();

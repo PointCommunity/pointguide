@@ -84,7 +84,7 @@ async function acceptedTraining(sessionId: string) {
     const validationOptions = { token: process.env.GITHUB_TOKEN, allowedOwners: (process.env.POINTGUIDE_SOURCE_OWNERS ?? "PointCommunity").split(",").map(value => value.trim()).filter(Boolean) };
     const validateHead = async (head: string) => {
       const proposed = await validateSourceRepository(source.url, { ...validationOptions, ref: head });
-      if (!proposed.report.complete || proposed.report.commitSha !== head || !proposed.report.acceptedArtifacts?.some(item => item.path === session.accepted_path && item.digest === session.accepted_digest)) throw new Error("ACCEPTED_PROPOSED_SOURCE_INVALID");
+      if (!acceptedArtifactAlreadyIndexed({ indexedCommit: proposed.report.commitSha, validationReport: proposed.report }, head, session.accepted_path, session.accepted_digest)) throw new Error("ACCEPTED_PROPOSED_SOURCE_INVALID");
     };
     let publishedCommit = session.published_commit as string | null;
     if (!publishedCommit) {
@@ -116,7 +116,8 @@ async function acceptedTraining(sessionId: string) {
     if (!currentSource) throw new Error("ACCEPTED_SOURCE_ARCHIVED");
     const store = new PostgresSourceRepositoryStore(getDatabase(databaseUrl!));
     let indexed = currentSource;
-    if (!acceptedArtifactAlreadyIndexed(currentSource, current, session.accepted_path, session.accepted_digest)) {
+    const ready = (await knowledgeSnapshot(store, parseEnvironment(process.env))).guidance.some(item => item.repository === source.full_name && item.path === session.accepted_path && item.digest === session.accepted_digest && item.indexedCommit === current);
+    if (!ready || !acceptedArtifactAlreadyIndexed(currentSource, current, session.accepted_path, session.accepted_digest)) {
       const validated = await validateSourceRepository(currentSource.url, validationOptions);
       if (!validated.report.complete || !validated.report.acceptedArtifacts?.some(item => item.path === session.accepted_path && item.digest === session.accepted_digest)) throw new Error("ACCEPTED_ARTIFACT_NOT_INDEXED");
       indexed = (await store.refresh(session.trainer_account_id, currentSource, validated)).source;
