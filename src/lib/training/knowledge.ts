@@ -3,6 +3,7 @@ import { contentDigest } from "@/lib/git/proposals";
 import type { SourceRepositoryRecord } from "@/lib/sources/types";
 import { z } from "zod";
 import type { AcceptedTrainingRecord } from "@/lib/sources/contract";
+import { evidenceItemSchema } from "@/lib/agent/schema";
 
 export interface AcceptedGuidance {
   id: string; repository: string; path: string; digest: string; sourceCommit: string; indexedCommit: string;
@@ -18,6 +19,16 @@ export function hasVerifiedAcceptedArtifact(source: Pick<SourceRepositoryRecord,
 export function parseAcceptedArtifact(content: string, path: string, digest: string, repository: string) {
   const artifact = artifactSchema.parse(JSON.parse(content));
   if (contentDigest(content) !== digest || artifact.targetRepository !== repository || artifact.answer.id !== artifact.answerId || path !== `research/pointguide-training/${artifact.sessionId}/${artifact.answerId}.json` || !/^[a-f0-9]{40}$/u.test(artifact.sourceCommit) || !artifact.originalQuestion.trim() || !Number.isFinite(Date.parse(artifact.acceptedAt))) throw new Error(`Invalid accepted Training artifact: ${path}`);
+  const evidenceIds = new Set<string>(); const claimIds = new Set<string>();
+  for (const evidence of artifact.answer.evidence) {
+    evidenceItemSchema.parse(evidence);
+    if (evidenceIds.has(evidence.id)) throw new Error(`Duplicate accepted supporting evidence: ${path}`);
+    evidenceIds.add(evidence.id);
+  }
+  for (const claim of artifact.answer.claims) {
+    if (claimIds.has(claim.id) || claim.evidenceIds.some(id => !evidenceIds.has(id)) || (claim.status === "SUPPORTED" && !claim.evidenceIds.length)) throw new Error(`Invalid accepted claim evidence: ${path}`);
+    claimIds.add(claim.id);
+  }
   const folder = `research/pointguide-training/${artifact.sessionId}`; const sourceIds = new Set<string>();
   for (const source of artifact.trainerSources) {
     const originalPrefix = `${folder}/originals/${source.id}.`;

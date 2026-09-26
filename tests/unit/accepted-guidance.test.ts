@@ -6,6 +6,7 @@ import type { AcceptedGuidance } from "@/lib/training/knowledge";
 import { acceptedTrainingArtifact } from "@/lib/training/artifact";
 import type { TrainingSessionRecord } from "@/lib/training/types";
 import type { SourceRepositoryRecord } from "@/lib/sources/types";
+import { acceptedSourceFiles } from "../fixtures/source-contract";
 
 const guidance: AcceptedGuidance = { id: "training:abc", repository: "PointCommunity/pointaudio", path: "research/pointguide-training/a/b.json", digest: "a".repeat(64), sourceCommit: "b".repeat(40), indexedCommit: "c".repeat(40), question: "What does a red AES50 sync light on the DL32 mean?", directAnswer: "The link is not synchronized. Inspect cable and clock safely.", evidenceIds: ["repo:dl32"], acceptedAt: "2026-09-15T12:00:00Z" };
 
@@ -27,6 +28,14 @@ it("rejects trainer-source paths that exceed the immutable original file boundar
   const path = `research/pointguide-training/${sessionId}/${answerId}.json`;
   const content = JSON.stringify({ schemaVersion: 2, kind: "pointguide-accepted-training", sessionId, answerId, targetRepository: "PointCommunity/pointaudio", sourceCommit: "a".repeat(40), acceptedAt: guidance.acceptedAt, originalQuestion: guidance.question, answer: { id: answerId, directAnswer: guidance.directAnswer, steps: [], safetyAndAssumptions: [], confidence: "SUPPORTED", claims: [], evidence: [] }, trainerSources: [{ id: sourceId, kind: "FILE", originalName: "manual.pdf", mediaType: "application/pdf", sourceUrl: null, finalUrl: null, capturedAt: guidance.acceptedAt, originalPath: `research/pointguide-training/${sessionId}/originals/${sourceId}.pdf/extra.txt`, originalDigest: "a".repeat(64), extractedPath: `research/pointguide-training/${sessionId}/sources/${sourceId}.md`, extractedDigest: "b".repeat(64) }] });
   expect(() => parseAcceptedArtifact(content, path, contentDigest(content), "PointCommunity/pointaudio")).toThrow(/provenance/i);
+});
+
+it.each(["provenance", "reference"])("rejects invalid accepted supporting %s", invalid => {
+  const { files, path } = acceptedSourceFiles(); const artifact = JSON.parse(files[path]);
+  if (invalid === "provenance") artifact.answer.evidence = [{ id: "manual" }];
+  else artifact.answer.claims = [{ id: "claim", text: "Check the bus.", status: "SUPPORTED", evidenceIds: ["missing-manual"] }];
+  const content = JSON.stringify(artifact);
+  expect(() => parseAcceptedArtifact(content, path, contentDigest(content), "PointCommunity/test")).toThrow();
 });
 
 it("prefers accepted guidance for a relevant paraphrase, not an unrelated question", () => {
