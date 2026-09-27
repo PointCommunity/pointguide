@@ -42,6 +42,13 @@ it("uses semantic assessment but rejects explicit wrong product and unknown IDs"
   await expect(planAcceptedTraining("M32R sockets", [artifact], async () => ({ selected: [{ id: "unknown", coverage: "COMPLETE", missing: [], rationale: "" }] }), ["M32R"])).rejects.toThrow(/unknown accepted artifact/i);
 });
 
+it.each(["steps", "safetyAndAssumptions"] as const)("assesses the model identified only in accepted %s", async field => {
+  const record = { ...artifact, question: "How do I add a channel to a bus?", directAnswer: "Use Sends on Fader.", answer: { ...artifact.answer!, directAnswer: "Use Sends on Fader.", steps: [], safetyAndAssumptions: [], [field]: ["This procedure applies to the M32R."] } };
+  const assess = vi.fn().mockResolvedValue({ selected: [{ id: record.id, coverage: "COMPLETE", missing: [], rationale: "The procedure identifies M32R." }] });
+  expect(await planAcceptedTraining("Route a channel on M32R", [record], assess, ["M32", "M32R"])).toMatchObject({ coverage: "COMPLETE", guidance: [record] });
+  expect(assess).toHaveBeenCalledOnce();
+});
+
 it("requires supplemental research for partial or conflicting accepted answers", async () => {
   const partial = await planAcceptedTraining("M32R socket count and AES50 routing", [artifact], async () => ({ selected: [{ id: artifact.id, coverage: "PARTIAL", missing: ["AES50 routing on M32R"], rationale: "routing absent" }] }), ["M32R"]);
   expect(partial).toMatchObject({ coverage: "PARTIAL", missing: ["AES50 routing on M32R"] });

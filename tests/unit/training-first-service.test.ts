@@ -35,3 +35,14 @@ it("keeps partial training and searches for the missing part", async () => {
   expect(result.answer.confidence).not.toBe("CONFIRMED");
   spy.mockRestore();
 });
+
+it("retains a bus procedure when trainer feedback names the model only present in its steps", async () => {
+  const originalQuestion = "How do I add a channel to a bus?";
+  const record = { ...guidance, question: originalQuestion, directAnswer: "Use Sends on Fader.", answer: { ...guidance.answer!, directAnswer: "Use Sends on Fader.", steps: ["On the M32R, select the destination bus.", "Enable Sends on Fader.", "Raise the channel send."], safetyAndAssumptions: ["Verify the selected layer before moving a fader."], claims: [] } };
+  const learning = new MemoryLearningRepository(); const conversation = await learning.createConversation(actor.id, "training");
+  const result = await answerQuestion({ actor, conversationId: conversation.id, question: originalQuestion, deepResearch: false, providers: new MemoryProviderStore(), learning, fixture: true, chunks, guidance: [record], training: true, trainingHistory: [{ actor: "USER", content: "Keep all M32R steps and warnings." }] });
+  expect(result.answer.guidance).toEqual([record]);
+  expect(result.answer.steps).toEqual(record.answer.steps);
+  expect(result.answer.safetyAndAssumptions).toEqual(record.answer.safetyAndAssumptions);
+  expect(result.answer.evidence[0].kind).toBe("ACCEPTED_TRAINING");
+});

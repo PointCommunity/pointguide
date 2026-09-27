@@ -14,7 +14,7 @@ function namedProduct(text: string, names: string[]): string[] {
 export async function planAcceptedTraining(question: string, records: AcceptedGuidance[], assess: (question: string, candidates: AcceptedGuidance[]) => Promise<TrainingAssessment>, products: string[] = []): Promise<TrainingPlan> {
   const none: TrainingPlan = { coverage: "NONE", guidance: [], missing: [] };
   const askedProducts = namedProduct(question, products);
-  const candidates = records.filter(record => record.answer && (!askedProducts.length || namedProduct(`${record.question} ${record.directAnswer}`, products).some(name => askedProducts.includes(name))));
+  const candidates = records.filter(record => record.answer && (!askedProducts.length || namedProduct([record.question, record.directAnswer, ...record.answer.steps, ...record.answer.safetyAndAssumptions].join(" "), products).some(name => askedProducts.includes(name))));
   if (!candidates.length) return none;
   const assessment = trainingAssessmentSchema.parse(await assess(question, candidates));
   const ids = new Map(candidates.map(record => [record.id, record]));
