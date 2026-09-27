@@ -96,12 +96,37 @@ describe("model execution boundary", () => {
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
+  it.each(["unknown finding", "missing finding", "duplicate finding", "unknown order", "missing order", "duplicate order"])("retries a reviewer response with %s", async (failure) => {
+    const key = randomBytes(32).toString("base64");
+    const draft = { ...answer, claims: [answer.claims[0], { ...answer.claims[0], id: "training:exact:warning" }] };
+    const valid = { findings: draft.claims.map(claim => ({ claimId: claim.id, verdict: "SUPPORTED", rationaleCode: "ENTAILED" })), claimOrder: draft.claims.map(claim => claim.id) };
+    const invalid = structuredClone(valid);
+    if (failure === "unknown finding") invalid.findings[1].claimId = "invented";
+    if (failure === "missing finding") invalid.findings.pop();
+    if (failure === "duplicate finding") invalid.findings[1].claimId = "c1";
+    if (failure === "unknown order") invalid.claimOrder[1] = "invented";
+    if (failure === "missing order") invalid.claimOrder.pop();
+    if (failure === "duplicate order") invalid.claimOrder[1] = "c1";
+    const fetcher = vi.fn().mockResolvedValueOnce(Response.json({ message: { content: JSON.stringify(invalid) } })).mockResolvedValueOnce(Response.json({ message: { content: JSON.stringify(valid) } }));
+    await expect(generateReview(profile("OLLAMA_CLOUD", encryptSecret("ollama_secret_key_123456", key)), draft as never, evidence, { secretKey: key, codexClient: { request: vi.fn() }, fetcher })).resolves.toEqual(valid);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails closed after repeated incomplete reviewer responses", async () => {
+    const key = randomBytes(32).toString("base64");
+    const fetcher = vi.fn().mockImplementation(async () => Response.json({ message: { content: JSON.stringify({ findings: [], claimOrder: [] }) } }));
+    await expect(generateReview(profile("OLLAMA_CLOUD", encryptSecret("ollama_secret_key_123456", key)), answer as never, evidence, { secretKey: key, codexClient: { request: vi.fn() }, fetcher })).rejects.toThrow();
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
   it("collects Codex App Server notifications and validates a review", async () => {
     let listener: ((method: string, params: unknown) => void) | undefined;
+    let outputSchema: Record<string, unknown> | undefined;
     const client: AppServerClient = {
       subscribe(next) { listener = next; return () => { listener = undefined; }; },
-      async request(method) {
+      async request(method, params) {
         if (method === "thread/start") return { thread: { id: "thread-1" } };
+        outputSchema = params.outputSchema as Record<string, unknown>;
         queueMicrotask(() => {
           listener?.("item/agentMessage/delta", { threadId: "thread-1", delta: JSON.stringify({ findings: [{ claimId: "c1", verdict: "SUPPORTED", rationaleCode: "ENTAILED" }], claimOrder: ["c1"] }) });
           listener?.("turn/completed", { threadId: "thread-1" });
@@ -110,6 +135,7 @@ describe("model execution boundary", () => {
       },
     };
     await expect(generateReview(profile("CODEX"), answer as never, evidence, { secretKey: randomBytes(32).toString("base64"), codexClient: client })).resolves.toEqual({ findings: [{ claimId: "c1", verdict: "SUPPORTED", rationaleCode: "ENTAILED" }], claimOrder: ["c1"] });
+    expect(outputSchema).toMatchObject({ properties: { findings: { minItems: 1, maxItems: 1, items: { properties: { claimId: { enum: ["c1"] } } } }, claimOrder: { minItems: 1, maxItems: 1, items: { enum: ["c1"] } } } });
   });
 
   it("constrains Codex revision answers and reads the final complete message instead of concatenating interim messages", async () => {

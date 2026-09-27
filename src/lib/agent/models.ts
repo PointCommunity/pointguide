@@ -150,7 +150,10 @@ export async function generateTrainingAssessment(profile: ExecutionProfile, ques
 }
 
 export async function generateReview(profile: ExecutionProfile, draft: AnswerDraft, evidence: EvidenceItem[], runtime: ModelRuntime): Promise<ReviewResult> {
-  return generateStructured(profile, reviewPrompt(draft, evidence, profile.ownerPrompt), runtime, reviewResultSchema);
+  const ids = draft.claims.map(claim => claim.id);
+  const claimId = ids.length ? z.enum(ids) : z.string().min(1);
+  const schema = reviewResultSchema.extend({ findings: z.array(reviewResultSchema.shape.findings.element.extend({ claimId })).length(ids.length).refine(items => new Set(items.map(item => item.claimId)).size === ids.length), claimOrder: z.array(claimId).length(ids.length).refine(items => new Set(items).size === ids.length) });
+  return generateStructured(profile, reviewPrompt(draft, evidence, profile.ownerPrompt), runtime, schema);
 }
 
 export async function generateTrainingReport(profile: ExecutionProfile, input: { question: string; answer: Readonly<Record<string, unknown>>; rating: "HELPFUL" | "NOT_HELPFUL"; explanation: string; priorReport?: TrainingReport | null }, runtime: ModelRuntime): Promise<TrainingReport> {
