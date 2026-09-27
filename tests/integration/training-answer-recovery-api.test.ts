@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { MemoryAccountStore } from "@/lib/auth/memory-store";
 import { MemoryTrainingSessionStore } from "@/lib/training/store";
-import { PATCH } from "@/app/api/training/sessions/[id]/route";
-import { POST } from "@/app/api/training/sessions/route";
+import { GET as GET_SESSION, PATCH } from "@/app/api/training/sessions/[id]/route";
+import { GET as GET_SESSIONS, POST } from "@/app/api/training/sessions/route";
 import { DELETE as DELETE_SOURCE, POST as POST_SOURCE } from "@/app/api/training/sessions/[id]/sources/route";
 import { getRuntimeSessionDependencies } from "@/lib/auth/runtime";
 import { getRuntimeTrainingStore } from "@/lib/training/runtime";
@@ -11,7 +11,7 @@ import { getRuntimeLearningRepository } from "@/lib/learning/runtime";
 import { getRuntimeSourceStore } from "@/lib/sources/runtime";
 import { knowledgeSnapshot } from "@/lib/sources/retrieval";
 import { answerQuestion } from "@/lib/agent/service";
-import { acceptedSourceFiles, upstream } from "../fixtures/source-contract";
+import { acceptedSourceFiles, digest, upstream } from "../fixtures/source-contract";
 import { validateSourceRepository } from "@/lib/sources/validator";
 import { MemorySourceRepositoryStore } from "@/lib/sources/store";
 import { parseEnvironment } from "@/lib/config/env";
@@ -46,6 +46,29 @@ beforeEach(async () => {
   vi.mocked(knowledgeSnapshot).mockResolvedValue({ chunks: [], sources: [], navigation: {}, guidance: [] });
 });
 afterEach(() => { vi.clearAllMocks(); vi.unstubAllEnvs(); });
+
+it("derives list and detail availability after authentication without persisting it", async () => {
+  const { files, path } = acceptedSourceFiles();
+  const validated = await validateSourceRepository("https://github.com/PointCommunity/test", { fetcher: upstream(files) });
+  const sources = new MemorySourceRepositoryStore(false); await sources.link(actorId, validated);
+  const actual = await vi.importActual<typeof import("@/lib/sources/retrieval")>("@/lib/sources/retrieval");
+  const snapshot = await actual.knowledgeSnapshot(sources, parseEnvironment({ AUTH_MODE: "fixture" }));
+  vi.mocked(knowledgeSnapshot).mockResolvedValue(snapshot);
+  const created = await store.create({ trainerAccountId: actorId, conversationId: crypto.randomUUID(), targetRepository: validated.fullName, originalQuestion: "Published question" });
+  const published = { ...created, state: "ACTIVE_KNOWLEDGE" as const, acceptedContent: files[path], acceptedDigest: digest(files[path]), acceptedPath: path };
+  const get = vi.spyOn(store, "get").mockResolvedValue(published);
+  const list = vi.spyOn(store, "list").mockResolvedValue([published]);
+  const detail = () => GET_SESSION(new Request(`http://localhost/api/training/sessions/${created.id}`, { headers }), { params: Promise.resolve({ id: created.id }) });
+  expect(await (await GET_SESSIONS(new Request("http://localhost/api/training/sessions", { headers }))).json()).toMatchObject({ sessions: [{ knowledgeAvailable: true, indexedCommit: validated.report.commitSha }] });
+  expect(await (await detail()).json()).toMatchObject({ session: { knowledgeAvailable: true } });
+  expect(list).toHaveBeenCalledWith(actorId, ""); expect(get).toHaveBeenCalledWith(created.id, actorId);
+  vi.mocked(knowledgeSnapshot).mockResolvedValue({ ...snapshot, guidance: [] });
+  expect(await (await detail()).json()).toMatchObject({ session: { knowledgeAvailable: false } });
+  expect(published).not.toHaveProperty("knowledgeAvailable");
+  list.mockClear();
+  expect((await GET_SESSIONS(new Request("http://localhost/api/training/sessions"))).status).toBe(401);
+  expect(list).not.toHaveBeenCalled();
+});
 
 it("uses source-derived guidance for first answers, feedback, clarification, retries and material revisions", async () => {
   const { files, question } = acceptedSourceFiles(); const validated = await validateSourceRepository("https://github.com/PointCommunity/test", { fetcher: upstream(files) });

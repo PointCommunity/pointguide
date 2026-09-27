@@ -4,6 +4,7 @@ import { requireRole } from "@/lib/auth/policy";
 import { accountBoundaryErrorResponse, assertSameOrigin } from "@/lib/auth/http";
 import { getRuntimeSessionDependencies } from "@/lib/auth/runtime";
 import { getRuntimeTrainingStore } from "@/lib/training/runtime";
+import { withTrainingAvailability } from "@/lib/training/availability";
 import { TrainingStateError } from "@/lib/training/store";
 import { getRuntimeProviderDependencies, getRuntimeModelRuntime } from "@/lib/providers/runtime";
 import { generateTrainingReport } from "@/lib/agent/models";
@@ -35,7 +36,8 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   try {
     const actor = await trainer(request); const { id } = await context.params;
     if (!z.uuid().safeParse(id).success) return Response.json({ error: { code: "INVALID_TRAINING", message: "Training session ID is invalid." } }, { status: 400 });
-    const store = getRuntimeTrainingStore(); return Response.json({ session: await store.get(id, actor.id), turns: await store.listTurns(id, actor.id), sources: await store.listSources(id, actor.id) });
+    const store = getRuntimeTrainingStore(); const [session] = await withTrainingAvailability([await store.get(id, actor.id)], getRuntimeSourceStore(), parseEnvironment(process.env));
+    return Response.json({ session, turns: await store.listTurns(id, actor.id), sources: await store.listSources(id, actor.id) });
   } catch (error) { return failure(error); }
 }
 

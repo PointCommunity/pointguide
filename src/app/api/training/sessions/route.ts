@@ -7,6 +7,7 @@ import { getRuntimeLearningRepository } from "@/lib/learning/runtime";
 import { getRuntimeProviderDependencies, getRuntimeModelRuntime } from "@/lib/providers/runtime";
 import { getRuntimeSourceStore } from "@/lib/sources/runtime";
 import { getRuntimeTrainingStore } from "@/lib/training/runtime";
+import { withTrainingAvailability } from "@/lib/training/availability";
 import { answerQuestion } from "@/lib/agent/service";
 import { parseEnvironment } from "@/lib/config/env";
 import { knowledgeSnapshot } from "@/lib/sources/retrieval";
@@ -18,7 +19,7 @@ const schema = z.object({ question: z.string().trim().min(1).max(8_000), targetR
 const querySchema = z.string().trim().max(200);
 async function trainer(request: Request) { const actor = await authenticateRequest(request, getRuntimeSessionDependencies()); return requireRole(actor, ["TRAINER", "ADMIN", "OWNER"]); }
 
-export async function GET(request: Request) { try { const actor = await trainer(request); const query = querySchema.safeParse(new URL(request.url).searchParams.get("q") ?? ""); if (!query.success) return Response.json({ error: { code: "INVALID_SEARCH", message: "Training session search is too long." } }, { status: 400 }); return Response.json({ sessions: await getRuntimeTrainingStore().list(actor.id, query.data) }); } catch (error) { return accountBoundaryErrorResponse(error); } }
+export async function GET(request: Request) { try { const actor = await trainer(request); const query = querySchema.safeParse(new URL(request.url).searchParams.get("q") ?? ""); if (!query.success) return Response.json({ error: { code: "INVALID_SEARCH", message: "Training session search is too long." } }, { status: 400 }); return Response.json({ sessions: await withTrainingAvailability(await getRuntimeTrainingStore().list(actor.id, query.data), getRuntimeSourceStore(), parseEnvironment(process.env)) }); } catch (error) { return accountBoundaryErrorResponse(error); } }
 export async function POST(request: Request) {
   try {
     assertSameOrigin(request); const actor = await trainer(request);
