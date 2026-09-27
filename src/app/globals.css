@@ -196,7 +196,7 @@ h2 { font-size: clamp(1.45rem, 5vw, 2.15rem); }
 .settings-success, .settings-error { margin: 0; font-size: .78rem; }
 .settings-success { color: var(--mint); }
 .settings-error { color: var(--danger); }
-.training-status { padding: var(--space-4); border-left: 3px solid var(--amber); background: var(--panel); color: var(--muted); }
+.training-status { padding: var(--space-4); border-left: 3px solid var(--amber); background: var(--panel); color: var(--muted); overflow-wrap: anywhere; }
 .training-grid { display: grid; gap: var(--space-4); }
 .training-card, .proposal-form { padding: var(--space-4); border: 1px solid var(--line); background: var(--panel); }
 .knowledge-card { display: grid; gap: var(--space-4); padding: var(--space-5); border: 1px solid var(--line); background: var(--panel); }

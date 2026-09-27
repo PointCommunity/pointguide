@@ -268,12 +268,41 @@ test("distinguishes publication recovery from activation recovery", async ({ pag
 
   const indexedCommit = "b".repeat(40);
   const acceptedPath = `research/pointguide-training/${id}/00000000-0000-4000-8000-000000000096.json`;
-  session = { ...base, state: "ACTIVE_KNOWLEDGE", publishedCommit: "a".repeat(40), indexedCommit, acceptedPath };
+  session = { ...base, state: "ACTIVE_KNOWLEDGE", knowledgeAvailable: true, publishedCommit: "a".repeat(40), indexedCommit, acceptedPath };
   await page.reload();
   await expect(page.getByRole("navigation", { name: "Training steps" }).getByText("Publish")).not.toHaveAttribute("aria-current", "step");
   await expect(page.getByText("accepted guidance is active", { exact: false })).toBeVisible();
   await expect(page.getByText("Ready to use", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Open active repository artifact" })).toHaveAttribute("href", `https://github.com/PointCommunity/pointaudio/blob/${indexedCommit}/${acceptedPath}`);
+});
+
+test("keeps archived publication visible without claiming it is ready", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile-320", "One narrow viewport covers unavailable publication and unknown status.");
+  const id = "00000000-0000-4000-8000-000000000194";
+  const session: Record<string, unknown> = { id, originalQuestion: "Earlier accepted routing answer", targetRepository: "PointCommunity/pointaudio", state: "ACTIVE_KNOWLEDGE", knowledgeAvailable: false, indexedCommit: "b".repeat(40), acceptedPath: `research/pointguide-training/${id}/answer.json`, currentAnswer: { directAnswer: "Preserved historical answer." } };
+  await page.route("**/api/training/sessions?*", route => route.fulfill({ json: { sessions: [session] } }));
+  await page.route(`**/api/training/sessions/${id}`, route => route.fulfill({ json: { session, turns: [], sources: [] } }));
+  await page.goto("/training/sessions");
+  await expect(page.getByText("Not available", { exact: true })).toBeVisible();
+  await expect(page.getByText("not used for future answers", { exact: false })).toBeVisible();
+  const continueLink = page.getByRole("link", { name: "Open and continue" });
+  await continueLink.focus();
+  await expect(continueLink).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Preserved historical answer.")).toBeVisible();
+  await expect(page.getByText("Ready to use", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("navigation", { name: "Training steps" }).getByText("Publish")).toHaveAttribute("aria-current", "step");
+  await expect(page.getByRole("link", { name: "Open previously indexed artifact" })).toHaveAttribute("href", `https://github.com/PointCommunity/pointaudio/blob/${session.indexedCommit}/${session.acceptedPath}`);
+  await expect(page.locator(".training-progress")).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await page.setViewportSize({ width: 640, height: 1600 });
+  await page.evaluate(() => { document.documentElement.style.zoom = "2"; });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  delete session.knowledgeAvailable;
+  await page.reload();
+  await expect(page.getByText("Published", { exact: true })).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("current availability is unverified");
+  await expect(page.getByText("Ready to use", { exact: true })).toHaveCount(0);
 });
 
 test("separates an essential clarification from the saved answer and gates acceptance until revision", async ({ page }, testInfo) => {
