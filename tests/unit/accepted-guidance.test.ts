@@ -1,12 +1,42 @@
 import { expect, it } from "vitest";
-import { rankAcceptedGuidance, acceptedGuidanceFromSession } from "@/lib/training/knowledge";
+import { rankAcceptedGuidance, acceptedGuidanceFromArtifact, parseAcceptedArtifact } from "@/lib/training/knowledge";
+import { contentDigest } from "@/lib/git/proposals";
 import { searchCorpus } from "@/lib/evidence/search";
 import type { AcceptedGuidance } from "@/lib/training/knowledge";
 import { acceptedTrainingArtifact } from "@/lib/training/artifact";
 import type { TrainingSessionRecord } from "@/lib/training/types";
 import type { SourceRepositoryRecord } from "@/lib/sources/types";
+import { acceptedSourceFiles } from "../fixtures/source-contract";
 
 const guidance: AcceptedGuidance = { id: "training:abc", repository: "PointCommunity/pointaudio", path: "research/pointguide-training/a/b.json", digest: "a".repeat(64), sourceCommit: "b".repeat(40), indexedCommit: "c".repeat(40), question: "What does a red AES50 sync light on the DL32 mean?", directAnswer: "The link is not synchronized. Inspect cable and clock safely.", evidenceIds: ["repo:dl32"], acceptedAt: "2026-09-15T12:00:00Z" };
+
+it("loads complete repository-owned guidance without a local Training session", () => {
+  const session = { id: crypto.randomUUID(), trainerAccountId: "trainer", conversationId: "conversation", state: "ACTIVE_KNOWLEDGE", currentReport: null, proposalId: null, createdAt: guidance.acceptedAt, updatedAt: guidance.acceptedAt, targetRepository: "PointCommunity/pointaudio", originalQuestion: guidance.question, currentAnswer: { id: crypto.randomUUID(), directAnswer: guidance.directAnswer, steps: ["Check clock."], safetyAndAssumptions: ["Mute first."], confidence: "SUPPORTED", evidence: [] }, version: 1 } satisfies TrainingSessionRecord;
+  const artifact = acceptedTrainingArtifact(session, "trainer", "a".repeat(40), guidance.acceptedAt);
+  const record = { path: artifact.path, digest: artifact.digest, question: session.originalQuestion, lifecycle: "active" as const };
+  const source = { fullName: session.targetRepository, status: "ACTIVE", indexedCommit: "b".repeat(40), validationReport: { valid: true, complete: true, commitSha: "b".repeat(40), acceptedArtifacts: [{ path: artifact.path, digest: artifact.digest }], acceptedTraining: [record] } } as SourceRepositoryRecord;
+  expect(acceptedGuidanceFromArtifact(artifact.content, record, source)).toMatchObject({ path: artifact.path, indexedCommit: source.indexedCommit, answer: { steps: ["Check clock."], safetyAndAssumptions: ["Mute first."] } });
+  expect(acceptedGuidanceFromArtifact(artifact.content, { ...record, lifecycle: "superseded" }, source)).toBeNull();
+  expect(acceptedGuidanceFromArtifact(artifact.content, record, { ...source, status: "ARCHIVED" })).toBeNull();
+  expect(acceptedGuidanceFromArtifact(artifact.content, record, { ...source, validationReport: { ...source.validationReport, acceptedTraining: [] } })).toBeNull();
+  expect(acceptedGuidanceFromArtifact(artifact.content + " ", record, source)).toBeNull();
+  expect(acceptedGuidanceFromArtifact(artifact.content, { ...record, question: "Different question" }, source)).toBeNull();
+});
+
+it("rejects trainer-source paths that exceed the immutable original file boundary", () => {
+  const sessionId = crypto.randomUUID(), answerId = crypto.randomUUID(), sourceId = crypto.randomUUID();
+  const path = `research/pointguide-training/${sessionId}/${answerId}.json`;
+  const content = JSON.stringify({ schemaVersion: 2, kind: "pointguide-accepted-training", sessionId, answerId, targetRepository: "PointCommunity/pointaudio", sourceCommit: "a".repeat(40), acceptedAt: guidance.acceptedAt, originalQuestion: guidance.question, answer: { id: answerId, directAnswer: guidance.directAnswer, steps: [], safetyAndAssumptions: [], confidence: "SUPPORTED", claims: [], evidence: [] }, trainerSources: [{ id: sourceId, kind: "FILE", originalName: "manual.pdf", mediaType: "application/pdf", sourceUrl: null, finalUrl: null, capturedAt: guidance.acceptedAt, originalPath: `research/pointguide-training/${sessionId}/originals/${sourceId}.pdf/extra.txt`, originalDigest: "a".repeat(64), extractedPath: `research/pointguide-training/${sessionId}/sources/${sourceId}.md`, extractedDigest: "b".repeat(64) }] });
+  expect(() => parseAcceptedArtifact(content, path, contentDigest(content), "PointCommunity/pointaudio")).toThrow(/provenance/i);
+});
+
+it.each(["provenance", "reference"])("rejects invalid accepted supporting %s", invalid => {
+  const { files, path } = acceptedSourceFiles(); const artifact = JSON.parse(files[path]);
+  if (invalid === "provenance") artifact.answer.evidence = [{ id: "manual" }];
+  else artifact.answer.claims = [{ id: "claim", text: "Check the bus.", status: "SUPPORTED", evidenceIds: ["missing-manual"] }];
+  const content = JSON.stringify(artifact);
+  expect(() => parseAcceptedArtifact(content, path, contentDigest(content), "PointCommunity/test")).toThrow();
+});
 
 it("prefers accepted guidance for a relevant paraphrase, not an unrelated question", () => {
   expect(rankAcceptedGuidance("Why is the DL32 AES50 link red?", [guidance])).toEqual([guidance]);
@@ -19,17 +49,17 @@ it("never presents unvalidated training chunks as repository evidence", () => {
   expect(searchCorpus("DL32 AES50", [chunk])).toEqual([]);
 });
 
-it("excludes inactive, archived, and superseded accepted sessions", () => {
+it("excludes inactive, archived, and superseded source artifacts", () => {
   const evidence = { id: "repo:dl32", kind: "REPOSITORY", title: "DL32 manual", path: "docs/dl32.txt", locator: "page 1", authority: "Manufacturer manual", capturedAt: "2026-09-15T12:00:00.000Z", excerpt: "Inspect cable and clock safely.", digest: "d".repeat(64) };
   const session = { id: crypto.randomUUID(), trainerAccountId: "trainer", conversationId: "conversation", targetRepository: "PointCommunity/pointaudio", originalQuestion: guidance.question, state: "ACTIVE_KNOWLEDGE", currentAnswer: { id: crypto.randomUUID(), directAnswer: guidance.directAnswer, evidence: [evidence] }, currentReport: null, proposalId: null, createdAt: guidance.acceptedAt, updatedAt: guidance.acceptedAt, version: 2 } satisfies TrainingSessionRecord;
   const artifact = acceptedTrainingArtifact(session, "trainer", "a".repeat(40), guidance.acceptedAt);
-  const active = { ...session, acceptedContent: artifact.content, acceptedDigest: artifact.digest, acceptedPath: artifact.path, indexedCommit: "b".repeat(40) } satisfies TrainingSessionRecord;
-  const source = { fullName: session.targetRepository, status: "ACTIVE", indexedCommit: "b".repeat(40), validationReport: { valid: true, complete: true, commitSha: "b".repeat(40), acceptedArtifacts: [{ path: artifact.path, digest: artifact.digest }] } } as SourceRepositoryRecord;
-  expect(acceptedGuidanceFromSession(active, source)).toMatchObject({ path: artifact.path, answer: { directAnswer: guidance.directAnswer, evidence: [{ id: "repo:dl32" }] } });
-  expect(acceptedGuidanceFromSession({ ...active, state: "FAILED" }, source)).toBeNull();
-  expect(acceptedGuidanceFromSession({ ...active, state: "SUPERSEDED" }, source)).toBeNull();
-  expect(acceptedGuidanceFromSession(active, { ...source, status: "ARCHIVED" })).toBeNull();
-  expect(acceptedGuidanceFromSession(active, { ...source, indexedCommit: "c".repeat(40), validationReport: { ...source.validationReport, commitSha: "c".repeat(40) } })?.indexedCommit).toBe("c".repeat(40));
-  expect(acceptedGuidanceFromSession(active, { ...source, validationReport: { ...source.validationReport, acceptedArtifacts: [] } })).toBeNull();
-  expect(acceptedGuidanceFromSession(active, { ...source, validationReport: { ...source.validationReport, acceptedArtifacts: [{ path: artifact.path, digest: "0".repeat(64) }] } })).toBeNull();
+  const record = { path: artifact.path, digest: artifact.digest, question: session.originalQuestion, lifecycle: "active" as const };
+  const source = { fullName: session.targetRepository, status: "ACTIVE", indexedCommit: "b".repeat(40), validationReport: { valid: true, complete: true, commitSha: "b".repeat(40), acceptedArtifacts: [{ path: artifact.path, digest: artifact.digest }], acceptedTraining: [record] } } as SourceRepositoryRecord;
+  expect(acceptedGuidanceFromArtifact(artifact.content, record, source)).toMatchObject({ path: artifact.path, answer: { directAnswer: guidance.directAnswer, evidence: [{ id: "repo:dl32" }] } });
+  expect(acceptedGuidanceFromArtifact(artifact.content, { ...record, lifecycle: "archived" }, source)).toBeNull();
+  expect(acceptedGuidanceFromArtifact(artifact.content, { ...record, lifecycle: "superseded" }, source)).toBeNull();
+  expect(acceptedGuidanceFromArtifact(artifact.content, record, { ...source, status: "ARCHIVED" })).toBeNull();
+  expect(acceptedGuidanceFromArtifact(artifact.content, record, { ...source, indexedCommit: "c".repeat(40), validationReport: { ...source.validationReport, commitSha: "c".repeat(40) } })?.indexedCommit).toBe("c".repeat(40));
+  expect(acceptedGuidanceFromArtifact(artifact.content, record, { ...source, validationReport: { ...source.validationReport, acceptedArtifacts: [] } })).toBeNull();
+  expect(acceptedGuidanceFromArtifact(artifact.content, record, { ...source, validationReport: { ...source.validationReport, acceptedArtifacts: [{ path: artifact.path, digest: "0".repeat(64) }] } })).toBeNull();
 });

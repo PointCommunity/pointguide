@@ -1,10 +1,72 @@
 import { describe, expect, it } from "vitest";
 import { validateSourceRepository } from "@/lib/sources/validator";
-import { digest, purpose, seal, sourceFiles, upstream } from "../fixtures/source-contract";
+import { acceptedSourceFiles, digest, purpose, seal, sourceFiles, upstream } from "../fixtures/source-contract";
 import { sourceTemplate } from "@/lib/sources/template";
 import { searchCorpus } from "@/lib/evidence/search";
+import { validateSourceContract } from "@/lib/sources/contract";
 
 describe("mandatory source contract", () => {
+  it("indexes an active accepted answer whole, separately from general evidence", async () => {
+    const { files, path, question } = acceptedSourceFiles();
+    const result = await validateSourceRepository("https://github.com/PointCommunity/test", { fetcher: upstream(files) });
+    expect(result.report.acceptedTraining).toEqual([{ path, digest: digest(files[path]), question, lifecycle: "active" }]);
+    expect(result.chunks.filter(chunk => chunk.path === path)).toEqual([expect.objectContaining({ text: files[path], digest: digest(files[path]), title: question, authority: "trainer-authorized knowledge" })]);
+    expect(result.report.files).toContain(path);
+    expect(searchCorpus("Select the channel and raise its bus send", result.chunks).some(chunk => chunk.path === path)).toBe(false);
+    const inventory = JSON.parse(files["source-inventory.json"]); inventory.acceptedTraining[0].lifecycle = "archived";
+    files["source-inventory.json"] = JSON.stringify(inventory); seal(files);
+    const archived = await validateSourceRepository("https://github.com/PointCommunity/test", { fetcher: upstream(files) });
+    expect(archived.chunks.some(chunk => chunk.path === path)).toBe(false);
+  });
+
+  it.each(["identity", "question", "original", "extraction"])("rejects invalid active Training %s before admission", async invalid => {
+    const { files, path } = acceptedSourceFiles(); const artifact = JSON.parse(files[path]);
+    if (invalid === "identity") artifact.answer.id = crypto.randomUUID();
+    if (invalid === "question") artifact.originalQuestion = "Different question";
+    if (invalid === "original" || invalid === "extraction") {
+      const id = crypto.randomUUID(); const folder = path.slice(0, path.lastIndexOf("/"));
+      const originalPath = `${folder}/originals/${id}.pdf`; const extractedPath = `${folder}/sources/${id}.md`;
+      artifact.trainerSources = [{ id, kind: "FILE", originalName: "manual.pdf", mediaType: "application/pdf", sourceUrl: null, finalUrl: null, capturedAt: "2026-09-18T12:00:00Z", originalPath, originalDigest: digest("original"), extractedPath, extractedDigest: digest("extracted") }];
+      files[`${folder}/originals/README.md`] = purpose("originals"); files[`${folder}/sources/README.md`] = purpose("extraction");
+      if (invalid === "extraction") files[originalPath] = "original";
+    }
+    files[path] = JSON.stringify(artifact);
+    const inventory = JSON.parse(files["source-inventory.json"]); inventory.acceptedTraining[0].digest = digest(files[path]); files["source-inventory.json"] = JSON.stringify(inventory); seal(files);
+    await expect(validateSourceRepository("https://github.com/PointCommunity/test", { fetcher: upstream(files) })).rejects.toThrow(/Training|artifact|source|extraction/i);
+  });
+
+  it("rejects an accepted answer exceeding the existing evidence budget without truncation", async () => {
+    const { files, path } = acceptedSourceFiles(); const artifact = JSON.parse(files[path]); artifact.answer.steps = ["x".repeat(64_001)];
+    files[path] = JSON.stringify(artifact); const inventory = JSON.parse(files["source-inventory.json"]); inventory.acceptedTraining[0].digest = digest(files[path]); files["source-inventory.json"] = JSON.stringify(inventory); seal(files);
+    await expect(validateSourceRepository("https://github.com/PointCommunity/test", { fetcher: upstream(files) })).rejects.toThrow(/context limit/);
+  });
+
+  it("retains explicit Training lifecycle without turning it into general evidence", () => {
+    const files = sourceFiles();
+    const path = `research/pointguide-training/${crypto.randomUUID()}/${crypto.randomUUID()}.json`;
+    files[path] = "{}"; files[path.slice(0, path.lastIndexOf("/")) + "/README.md"] = purpose("training session");
+    const record = { path, digest: digest(files[path]), question: "M32R inputs", lifecycle: "active" };
+    const inventory = JSON.parse(files["source-inventory.json"]); inventory.excluded = [{ path, reason: "Accepted Training only" }]; inventory.acceptedTraining = [record];
+    files["source-inventory.json"] = JSON.stringify(inventory); seal(files);
+    const result = validateSourceContract("PointCommunity/test", "main", new Set(Object.keys(files)), new Map(Object.entries(files)));
+    expect(result).toMatchObject({ acceptedTraining: [record], activePaths: ["docs/setup.txt"] });
+    inventory.acceptedTraining = [{ ...record, lifecycle: "superseded", supersededBy: path }];
+    files["source-inventory.json"] = JSON.stringify(inventory); seal(files);
+    expect(() => validateSourceContract("PointCommunity/test", "main", new Set(Object.keys(files)), new Map(Object.entries(files)))).toThrow(/supersession/i);
+  });
+
+  it.each(["digest", "path", "lifecycle", "replacement", "duplicate"])("rejects invalid Training %s metadata", invalid => {
+    const files = sourceFiles(); const path = `research/pointguide-training/${crypto.randomUUID()}/${crypto.randomUUID()}.json`;
+    files[path] = "{}"; files[path.slice(0, path.lastIndexOf("/")) + "/README.md"] = purpose("training session");
+    const record = { path, digest: digest(files[path]), question: "M32R inputs", lifecycle: "active", supersededBy: undefined as string | undefined };
+    if (invalid === "digest") record.digest = "a".repeat(64);
+    if (invalid === "path") record.path = "docs/setup.txt";
+    if (invalid === "lifecycle") record.lifecycle = "not-reviewed";
+    if (invalid === "replacement") { record.lifecycle = "superseded"; record.supersededBy = "missing"; }
+    const inventory = JSON.parse(files["source-inventory.json"]); inventory.excluded = [{ path, reason: "Accepted Training only" }]; inventory.acceptedTraining = invalid === "duplicate" ? [record, record] : [record];
+    files["source-inventory.json"] = JSON.stringify(inventory); seal(files);
+    expect(() => validateSourceContract("PointCommunity/test", "main", new Set(Object.keys(files)), new Map(Object.entries(files)))).toThrow(/acceptedTraining|Training|supersession/i);
+  });
   it("scaffolds every required folder without inventing evidence or admitting the empty scaffold", async () => {
     const template = sourceTemplate("PointCommunity/test");
     expect(Object.keys(template)).toContain("research/pointguide-training/README.md");

@@ -7,7 +7,7 @@ export function trainingStateLabel(session: TrainingSessionRecord): string {
     case "REVISING": return session.answerError ? "Needs attention" : "Revising answer";
     case "PUBLISHING": return "Publishing";
     case "ACTIVATING": return "Activating";
-    case "ACTIVE_KNOWLEDGE": return "Ready to use";
+    case "ACTIVE_KNOWLEDGE": return session.knowledgeAvailable === true ? "Ready to use" : session.knowledgeAvailable === false ? "Not available" : "Published";
     case "FAILED": return "Needs attention";
     case "SUPERSEDED": return "Replaced by newer guidance";
     case "REPORT_READY": return "Earlier report ready";
@@ -23,7 +23,7 @@ export function trainingStateSummary(session: TrainingSessionRecord): string {
     case "REVISING": return session.answerError ? "Your feedback is saved; the revision needs retry." : "Your feedback is saved. PointGuide is preparing the updated answer; you can leave and return later.";
     case "PUBLISHING": return `Saving the exact accepted answer to ${session.targetRepository}.`;
     case "ACTIVATING": return "The answer is published; PointGuide is validating and activating it.";
-    case "ACTIVE_KNOWLEDGE": return "The accepted guidance is active and available to future answers.";
+    case "ACTIVE_KNOWLEDGE": return session.knowledgeAvailable === true ? "The accepted guidance is active and available to future answers." : session.knowledgeAvailable === false ? "Your accepted answer is preserved, but it is not active in current validated knowledge and is not used for future answers." : "Your accepted answer is published; current availability is unverified. Reload to check.";
     case "FAILED": return session.publishedCommit ? "Your exact accepted answer is already published; activation needs retry." : "Your exact accepted answer is saved; publication needs retry.";
     case "SUPERSEDED": return "A newer accepted answer replaced this guidance.";
     case "REPORT_READY": return session.currentReport?.summary ?? "An earlier learning report is ready.";

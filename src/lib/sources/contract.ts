@@ -15,7 +15,9 @@ const itemSchema = z.object({
   capturedAt: z.iso.date().nullable(), verifiedAt: z.iso.date().nullable(), digest: z.string().regex(/^[a-f0-9]{64}$/u),
   lifecycle: z.enum(["active", "archived", "superseded"]), supersededBy: z.string().optional(),
 });
-const inventorySchema = z.object({ schemaVersion: z.literal(2), repository: z.string(), items: z.array(itemSchema).min(1), excluded: z.array(z.object({ path: z.string(), reason: z.string().min(1) })).default([]) });
+export const acceptedTrainingSchema = z.object({ path: z.string().regex(/^research\/pointguide-training\/[a-f0-9-]{36}\/[a-f0-9-]{36}\.json$/u), digest: z.string().regex(/^[a-f0-9]{64}$/u), question: z.string().trim().min(1), lifecycle: z.enum(["active", "archived", "superseded"]), supersededBy: z.string().optional() }).strict();
+export type AcceptedTrainingRecord = z.infer<typeof acceptedTrainingSchema>;
+const inventorySchema = z.object({ schemaVersion: z.literal(2), repository: z.string(), items: z.array(itemSchema).min(1), excluded: z.array(z.object({ path: z.string(), reason: z.string().min(1) })).default([]), acceptedTraining: z.array(acceptedTrainingSchema).default([]) });
 export type SourceInventoryItem = z.infer<typeof itemSchema>;
 export type SourceNavigation = Record<string, { purpose: string; expectedContent: string }>;
 const standardPurpose: Record<string, RegExp> = {
@@ -37,7 +39,7 @@ export function contractDownloadPaths(paths: Set<string>): string[] {
   return [...paths].filter(path => ["AGENTS.md", "README.md", "pointguide-source.yaml", "source-inventory.json", "checksums.sha256"].includes(path) || purposeFile.test(path));
 }
 
-export function validateSourceContract(fullName: string, branch: string, paths: Set<string>, files: Map<string, string>): { activePaths: string[]; items: SourceInventoryItem[]; navigation: SourceNavigation } {
+export function validateSourceContract(fullName: string, branch: string, paths: Set<string>, files: Map<string, string>) {
   let manifest: z.infer<typeof manifestSchema>;
   let inventory: z.infer<typeof inventorySchema>;
   try { manifest = manifestSchema.parse(parse(files.get("pointguide-source.yaml") ?? "")); }
@@ -78,7 +80,24 @@ export function validateSourceContract(fullName: string, branch: string, paths: 
   }
   for (const path of paths) if (evidenceFile.test(path) && !purposeFile.test(path) && !catalogFile.test(path) && !path.startsWith("research/pointguide-training/") && !itemPaths.has(path) && !excluded.has(path)) throw new Error(`source-inventory.json: uncataloged ${path}.`);
   for (const path of paths) if (path.startsWith("research/pointguide-training/") && /\.json$/iu.test(path) && !excluded.has(path)) throw new Error(`source-inventory.json: uncataloged accepted training ${path}.`);
+  const training = new Map<string, AcceptedTrainingRecord>(); const activeQuestions = new Set<string>();
+  for (const record of inventory.acceptedTraining) {
+    if (training.has(record.path) || !excluded.has(record.path) || checksums.get(record.path) !== record.digest || files.get(record.path) === undefined || sha256(files.get(record.path)!) !== record.digest) throw new Error(`source-inventory.json: invalid acceptedTraining path or digest ${record.path}.`);
+    const question = record.question.trim().toLowerCase();
+    if (record.lifecycle === "active" && activeQuestions.has(question)) throw new Error(`source-inventory.json: duplicate active Training question ${record.path}.`);
+    if (record.lifecycle === "active") activeQuestions.add(question);
+    training.set(record.path, record);
+  }
+  for (const record of training.values()) {
+    if ((record.lifecycle === "superseded") !== Boolean(record.supersededBy)) throw new Error(`source-inventory.json: invalid Training supersession ${record.path}.`);
+    const seen = new Set([record.path]); let current = record;
+    while (current.supersededBy) {
+      const next = training.get(current.supersededBy);
+      if (!next || seen.has(next.path) || next.question.trim().toLowerCase() !== record.question.trim().toLowerCase()) throw new Error(`source-inventory.json: unresolved or cyclic Training supersession ${record.path}.`);
+      seen.add(next.path); current = next;
+    }
+  }
   const candidates = [...itemPaths].filter(path => inventory.items.some(item => item.path === path && item.lifecycle === "active"));
   if (!candidates.length) throw new Error("source-inventory.json: no active evidence files.");
-  return { activePaths: candidates, items: inventory.items, navigation };
+  return { activePaths: candidates, items: inventory.items, navigation, acceptedTraining: inventory.acceptedTraining };
 }

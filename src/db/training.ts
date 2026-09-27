@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { PointGuideDatabase } from "@/db/client";
-import { conversations, jobs, sourceRepositories, trainingSessions, trainingSources, trainingTurns } from "@/db/schema";
+import { conversations, jobs, sourceChunks, sourceRepositories, trainingSessions, trainingSources, trainingTurns } from "@/db/schema";
 import { TrainingStateError } from "@/lib/training/store";
 import { acceptedTrainingArtifact, hasEssentialClarification } from "@/lib/training/artifact";
 import { contentDigest } from "@/lib/git/proposals";
-import { acceptedGuidanceFromSession, hasVerifiedAcceptedArtifact } from "@/lib/training/knowledge";
+import { acceptedGuidanceFromArtifact } from "@/lib/training/knowledge";
 import type { SourceRepositoryRecord } from "@/lib/sources/types";
 import type { TrainingReport, TrainingSessionRecord, TrainingSessionStore, TrainingSourceContent, TrainingSourceInput, TrainingSourceRecord, TrainingSourceStatus, TrainingState } from "@/lib/training/types";
 import { assertTrainingSourceCapacity, newTrainingSource } from "@/lib/training/sources";
@@ -25,12 +25,6 @@ export class PostgresTrainingSessionStore implements TrainingSessionStore {
       .limit(50)).map(fromRow);
   }
   async get(id: string, trainerAccountId: string) { const [row] = await this.database.select().from(trainingSessions).where(and(eq(trainingSessions.id, id), eq(trainingSessions.trainerAccountId, trainerAccountId))).limit(1); if (!row) throw new TrainingStateError("TRAINING_NOT_FOUND", "Training session was not found."); return fromRow(row); }
-  async activeGuidance() {
-    const rows = await this.database.select({ session: trainingSessions, source: sourceRepositories }).from(trainingSessions)
-      .innerJoin(sourceRepositories, eq(trainingSessions.targetRepository, sourceRepositories.fullName))
-      .where(and(eq(trainingSessions.state, "ACTIVE_KNOWLEDGE"), eq(sourceRepositories.status, "ACTIVE")));
-    return rows.flatMap(row => acceptedGuidanceFromSession(fromRow(row.session), { fullName: row.source.fullName, status: row.source.status as SourceRepositoryRecord["status"], indexedCommit: row.source.indexedCommit, validationReport: row.source.validationReport as unknown as SourceRepositoryRecord["validationReport"] }) ?? []);
-  }
   async listTurns(id: string, trainerAccountId: string) { await this.get(id, trainerAccountId); return (await this.database.select().from(trainingTurns).where(eq(trainingTurns.sessionId, id)).orderBy(asc(trainingTurns.ordinal))).map(row => ({ ordinal: row.ordinal, kind: row.kind, content: row.content, createdAt: row.createdAt.toISOString() })); }
   async listSourceContents(id: string, trainerAccountId: string) { await this.get(id, trainerAccountId); return (await this.database.select().from(trainingSources).where(eq(trainingSources.sessionId, id)).orderBy(asc(trainingSources.createdAt), asc(trainingSources.id))).map(fromSourceRow); }
   async listSources(id: string, trainerAccountId: string): Promise<TrainingSourceRecord[]> { return (await this.listSourceContents(id, trainerAccountId)).map(source => { const record = { ...source }; delete (record as Partial<TrainingSourceContent>).originalBytes; delete (record as Partial<TrainingSourceContent>).extractedText; return record; }); }
@@ -84,8 +78,12 @@ export class PostgresTrainingSessionStore implements TrainingSessionStore {
       if (!current || current.state !== "ACTIVATING" || !current.publishedCommit || !current.acceptedPath || !current.acceptedContent || current.acceptedDigest !== digest || contentDigest(current.acceptedContent) !== digest) throw new TrainingStateError("INVALID_TRAINING_STATE", "Accepted publication changed before activation.");
       const [source] = await transaction.select().from(sourceRepositories).where(eq(sourceRepositories.fullName, current.targetRepository)).for("update");
       if (!source || source.status !== "ACTIVE" || source.indexedCommit !== indexedCommit) throw new TrainingStateError("INVALID_TRAINING_STATE", "The indexed repository changed before activation.");
-      if (!hasVerifiedAcceptedArtifact({ indexedCommit: source.indexedCommit, validationReport: source.validationReport as unknown as SourceRepositoryRecord["validationReport"] }, current.acceptedPath, digest)) throw new TrainingStateError("INVALID_TRAINING_STATE", "The accepted artifact is absent from the validated repository snapshot.");
-      await transaction.update(trainingSessions).set({ state: "SUPERSEDED", updatedAt: new Date(), version: sql`${trainingSessions.version}+1` }).where(and(sql`${trainingSessions.id}<>${id}`, eq(trainingSessions.state, "ACTIVE_KNOWLEDGE"), eq(trainingSessions.targetRepository, current.targetRepository), sql`lower(trim(${trainingSessions.originalQuestion}))=lower(trim(${current.originalQuestion}))`));
+      const report = source.validationReport as unknown as SourceRepositoryRecord["validationReport"];
+      const lifecycle = report.acceptedTraining?.find(item => item.path === current.acceptedPath && item.digest === digest && item.lifecycle === "active");
+      const [chunk] = await transaction.select().from(sourceChunks).where(and(eq(sourceChunks.repositoryId, source.id), eq(sourceChunks.chunkId, `${source.fullName}:training:${digest}`)));
+      if (!lifecycle || !chunk || chunk.path !== current.acceptedPath || chunk.digest !== digest || chunk.sourceId !== source.fullName || chunk.locator !== `${source.fullName}@${indexedCommit}` || chunk.content !== current.acceptedContent || !acceptedGuidanceFromArtifact(chunk.content, lifecycle, { fullName: source.fullName, status: "ACTIVE", indexedCommit, validationReport: report })) throw new TrainingStateError("INVALID_TRAINING_STATE", "The accepted artifact is absent from the validated repository snapshot.");
+      const replaced = report.acceptedTraining!.filter(item => item.lifecycle === "superseded" && item.supersededBy === current.acceptedPath).map(item => item.path);
+      if (replaced.length) await transaction.update(trainingSessions).set({ state: "SUPERSEDED", updatedAt: new Date(), version: sql`${trainingSessions.version}+1` }).where(and(eq(trainingSessions.state, "ACTIVE_KNOWLEDGE"), eq(trainingSessions.targetRepository, current.targetRepository), inArray(trainingSessions.acceptedPath, replaced)));
       await transaction.update(trainingSessions).set({ state: "ACTIVE_KNOWLEDGE", indexedCommit, publicationError: null, updatedAt: new Date(), version: current.version + 1 }).where(eq(trainingSessions.id, id));
     });
   }

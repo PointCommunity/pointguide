@@ -4,6 +4,7 @@ import { requireRole } from "@/lib/auth/policy";
 import { accountBoundaryErrorResponse, assertSameOrigin } from "@/lib/auth/http";
 import { getRuntimeSessionDependencies } from "@/lib/auth/runtime";
 import { getRuntimeTrainingStore } from "@/lib/training/runtime";
+import { withTrainingAvailability } from "@/lib/training/availability";
 import { TrainingStateError } from "@/lib/training/store";
 import { getRuntimeProviderDependencies, getRuntimeModelRuntime } from "@/lib/providers/runtime";
 import { generateTrainingReport } from "@/lib/agent/models";
@@ -35,7 +36,8 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   try {
     const actor = await trainer(request); const { id } = await context.params;
     if (!z.uuid().safeParse(id).success) return Response.json({ error: { code: "INVALID_TRAINING", message: "Training session ID is invalid." } }, { status: 400 });
-    const store = getRuntimeTrainingStore(); return Response.json({ session: await store.get(id, actor.id), turns: await store.listTurns(id, actor.id), sources: await store.listSources(id, actor.id) });
+    const store = getRuntimeTrainingStore(); const [session] = await withTrainingAvailability([await store.get(id, actor.id)], getRuntimeSourceStore(), parseEnvironment(process.env));
+    return Response.json({ session, turns: await store.listTurns(id, actor.id), sources: await store.listSources(id, actor.id) });
   } catch (error) { return failure(error); }
 }
 
@@ -65,8 +67,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       try {
         const current = await store.get(id, actor.id); const turns = await store.listTurns(id, actor.id);
         const environment = parseEnvironment(process.env);
-        const { chunks, navigation } = await knowledgeSnapshot(getRuntimeSourceStore(), environment);
-        const result = await answerQuestion({ actor, conversationId: current.conversationId, question: current.originalQuestion, deepResearch: false, providers: getRuntimeProviderDependencies().store, learning: getRuntimeLearningRepository(), fixture, modelRuntime: fixture ? undefined : getRuntimeModelRuntime(), chunks, navigation, training: true, trainingHistory: trainingHistory(current, turns), guidance: await store.activeGuidance() });
+        const { chunks, navigation, guidance } = await knowledgeSnapshot(getRuntimeSourceStore(), environment);
+        const result = await answerQuestion({ actor, conversationId: current.conversationId, question: current.originalQuestion, deepResearch: false, providers: getRuntimeProviderDependencies().store, learning: getRuntimeLearningRepository(), fixture, modelRuntime: fixture ? undefined : getRuntimeModelRuntime(), chunks, navigation, training: true, trainingHistory: trainingHistory(current, turns), guidance });
         const saved = await store.saveAnswer(id, actor.id, result.answer as unknown as Readonly<Record<string, unknown>>);
         return Response.json({ session: saved, turns: await store.listTurns(id, actor.id) });
       } catch (error) {
@@ -87,8 +89,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     if (parsed.data.action === "INSIGHT") {
       const environment = parseEnvironment(process.env); const fixture = environment.AUTH_MODE === "fixture";
       const question = `Original question: ${session.originalQuestion}\nTrainer's additional guidance: ${parsed.data.insight}\nProvide a revised, evidence-grounded answer to the original question.`;
-      const { chunks, navigation } = await knowledgeSnapshot(getRuntimeSourceStore(), environment);
-      const result = await answerQuestion({ actor, conversationId: session.conversationId, question, deepResearch: false, providers: getRuntimeProviderDependencies().store, learning: getRuntimeLearningRepository(), fixture, modelRuntime: fixture ? undefined : getRuntimeModelRuntime(), chunks, navigation, training: true, trainingHistory: trainingHistory(session, await store.listTurns(id, actor.id)), guidance: await store.activeGuidance() });
+      const { chunks, navigation, guidance } = await knowledgeSnapshot(getRuntimeSourceStore(), environment);
+      const result = await answerQuestion({ actor, conversationId: session.conversationId, question, deepResearch: false, providers: getRuntimeProviderDependencies().store, learning: getRuntimeLearningRepository(), fixture, modelRuntime: fixture ? undefined : getRuntimeModelRuntime(), chunks, navigation, training: true, trainingHistory: trainingHistory(session, await store.listTurns(id, actor.id)), guidance });
       return Response.json({ session: await store.saveAnswer(id, actor.id, result.answer as unknown as Readonly<Record<string, unknown>>, parsed.data.insight) });
     }
     if (parsed.data.action === "ACCEPT_REPORT") return Response.json({ session: await store.acceptReport(id, actor.id) });

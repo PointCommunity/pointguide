@@ -10,7 +10,15 @@ it("explains training state and recovery in trainer language", () => {
   expect(trainingRetryLabel(session)).toBe("Retry publishing");
   expect(trainingStateSummary({ ...session, publishedCommit: "a".repeat(40) })).toContain("activation needs retry");
   expect(trainingRetryLabel({ ...session, publishedCommit: "a".repeat(40) })).toBe("Retry activation");
-  expect(trainingStateLabel({ ...session, state: "ACTIVE_KNOWLEDGE" })).toBe("Ready to use");
+  expect(trainingStateLabel({ ...session, state: "ACTIVE_KNOWLEDGE", knowledgeAvailable: true })).toBe("Ready to use");
+});
+
+it("does not treat historical activation as current availability", () => {
+  const published = { ...session, state: "ACTIVE_KNOWLEDGE" } as TrainingSessionRecord;
+  expect(trainingStateLabel(published)).toBe("Published");
+  expect(trainingStateSummary(published)).toContain("current availability is unverified");
+  expect(trainingStateLabel({ ...published, knowledgeAvailable: false })).toBe("Not available");
+  expect(trainingStateSummary({ ...published, knowledgeAvailable: false })).toContain("not used for future answers");
 });
 
 it("distinguishes active generation from a saved answer that needs retry", () => {

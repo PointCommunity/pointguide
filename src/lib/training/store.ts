@@ -3,7 +3,6 @@ import type { TrainingReport, TrainingSessionRecord, TrainingSessionStore, Train
 import type { SourceRepositoryRecord } from "@/lib/sources/types";
 import { acceptedTrainingArtifact, hasEssentialClarification } from "./artifact";
 import { contentDigest } from "@/lib/git/proposals";
-import { acceptedGuidanceFromSession } from "./knowledge";
 import { assertTrainingSourceCapacity, newTrainingSource } from "./sources";
 
 export class TrainingStateError extends Error { constructor(public readonly code: "TRAINING_NOT_FOUND" | "INVALID_TRAINING_STATE", message: string) { super(message); } }
@@ -22,7 +21,6 @@ export class MemoryTrainingSessionStore implements TrainingSessionStore {
       .map(copy);
   }
   async get(id: string, trainerAccountId: string) { const value = this.values.get(id); if (!value || value.trainerAccountId !== trainerAccountId) throw new TrainingStateError("TRAINING_NOT_FOUND", "Training session was not found."); return copy(value); }
-  async activeGuidance() { return [...this.values.values()].flatMap(session => acceptedGuidanceFromSession(session, { fullName: session.targetRepository, status: "ACTIVE", indexedCommit: session.indexedCommit } as SourceRepositoryRecord) ?? []); }
   async listTurns(id: string, trainerAccountId: string) { await this.get(id, trainerAccountId); return structuredClone(this.turns.get(id) ?? []); }
   async listSources(id: string, trainerAccountId: string): Promise<TrainingSourceRecord[]> { await this.get(id, trainerAccountId); return (this.sources.get(id) ?? []).map(source => { const record = structuredClone(source); delete (record as Partial<TrainingSourceContent>).originalBytes; delete (record as Partial<TrainingSourceContent>).extractedText; return record; }); }
   async listSourceContents(id: string, trainerAccountId: string) { await this.get(id, trainerAccountId); return structuredClone(this.sources.get(id) ?? []); }

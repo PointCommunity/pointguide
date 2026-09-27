@@ -56,6 +56,23 @@ describe("model execution boundary", () => {
     expect(prompt).toContain("every part of a multi-part question");
   });
 
+  it("retries a supporting-source ID instead of accepting it as a Training artifact ID", async () => {
+    const key = randomBytes(32).toString("base64");
+    const candidate = { id: "training:record", question: "Route a bus", answer: { ...answer, evidence } } as never;
+    const selection = (id: string) => ({ selected: [{ id, coverage: "PARTIAL", missing: ["computer output"], rationale: "Bus only" }], unresolvedContext: null });
+    const fetcher = vi.fn().mockResolvedValueOnce(Response.json({ message: { content: JSON.stringify(selection("e1")) } })).mockResolvedValueOnce(Response.json({ message: { content: JSON.stringify(selection("training:record")) } }));
+    await expect(generateTrainingAssessment(profile("OLLAMA_CLOUD", encryptSecret("ollama_secret_key_123456", key)), "Bus and computer output?", [candidate], { secretKey: key, codexClient: { request: vi.fn() }, fetcher })).resolves.toEqual(selection("training:record"));
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails closed after repeated unknown Training artifact IDs", async () => {
+    const key = randomBytes(32).toString("base64");
+    const candidate = { id: "training:record", question: "Route a bus", answer: { ...answer, evidence } } as never;
+    const fetcher = vi.fn().mockImplementation(async () => Response.json({ message: { content: JSON.stringify({ selected: [{ id: "e1", coverage: "COMPLETE", missing: [], rationale: "Wrong identity" }], unresolvedContext: null }) } }));
+    await expect(generateTrainingAssessment(profile("OLLAMA_CLOUD", encryptSecret("ollama_secret_key_123456", key)), "Route a bus", [candidate], { secretKey: key, codexClient: { request: vi.fn() }, fetcher })).rejects.toThrow();
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
   it("generates and validates structured Ollama answers without leaking the key", async () => {
     const key = randomBytes(32).toString("base64");
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ message: { content: JSON.stringify(answer) } }), { status: 200 }));
@@ -63,12 +80,53 @@ describe("model execution boundary", () => {
     expect(fetcher).toHaveBeenCalledWith("https://ollama.com/api/chat", expect.objectContaining({ headers: expect.objectContaining({ authorization: "Bearer ollama_secret_key_123456" }) }));
   });
 
+  it("retries an invented answer citation before it leaves the provider boundary", async () => {
+    const key = randomBytes(32).toString("base64");
+    const invalid = { ...answer, claims: [{ ...answer.claims[0], evidenceIds: ["e1-invented-digest"] }] };
+    const fetcher = vi.fn().mockResolvedValueOnce(Response.json({ message: { content: JSON.stringify(invalid) } })).mockResolvedValueOnce(Response.json({ message: { content: JSON.stringify(answer) } }));
+    await expect(generateAnswer(profile("OLLAMA_CLOUD", encryptSecret("ollama_secret_key_123456", key)), "What is red?", evidence, { secretKey: key, codexClient: { request: vi.fn() }, fetcher })).resolves.toEqual(answer);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects repeated invented answer citations without relabeling them as supplied evidence", async () => {
+    const key = randomBytes(32).toString("base64");
+    const invalid = { ...answer, claims: [{ ...answer.claims[0], evidenceIds: ["e1-invented-digest"] }] };
+    const fetcher = vi.fn().mockImplementation(async () => Response.json({ message: { content: JSON.stringify(invalid) } }));
+    await expect(generateAnswer(profile("OLLAMA_CLOUD", encryptSecret("ollama_secret_key_123456", key)), "What is red?", evidence, { secretKey: key, codexClient: { request: vi.fn() }, fetcher })).rejects.toThrow();
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["unknown finding", "missing finding", "duplicate finding", "unknown order", "missing order", "duplicate order"])("retries a reviewer response with %s", async (failure) => {
+    const key = randomBytes(32).toString("base64");
+    const draft = { ...answer, claims: [answer.claims[0], { ...answer.claims[0], id: "training:exact:warning" }] };
+    const valid = { findings: draft.claims.map(claim => ({ claimId: claim.id, verdict: "SUPPORTED", rationaleCode: "ENTAILED" })), claimOrder: draft.claims.map(claim => claim.id) };
+    const invalid = structuredClone(valid);
+    if (failure === "unknown finding") invalid.findings[1].claimId = "invented";
+    if (failure === "missing finding") invalid.findings.pop();
+    if (failure === "duplicate finding") invalid.findings[1].claimId = "c1";
+    if (failure === "unknown order") invalid.claimOrder[1] = "invented";
+    if (failure === "missing order") invalid.claimOrder.pop();
+    if (failure === "duplicate order") invalid.claimOrder[1] = "c1";
+    const fetcher = vi.fn().mockResolvedValueOnce(Response.json({ message: { content: JSON.stringify(invalid) } })).mockResolvedValueOnce(Response.json({ message: { content: JSON.stringify(valid) } }));
+    await expect(generateReview(profile("OLLAMA_CLOUD", encryptSecret("ollama_secret_key_123456", key)), draft as never, evidence, { secretKey: key, codexClient: { request: vi.fn() }, fetcher })).resolves.toEqual(valid);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails closed after repeated incomplete reviewer responses", async () => {
+    const key = randomBytes(32).toString("base64");
+    const fetcher = vi.fn().mockImplementation(async () => Response.json({ message: { content: JSON.stringify({ findings: [], claimOrder: [] }) } }));
+    await expect(generateReview(profile("OLLAMA_CLOUD", encryptSecret("ollama_secret_key_123456", key)), answer as never, evidence, { secretKey: key, codexClient: { request: vi.fn() }, fetcher })).rejects.toThrow();
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
   it("collects Codex App Server notifications and validates a review", async () => {
     let listener: ((method: string, params: unknown) => void) | undefined;
+    let outputSchema: Record<string, unknown> | undefined;
     const client: AppServerClient = {
       subscribe(next) { listener = next; return () => { listener = undefined; }; },
-      async request(method) {
+      async request(method, params) {
         if (method === "thread/start") return { thread: { id: "thread-1" } };
+        outputSchema = params.outputSchema as Record<string, unknown>;
         queueMicrotask(() => {
           listener?.("item/agentMessage/delta", { threadId: "thread-1", delta: JSON.stringify({ findings: [{ claimId: "c1", verdict: "SUPPORTED", rationaleCode: "ENTAILED" }], claimOrder: ["c1"] }) });
           listener?.("turn/completed", { threadId: "thread-1" });
@@ -77,6 +135,7 @@ describe("model execution boundary", () => {
       },
     };
     await expect(generateReview(profile("CODEX"), answer as never, evidence, { secretKey: randomBytes(32).toString("base64"), codexClient: client })).resolves.toEqual({ findings: [{ claimId: "c1", verdict: "SUPPORTED", rationaleCode: "ENTAILED" }], claimOrder: ["c1"] });
+    expect(outputSchema).toMatchObject({ properties: { findings: { minItems: 1, maxItems: 1, items: { properties: { claimId: { enum: ["c1"] } } } }, claimOrder: { minItems: 1, maxItems: 1, items: { enum: ["c1"] } } } });
   });
 
   it("constrains Codex revision answers and reads the final complete message instead of concatenating interim messages", async () => {
@@ -100,6 +159,7 @@ describe("model execution boundary", () => {
     await expect(generateAnswer(profile("CODEX"), "q", evidence, { secretKey: "unused", codexClient: client }, [{ actor: "USER", content: "Trainer feedback: revise this." }])).resolves.toEqual(answer);
     expect(turnParams?.outputSchema).toMatchObject({ type: "object", required: ["directAnswer", "steps", "safetyAndAssumptions", "confidence", "clarifyingQuestion", "claims"] });
     expect(turnParams?.outputSchema).toMatchObject({ properties: { clarifyingQuestion: { anyOf: [{ type: "string" }, { type: "null" }] } } });
+    expect(turnParams?.outputSchema).toMatchObject({ properties: { claims: { maxItems: 100, items: { properties: { evidenceIds: { maxItems: 20, items: { enum: ["e1"] } } } } } } });
   });
 
   it("requires nullable unresolved context in the Codex training assessment schema", async () => {
@@ -117,8 +177,9 @@ describe("model execution boundary", () => {
         return {};
       },
     };
-    await expect(generateTrainingAssessment(profile("CODEX"), "Which model?", [], { secretKey: "unused", codexClient: client })).resolves.toMatchObject({ selected: [], unresolvedContext: null });
+    await expect(generateTrainingAssessment(profile("CODEX"), "Which model?", [{ id: "training:record", question: "Route a bus", answer } as never], { secretKey: "unused", codexClient: client })).resolves.toMatchObject({ selected: [], unresolvedContext: null });
     expect(outputSchema).toMatchObject({ required: ["selected", "unresolvedContext"], properties: { unresolvedContext: { type: ["string", "null"] } } });
+    expect(outputSchema).toMatchObject({ properties: { selected: { items: { properties: { id: { enum: ["training:record"] } } } } } });
   });
 
   it("reports a failed Codex turn instead of parsing an empty response", async () => {

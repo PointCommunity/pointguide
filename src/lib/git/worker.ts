@@ -6,14 +6,16 @@ import { allowedRepositoryPath, allowedSourceRepository, contentDigest } from ".
 import { parseManifest } from "@/lib/evidence/corpus";
 import { z } from "zod";
 import type { SourceRepositoryRecord } from "@/lib/sources/types";
+import { acceptedTrainingSchema } from "@/lib/sources/contract";
+import { hasVerifiedAcceptedArtifact, parseAcceptedArtifact } from "@/lib/training/knowledge";
 
 export interface ApprovedProposal { id: string; state: "APPROVED"; targetRepository: string; baseCommit: string; targetPath: string; proposedContent: string; digest: string; rationale: string }
 export type CommandRunner = (command: string, args: string[], cwd: string) => Promise<string>;
 type PublicationFiles = Record<string, string | Uint8Array>;
 
 export function acceptedArtifactAlreadyIndexed(source: Pick<SourceRepositoryRecord, "indexedCommit" | "validationReport">, commit: string, path: string, digest: string): boolean {
-  return source.indexedCommit === commit && source.validationReport.complete === true && source.validationReport.commitSha === commit
-    && source.validationReport.acceptedArtifacts?.some(item => item.path === path && item.digest === digest) === true;
+  return source.indexedCommit === commit && hasVerifiedAcceptedArtifact(source, path, digest) && source.validationReport.files?.includes(path) === true
+    && source.validationReport.acceptedTraining?.some(item => item.path === path && item.digest === digest && item.lifecycle === "active") === true;
 }
 
 export const runCommand: CommandRunner = (command, args, cwd) => new Promise((resolvePromise, reject) => {
@@ -56,7 +58,7 @@ export async function openProposalPullRequest(proposal: ApprovedProposal, checko
   return { branch, commit, pullRequestUrl };
 }
 
-const acceptedArtifactSchema = z.object({ schemaVersion: z.literal(2), kind: z.literal("pointguide-accepted-training"), sessionId: z.uuid(), answerId: z.uuid(), targetRepository: z.string(), answer: z.object({ directAnswer: z.string().min(1) }), trainerSources: z.array(z.object({ id: z.uuid(), originalPath: z.string(), originalDigest: z.string().regex(/^[a-f0-9]{64}$/u), extractedPath: z.string(), extractedDigest: z.string().regex(/^[a-f0-9]{64}$/u) })).default([]) });
+type AcceptedArtifact = ReturnType<typeof parseAcceptedArtifact>;
 const bytesDigest = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex");
 const gitBlobOid = (value: Uint8Array) => createHash("sha1").update(`blob ${value.byteLength}\0`).update(value).digest("hex");
 export async function verifyPublicationFiles(head: string, files: PublicationFiles, checkout: string, runner: CommandRunner = runCommand): Promise<void> {
@@ -66,8 +68,8 @@ export async function verifyPublicationFiles(head: string, files: PublicationFil
   }
 }
 
-function acceptedCompanionPaths(proposal: Pick<ApprovedProposal, "id" | "targetPath" | "proposedContent">, paths: string[]): boolean {
-  let artifact: z.infer<typeof acceptedArtifactSchema>; try { artifact = acceptedArtifactSchema.parse(JSON.parse(proposal.proposedContent)); } catch { return false; }
+function acceptedCompanionPaths(proposal: Pick<ApprovedProposal, "id" | "targetPath" | "proposedContent" | "digest" | "targetRepository">, paths: string[]): boolean {
+  let artifact: AcceptedArtifact; try { artifact = parseAcceptedArtifact(proposal.proposedContent, proposal.targetPath, proposal.digest, proposal.targetRepository); } catch { return false; }
   const folder = `research/pointguide-training/${proposal.id}`;
   if (proposal.targetPath !== `${folder}/${artifact.answerId}.json` || artifact.sessionId !== proposal.id) return false;
   const sourceReadmes = artifact.trainerSources.length ? [`${folder}/originals/README.md`, `${folder}/sources/README.md`] : [];
@@ -75,7 +77,7 @@ function acceptedCompanionPaths(proposal: Pick<ApprovedProposal, "id" | "targetP
   return paths.length === expected.size && new Set(paths).size === expected.size && paths.every(path => expected.has(path));
 }
 
-function verifySourceFiles(input: Omit<ApprovedProposal, "state" | "rationale">, artifact: z.infer<typeof acceptedArtifactSchema>, files: PublicationFiles): void {
+function verifySourceFiles(input: Omit<ApprovedProposal, "state" | "rationale">, artifact: AcceptedArtifact, files: PublicationFiles): void {
   const folder = `research/pointguide-training/${input.id}`; const expected = new Set<string>();
   for (const source of artifact.trainerSources) {
     if (!source.originalPath.startsWith(`${folder}/originals/${source.id}.`) || source.extractedPath !== `${folder}/sources/${source.id}.md`) throw new Error("Trainer source path exceeds the accepted training boundary.");
@@ -88,11 +90,11 @@ function verifySourceFiles(input: Omit<ApprovedProposal, "state" | "rationale">,
 export function acceptedPublicationCompanions(input: Omit<ApprovedProposal, "state" | "rationale">, inventoryText: string, checksumText: string): Record<string, string>;
 export function acceptedPublicationCompanions(input: Omit<ApprovedProposal, "state" | "rationale">, inventoryText: string, checksumText: string, sourceFiles: PublicationFiles): PublicationFiles;
 export function acceptedPublicationCompanions(input: Omit<ApprovedProposal, "state" | "rationale">, inventoryText: string, checksumText: string, sourceFiles: PublicationFiles = {}): PublicationFiles {
-  const artifact = acceptedArtifactSchema.parse(JSON.parse(input.proposedContent));
+  const artifact = parseAcceptedArtifact(input.proposedContent, input.targetPath, input.digest, input.targetRepository);
   verifySourceFiles(input, artifact, sourceFiles);
   const folder = `research/pointguide-training/${input.id}`;
   if (input.targetPath !== `${folder}/${artifact.answerId}.json` || artifact.sessionId !== input.id || artifact.targetRepository !== input.targetRepository || contentDigest(input.proposedContent) !== input.digest) throw new Error("Content is outside the accepted training boundary.");
-  const inventory = z.object({ schemaVersion: z.literal(2), repository: z.string(), items: z.array(z.object({ path: z.string() }).passthrough()), excluded: z.array(z.object({ path: z.string(), reason: z.string() })).default([]) }).passthrough().parse(JSON.parse(inventoryText));
+  const inventory = z.object({ schemaVersion: z.literal(2), repository: z.string(), items: z.array(z.object({ path: z.string() }).passthrough()), excluded: z.array(z.object({ path: z.string(), reason: z.string() })).default([]), acceptedTraining: z.array(acceptedTrainingSchema).default([]) }).passthrough().parse(JSON.parse(inventoryText));
   const extractedPaths = artifact.trainerSources.map(source => source.extractedPath);
   if (inventory.repository !== input.targetRepository || [...inventory.items, ...inventory.excluded].some(item => item.path === input.targetPath || extractedPaths.includes(item.path))) throw new Error("Accepted artifact inventory conflict or repository identity mismatch.");
   const readmePath = `${folder}/README.md`;
@@ -107,6 +109,10 @@ export function acceptedPublicationCompanions(input: Omit<ApprovedProposal, "sta
   inventory.excluded.push({ path: input.targetPath, reason: "Accepted training artifact; citable only after publication and activation, never general corpus evidence." });
   for (const path of extractedPaths) inventory.excluded.push({ path, reason: "Trainer-provided source for this accepted session; retrieved only through the accepted training artifact." });
   inventory.excluded.sort((a, b) => a.path.localeCompare(b.path));
+  const question = artifact.originalQuestion.trim();
+  inventory.acceptedTraining = inventory.acceptedTraining.map(record => record.lifecycle === "active" && record.question.toLowerCase() === question.toLowerCase() ? { ...record, lifecycle: "superseded", supersededBy: input.targetPath } : record);
+  inventory.acceptedTraining.push({ path: input.targetPath, digest: input.digest, question, lifecycle: "active" });
+  inventory.acceptedTraining.sort((a, b) => a.path.localeCompare(b.path));
   const updatedInventory = `${JSON.stringify(inventory, null, 2)}\n`;
   entries.set(input.targetPath, input.digest); entries.set(readmePath, contentDigest(readme)); entries.set("source-inventory.json", contentDigest(updatedInventory));
   for (const [path, value] of Object.entries(sourceReadmes)) entries.set(path, contentDigest(value));
@@ -117,8 +123,8 @@ export function acceptedPublicationCompanions(input: Omit<ApprovedProposal, "sta
 
 export async function publishAcceptedArtifact(input: Omit<ApprovedProposal, "state" | "rationale">, checkout: string, validateHead: (head: string) => Promise<void>, runner: CommandRunner = runCommand, sourceFiles: PublicationFiles = {}) {
   const path = `research/pointguide-training/${input.id}/`;
-  let artifact: z.infer<typeof acceptedArtifactSchema>;
-  try { artifact = acceptedArtifactSchema.parse(JSON.parse(input.proposedContent)); }
+  let artifact: AcceptedArtifact;
+  try { artifact = parseAcceptedArtifact(input.proposedContent, input.targetPath, input.digest, input.targetRepository); }
   catch { throw new Error("Content is outside the accepted training boundary."); }
   if (!input.targetPath.startsWith(path) || input.targetPath !== `${path}${artifact.answerId}.json` || artifact.sessionId !== input.id || artifact.targetRepository !== input.targetRepository || contentDigest(input.proposedContent) !== input.digest || !/^[a-f0-9]{40}$/u.test(input.baseCommit)) throw new Error("Content is outside the accepted training boundary.");
   const companions = acceptedPublicationCompanions(input, await runner("git", ["show", `${input.baseCommit}:source-inventory.json`], checkout), await runner("git", ["show", `${input.baseCommit}:checksums.sha256`], checkout), sourceFiles);
@@ -128,7 +134,7 @@ export async function publishAcceptedArtifact(input: Omit<ApprovedProposal, "sta
 }
 
 export async function mergeAcceptedArtifact(input: Omit<ApprovedProposal, "state" | "rationale">, pullRequestUrl: string, checkout: string, validateHead: (head: string) => Promise<void>, runner: CommandRunner = runCommand, expectedHead?: string, sourceFiles: PublicationFiles = {}) {
-  const artifact = acceptedArtifactSchema.parse(JSON.parse(input.proposedContent));
+  const artifact = parseAcceptedArtifact(input.proposedContent, input.targetPath, input.digest, input.targetRepository);
   if (input.targetPath !== `research/pointguide-training/${input.id}/${artifact.answerId}.json` || artifact.sessionId !== input.id || artifact.targetRepository !== input.targetRepository || contentDigest(input.proposedContent) !== input.digest) throw new Error("Content is outside the accepted training boundary.");
   if (!new RegExp(`^https://github\\.com/${input.targetRepository.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}/pull/[1-9][0-9]*$`, "u").test(pullRequestUrl)) throw new Error("Accepted pull request belongs to another repository.");
   const remote = (await runner("git", ["remote", "get-url", "origin"], checkout)).trim().replace(/\.git$/u, "").replace(/^git@github\.com:/u, "https://github.com/");

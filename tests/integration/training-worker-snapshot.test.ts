@@ -1,0 +1,35 @@
+import { execFileSync } from "node:child_process";
+import { sql } from "drizzle-orm";
+import { expect, it } from "vitest";
+import { getDatabase } from "@/db/client";
+import { PostgresAccountStore } from "@/db/accounts";
+import { PostgresSourceRepositoryStore } from "@/db/sources";
+import { PostgresTrainingSessionStore } from "@/db/training";
+import { PostgresLearningRepository } from "@/lib/learning/store";
+import { validateSourceRepository } from "@/lib/sources/validator";
+import { acceptedSourceFiles, upstream } from "../fixtures/source-contract";
+
+const testUrl = process.env.TEST_DATABASE_URL;
+(testUrl ? it : it.skip)("queued first answers and revisions use repository Training without its original session", async () => {
+  const url = new URL(testUrl!);
+  if (!["localhost", "127.0.0.1", "::1"].includes(url.hostname) || !url.pathname.endsWith("_test")) throw new Error("A local disposable _test database is required.");
+  const database = getDatabase(testUrl!);
+  await database.execute(sql`truncate table accounts cascade`); await database.execute(sql`delete from source_repositories`); await database.execute(sql`truncate table jobs`);
+  const actor = await new PostgresAccountStore(database).provisionAccount({ issuer: "https://pointguide.test", subject: "worker-portable-owner", email: "worker-portable@example.com", displayName: "Owner" });
+  const { files, path, question } = acceptedSourceFiles();
+  const source = await validateSourceRepository("https://github.com/PointCommunity/test", { fetcher: upstream(files) });
+  await new PostgresSourceRepositoryStore(database).link(actor.id, source);
+  const conversation = await new PostgresLearningRepository(database).createConversation(actor.id, "Portable queued Training");
+  const store = new PostgresTrainingSessionStore(database);
+  const pending = await store.create({ trainerAccountId: actor.id, conversationId: conversation.id, targetRepository: source.fullName, originalQuestion: question }, true);
+  const runWorker = () => execFileSync(process.execPath, ["./node_modules/tsx/dist/cli.mjs", "scripts/worker.ts"], { env: { ...process.env, DATABASE_URL: testUrl, WORKER_ONCE: "true", AUTH_MODE: "fixture", NODE_ENV: "test" }, timeout: 40_000 });
+  runWorker();
+  const first = await store.get(pending.id, actor.id);
+  expect(first).toMatchObject({ state: "ACTIVE", answerError: null, currentAnswer: { steps: ["Select the channel.", "Raise the bus send."], evidence: expect.arrayContaining([expect.objectContaining({ kind: "ACCEPTED_TRAINING", path, locator: expect.stringContaining(source.report.commitSha) })]) } });
+  expect((await database.execute(sql`select count(*)::int as count from training_sessions where accepted_path=${path}`))[0].count).toBe(0);
+  await store.saveFeedback(first.id, actor.id, first.version, String(first.currentAnswer?.id), "Keep the complete routing steps and warning.", true);
+  runWorker();
+  const revised = await store.get(first.id, actor.id);
+  expect(revised).toMatchObject({ state: "ACTIVE", answerError: null, currentAnswer: { evidence: expect.arrayContaining([expect.objectContaining({ kind: "ACCEPTED_TRAINING", path })]) } });
+  expect((await store.listTurns(first.id, actor.id)).map(turn => turn.kind)).toEqual(["ANSWER", "FEEDBACK", "ANSWER"]);
+}, 90_000);

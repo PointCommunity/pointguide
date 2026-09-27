@@ -6,7 +6,7 @@ export const trainingAssessmentSchema = z.object({ selected: z.array(z.object({ 
 export type TrainingAssessment = z.infer<typeof trainingAssessmentSchema>;
 export interface TrainingPlan { coverage: "NONE" | "COMPLETE" | "PARTIAL" | "CONFLICT"; guidance: AcceptedGuidance[]; missing: string[]; unresolvedContext?: string }
 
-function namedProduct(text: string, names: string[]): string[] {
+export function namedProduct(text: string, names: string[]): string[] {
   const normalized = ` ${text.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim()} `;
   return names.filter(name => normalized.includes(` ${name.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim()} `));
 }
@@ -14,7 +14,7 @@ function namedProduct(text: string, names: string[]): string[] {
 export async function planAcceptedTraining(question: string, records: AcceptedGuidance[], assess: (question: string, candidates: AcceptedGuidance[]) => Promise<TrainingAssessment>, products: string[] = []): Promise<TrainingPlan> {
   const none: TrainingPlan = { coverage: "NONE", guidance: [], missing: [] };
   const askedProducts = namedProduct(question, products);
-  const candidates = records.filter(record => record.answer && (!askedProducts.length || namedProduct(`${record.question} ${record.directAnswer}`, products).some(name => askedProducts.includes(name))));
+  const candidates = records.filter(record => record.answer && (!askedProducts.length || namedProduct([record.question, record.directAnswer, ...record.answer.steps, ...record.answer.safetyAndAssumptions].join(" "), products).some(name => askedProducts.includes(name))));
   if (!candidates.length) return none;
   const assessment = trainingAssessmentSchema.parse(await assess(question, candidates));
   const ids = new Map(candidates.map(record => [record.id, record]));

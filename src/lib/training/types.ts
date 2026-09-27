@@ -23,6 +23,7 @@ export interface TrainingSessionRecord {
   acceptedContent?: string | null; acceptedDigest?: string | null; acceptedPath?: string | null; acceptedSourceVersion?: number | null;
   publishedCommit?: string | null; indexedCommit?: string | null; publicationError?: string | null;
   answerError?: string | null;
+  knowledgeAvailable?: boolean; // Read-time source eligibility, not persisted activation history.
 }
 export interface TrainingSessionStore {
   create(input: { trainerAccountId: string; conversationId: string; targetRepository: string; originalQuestion: string }, queue?: boolean, sources?: TrainingSourceInput[]): Promise<TrainingSessionRecord>;
@@ -40,7 +41,6 @@ export interface TrainingSessionStore {
   retryAnswer(id: string, trainerAccountId: string, expectedVersion: number): Promise<TrainingSessionRecord>;
   acceptAnswer(id: string, trainerAccountId: string, expectedVersion: number, answerId: string, source: import("@/lib/sources/types").SourceRepositoryRecord): Promise<TrainingSessionRecord>;
   retryPublication(id: string, trainerAccountId: string, source: import("@/lib/sources/types").SourceRepositoryRecord): Promise<TrainingSessionRecord>;
-  activeGuidance(): Promise<import("./knowledge").AcceptedGuidance[]>;
   saveAnswer(id: string, trainerAccountId: string, answer: Readonly<Record<string, unknown>>, insight?: string): Promise<TrainingSessionRecord>;
   saveReport(id: string, trainerAccountId: string, rating: "HELPFUL" | "NOT_HELPFUL", explanation: string, report: TrainingReport): Promise<TrainingSessionRecord>;
   acceptReport(id: string, trainerAccountId: string): Promise<TrainingSessionRecord>;
