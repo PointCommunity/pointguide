@@ -56,6 +56,23 @@ describe("model execution boundary", () => {
     expect(prompt).toContain("every part of a multi-part question");
   });
 
+  it("retries a supporting-source ID instead of accepting it as a Training artifact ID", async () => {
+    const key = randomBytes(32).toString("base64");
+    const candidate = { id: "training:record", question: "Route a bus", answer: { ...answer, evidence } } as never;
+    const selection = (id: string) => ({ selected: [{ id, coverage: "PARTIAL", missing: ["computer output"], rationale: "Bus only" }], unresolvedContext: null });
+    const fetcher = vi.fn().mockResolvedValueOnce(Response.json({ message: { content: JSON.stringify(selection("e1")) } })).mockResolvedValueOnce(Response.json({ message: { content: JSON.stringify(selection("training:record")) } }));
+    await expect(generateTrainingAssessment(profile("OLLAMA_CLOUD", encryptSecret("ollama_secret_key_123456", key)), "Bus and computer output?", [candidate], { secretKey: key, codexClient: { request: vi.fn() }, fetcher })).resolves.toEqual(selection("training:record"));
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails closed after repeated unknown Training artifact IDs", async () => {
+    const key = randomBytes(32).toString("base64");
+    const candidate = { id: "training:record", question: "Route a bus", answer: { ...answer, evidence } } as never;
+    const fetcher = vi.fn().mockImplementation(async () => Response.json({ message: { content: JSON.stringify({ selected: [{ id: "e1", coverage: "COMPLETE", missing: [], rationale: "Wrong identity" }], unresolvedContext: null }) } }));
+    await expect(generateTrainingAssessment(profile("OLLAMA_CLOUD", encryptSecret("ollama_secret_key_123456", key)), "Route a bus", [candidate], { secretKey: key, codexClient: { request: vi.fn() }, fetcher })).rejects.toThrow();
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
   it("generates and validates structured Ollama answers without leaking the key", async () => {
     const key = randomBytes(32).toString("base64");
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ message: { content: JSON.stringify(answer) } }), { status: 200 }));
@@ -117,8 +134,9 @@ describe("model execution boundary", () => {
         return {};
       },
     };
-    await expect(generateTrainingAssessment(profile("CODEX"), "Which model?", [], { secretKey: "unused", codexClient: client })).resolves.toMatchObject({ selected: [], unresolvedContext: null });
+    await expect(generateTrainingAssessment(profile("CODEX"), "Which model?", [{ id: "training:record", question: "Route a bus", answer } as never], { secretKey: "unused", codexClient: client })).resolves.toMatchObject({ selected: [], unresolvedContext: null });
     expect(outputSchema).toMatchObject({ required: ["selected", "unresolvedContext"], properties: { unresolvedContext: { type: ["string", "null"] } } });
+    expect(outputSchema).toMatchObject({ properties: { selected: { items: { properties: { id: { enum: ["training:record"] } } } } } });
   });
 
   it("reports a failed Codex turn instead of parsing an empty response", async () => {
