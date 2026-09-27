@@ -80,6 +80,22 @@ describe("model execution boundary", () => {
     expect(fetcher).toHaveBeenCalledWith("https://ollama.com/api/chat", expect.objectContaining({ headers: expect.objectContaining({ authorization: "Bearer ollama_secret_key_123456" }) }));
   });
 
+  it("retries an invented answer citation before it leaves the provider boundary", async () => {
+    const key = randomBytes(32).toString("base64");
+    const invalid = { ...answer, claims: [{ ...answer.claims[0], evidenceIds: ["e1-invented-digest"] }] };
+    const fetcher = vi.fn().mockResolvedValueOnce(Response.json({ message: { content: JSON.stringify(invalid) } })).mockResolvedValueOnce(Response.json({ message: { content: JSON.stringify(answer) } }));
+    await expect(generateAnswer(profile("OLLAMA_CLOUD", encryptSecret("ollama_secret_key_123456", key)), "What is red?", evidence, { secretKey: key, codexClient: { request: vi.fn() }, fetcher })).resolves.toEqual(answer);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects repeated invented answer citations without relabeling them as supplied evidence", async () => {
+    const key = randomBytes(32).toString("base64");
+    const invalid = { ...answer, claims: [{ ...answer.claims[0], evidenceIds: ["e1-invented-digest"] }] };
+    const fetcher = vi.fn().mockImplementation(async () => Response.json({ message: { content: JSON.stringify(invalid) } }));
+    await expect(generateAnswer(profile("OLLAMA_CLOUD", encryptSecret("ollama_secret_key_123456", key)), "What is red?", evidence, { secretKey: key, codexClient: { request: vi.fn() }, fetcher })).rejects.toThrow();
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
   it("collects Codex App Server notifications and validates a review", async () => {
     let listener: ((method: string, params: unknown) => void) | undefined;
     const client: AppServerClient = {
@@ -117,6 +133,7 @@ describe("model execution boundary", () => {
     await expect(generateAnswer(profile("CODEX"), "q", evidence, { secretKey: "unused", codexClient: client }, [{ actor: "USER", content: "Trainer feedback: revise this." }])).resolves.toEqual(answer);
     expect(turnParams?.outputSchema).toMatchObject({ type: "object", required: ["directAnswer", "steps", "safetyAndAssumptions", "confidence", "clarifyingQuestion", "claims"] });
     expect(turnParams?.outputSchema).toMatchObject({ properties: { clarifyingQuestion: { anyOf: [{ type: "string" }, { type: "null" }] } } });
+    expect(turnParams?.outputSchema).toMatchObject({ properties: { claims: { maxItems: 100, items: { properties: { evidenceIds: { maxItems: 20, items: { enum: ["e1"] } } } } } } });
   });
 
   it("requires nullable unresolved context in the Codex training assessment schema", async () => {

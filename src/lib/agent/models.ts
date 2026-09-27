@@ -137,7 +137,8 @@ export async function generateTrainingImageSource(profile: ExecutionProfile, byt
 }
 
 export async function generateAnswer(profile: ExecutionProfile, question: string, evidence: EvidenceItem[], runtime: ModelRuntime, history: ConversationMessage[] = [], guidance: AcceptedGuidance[] = [], navigation: { repository: string; folder: string; purpose: string; expectedContent: string }[] = []): Promise<AnswerDraft> {
-  return generateStructured(profile, evidencePrompt(question, evidence, profile.ownerPrompt, history, guidance, navigation), runtime, answerDraftSchema);
+  const schema = evidence.length ? answerDraftSchema.extend({ claims: z.array(answerDraftSchema.shape.claims.element.extend({ evidenceIds: z.array(z.enum(evidence.map(item => item.id))).max(20) })).max(100) }) : answerDraftSchema;
+  return generateStructured(profile, evidencePrompt(question, evidence, profile.ownerPrompt, history, guidance, navigation), runtime, schema);
 }
 
 export async function generateTrainingAssessment(profile: ExecutionProfile, question: string, candidates: AcceptedGuidance[], runtime: ModelRuntime): Promise<TrainingAssessment> {
