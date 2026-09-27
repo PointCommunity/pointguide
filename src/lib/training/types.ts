@@ -23,6 +23,7 @@ export interface TrainingSessionRecord {
   acceptedContent?: string | null; acceptedDigest?: string | null; acceptedPath?: string | null; acceptedSourceVersion?: number | null;
   publishedCommit?: string | null; indexedCommit?: string | null; publicationError?: string | null;
   answerError?: string | null;
+  knowledgeAvailable?: boolean; // Read-time source eligibility, not persisted activation history.
 }
 export interface TrainingSessionStore {
   create(input: { trainerAccountId: string; conversationId: string; targetRepository: string; originalQuestion: string }, queue?: boolean, sources?: TrainingSourceInput[]): Promise<TrainingSessionRecord>;
