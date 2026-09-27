@@ -40,6 +40,7 @@ export async function answerQuestion(input: { actor: Account; conversationId: st
     return generateTrainingAssessment(primaryProfile!, question, candidates, input.modelRuntime!);
   }, products);
   const guidance = plan.guidance;
+  const acceptedClaims = plan.coverage === "PARTIAL" ? guidance.flatMap(record => trainingDraft(record).claims.map(claim => ({ ...claim, id: `${record.id}:${claim.id}` }))) : [];
   const sourceEvidence = plan.coverage === "COMPLETE" ? [] : searchCorpus(plan.coverage === "PARTIAL" && plan.missing.length ? plan.missing.join("; ") : retrievalQuery, chunks);
   const navigation = [...new Map(sourceEvidence.flatMap(item => {
     const repository = item.locator?.split("@")[0];
@@ -53,7 +54,8 @@ export async function answerQuestion(input: { actor: Account; conversationId: st
     evidence, mode,
     primary: async () => {
       if (plan.coverage === "COMPLETE" && guidance.length === 1 && !input.sessionEvidence?.length) return trainingDraft(guidance[0]);
-      const draft = input.fixture && guidance.length && !input.sessionEvidence?.length ? trainingDraft(guidance[0]) : !evidence.length || !primaryProfile || !input.modelRuntime ? evidenceDraft(input.question, evidence) : await generateAnswer(primaryProfile, input.question, evidence, input.modelRuntime, history, guidance, navigation);
+      const generated = input.fixture && guidance.length && !input.sessionEvidence?.length ? trainingDraft(guidance[0]) : !evidence.length || !primaryProfile || !input.modelRuntime ? evidenceDraft(input.question, evidence) : await generateAnswer(primaryProfile, input.question, evidence, input.modelRuntime, history, guidance, navigation);
+      const draft = acceptedClaims.length ? { ...generated, confidence: generated.confidence === "CONFIRMED" ? "SUPPORTED" as const : generated.confidence, claims: [...acceptedClaims, ...generated.claims.filter(claim => !(claim.evidenceIds.length && claim.evidenceIds.every(id => guidance.some(record => record.id === id))) && !acceptedClaims.some(accepted => accepted.text === claim.text && accepted.kind === claim.kind))] } : generated;
       if (plan.coverage === "CONFLICT" || plan.unresolvedContext || (plan.coverage === "PARTIAL" && !sourceEvidence.length && !input.sessionEvidence?.length)) return { ...draft, clarifyingQuestion: plan.unresolvedContext ?? draft.clarifyingQuestion, confidence: draft.confidence === "UNKNOWN" ? "UNKNOWN" as const : "TENTATIVE" as const, claims: [...draft.claims, { id: "training-unresolved", text: plan.unresolvedContext || (plan.coverage === "CONFLICT" ? "Accepted training conflicts; the applicable answer is not fully resolved." : `Accepted training does not establish: ${plan.missing.join("; ") || "the remaining question"}.`), kind: "UNKNOWN" as const, status: "UNKNOWN" as const, evidenceIds: [] }] };
       return draft;
     },
@@ -61,6 +63,7 @@ export async function answerQuestion(input: { actor: Account; conversationId: st
       ? generateReview((reviewerProfile ?? primaryProfile)!, draft, items, input.modelRuntime)
       : Promise.resolve({ findings: draft.claims.map((claim) => ({ claimId: claim.id, verdict: claim.status === "SUPPORTED" ? "SUPPORTED" as const : "REJECTED" as const, rationaleCode: claim.status === "SUPPORTED" ? "ENTAILED" as const : "INSUFFICIENT" as const })), claimOrder: draft.claims.map(claim => claim.id) }),
   });
+  if (acceptedClaims.some(accepted => !answer.claims.some(claim => claim.id === accepted.id && claim.text === accepted.text && claim.status === accepted.status))) throw new Error("Accepted Training could not be preserved after review");
   const stored = await input.learning.saveAnswer({ conversationId: input.conversationId, question: input.question, answer, evidence, guidance, reviewMode: mode, turnNumber });
   return { answer: { ...stored, evidence, guidance }, reviewEnabled: reviewSetting.enabled, usage: { turnNumber, maxTurns, followUpsRemaining: Math.max(0, maxTurns - turnNumber) } };
   } catch (error) {

@@ -5,6 +5,8 @@ import { MemoryLearningRepository } from "@/lib/learning/store";
 import { MemoryProviderStore } from "@/lib/providers/memory-store";
 import type { Account } from "@/lib/auth/types";
 import type { AcceptedGuidance } from "@/lib/training/knowledge";
+import type { ProviderConfigurationStore } from "@/lib/providers/types";
+import * as models from "@/lib/agent/models";
 
 const now = new Date();
 const actor: Account = { id: crypto.randomUUID(), accessIssuer: "fixture", accessSubject: "owner", email: "owner@example.com", displayName: "Owner", role: "OWNER", status: "APPROVED", firstLoginAt: now, lastLoginAt: now, createdAt: now, updatedAt: now, version: 1 };
@@ -34,6 +36,25 @@ it("keeps partial training and searches for the missing part", async () => {
   expect(result.answer.evidence.map(item => item.kind)).toEqual(["ACCEPTED_TRAINING", "REPOSITORY"]);
   expect(result.answer.confidence).not.toBe("CONFIRMED");
   spy.mockRestore();
+});
+
+it.each([false, true])("preserves complete partial Training through lossy generation; rejected=%s", async rejected => {
+  const assessment = vi.spyOn(models, "generateTrainingAssessment").mockResolvedValue({ selected: [{ id: guidance.id, coverage: "PARTIAL", missing: ["AES50 routing"], rationale: "Only socket guidance is accepted." }] });
+  const generation = vi.spyOn(models, "generateAnswer").mockResolvedValue({ directAnswer: "Routing supplement.", steps: [], safetyAndAssumptions: [], confidence: "SUPPORTED", claims: [{ id: "accepted-step-0", text: "AES50 routing uses the input routing menu.", kind: "ACTIONABLE", status: "SUPPORTED", evidenceIds: ["repo:other"] }] });
+  const review = vi.spyOn(models, "generateReview").mockImplementation(async (_profile, draft) => ({ findings: draft.claims.map(claim => ({ claimId: claim.id, verdict: rejected && claim.kind === "SAFETY" ? "REJECTED" : "SUPPORTED", rationaleCode: rejected && claim.kind === "SAFETY" ? "INSUFFICIENT" : "ENTAILED" })), claimOrder: draft.claims.map(claim => claim.id) }));
+  const providers = { getReviewSetting: async () => ({ enabled: false }), getExecutionProfile: async () => ({ id: "configured" }) } as unknown as ProviderConfigurationStore;
+  const learning = new MemoryLearningRepository(); const conversation = await learning.createConversation(actor.id, "partial synthesis");
+  const result = answerQuestion({ actor, conversationId: conversation.id, question: `${question} And how is AES50 routed?`, deepResearch: false, providers, learning, fixture: false, modelRuntime: { secretKey: "unused", codexClient: { request: vi.fn() } }, chunks, guidance: [guidance] });
+  try {
+    if (rejected) await expect(result).rejects.toThrow("Accepted Training could not be preserved after review");
+    else {
+      const { answer } = await result;
+      expect(answer.steps).toEqual([...guidance.answer!.steps, "AES50 routing uses the input routing menu."]);
+      expect(answer.safetyAndAssumptions).toEqual(guidance.answer!.safetyAndAssumptions);
+      expect(answer.directAnswer).toBe(guidance.answer!.directAnswer);
+      expect(answer.claims.filter(claim => claim.evidenceIds.includes(guidance.id))).toHaveLength(3);
+    }
+  } finally { assessment.mockRestore(); generation.mockRestore(); review.mockRestore(); }
 });
 
 it("retains a bus procedure when trainer feedback names the model only present in its steps", async () => {
