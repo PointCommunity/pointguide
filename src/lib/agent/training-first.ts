@@ -6,7 +6,7 @@ export const trainingAssessmentSchema = z.object({ selected: z.array(z.object({ 
 export type TrainingAssessment = z.infer<typeof trainingAssessmentSchema>;
 export interface TrainingPlan { coverage: "NONE" | "COMPLETE" | "PARTIAL" | "CONFLICT"; guidance: AcceptedGuidance[]; missing: string[]; unresolvedContext?: string }
 
-function namedProduct(text: string, names: string[]): string[] {
+export function namedProduct(text: string, names: string[]): string[] {
   const normalized = ` ${text.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim()} `;
   return names.filter(name => normalized.includes(` ${name.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim()} `));
 }
